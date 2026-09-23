@@ -12,7 +12,7 @@ Studio documentation are in Czech; the backend and upstream documentation are in
 
 - Edit project files, inspect outputs and follow real tool activity in a browser.
 - Use an OpenAI-compatible model endpoint, including a local Ollama server.
-- Run FrontierAgent's single-agent ReAct or Agent Team workflows.
+- Run single-agent ReAct or Agent Team workflows.
 - Plan a project, execute tasks, request a separate model review and run explicit verification commands.
 - Keep task dependencies, questions, evidence, attempt limits and recovery state in SQLite.
 - Organize projects and recurring work through Company Builder & Driver.
@@ -99,7 +99,9 @@ unattended company operation. No GitHub Actions run is claimed for this snapshot
 
 ## License and origin
 
-Apache-2.0; see [LICENSE](LICENSE). FrontierAgent source and attribution are retained under
+Application code: Apache-2.0; see [LICENSE](LICENSE). The bundled FrontierChallenge component
+retains CC BY 4.0; see [THIRD_PARTY.md](THIRD_PARTY.md) for component-specific terms.
+FrontierAgent source and attribution are retained under
 `frontier/`, based on upstream commit `9e533db6f6c34d16037ee5ec964c479d0eb51cde`.
 The upstream agent runtime, tools, terminal interface and evaluation framework are upstream work;
 Miner adds the Studio application and integration changes. This is an independent derivative

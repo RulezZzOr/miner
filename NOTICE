@@ -6,3 +6,7 @@ Upstream base: 9e533db6f6c34d16037ee5ec964c479d0eb51cde
 
 Original notices and license texts are retained in frontier/.
 See THIRD_PARTY.md and frontier/SWITCH.md for attribution and modifications.
+
+The bundled FrontierChallenge component retains CC BY 4.0, not Apache-2.0.
+Original authors, citations and license: frontier/benchmarks/frontierchallenge/.
+Component-specific terms and source links: THIRD_PARTY.md.
