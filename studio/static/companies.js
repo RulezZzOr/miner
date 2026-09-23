@@ -44,7 +44,7 @@ async function companyAction(c, action, extra = {}) {
       $("#driver-toggle").textContent = "Start Driver";
       $("#driver-state").textContent = "Paused";
       $("#driver-message").textContent = saved.message;
-      const nav = $("#driver-company-" + c.id); if (nav) nav.textContent = `${c.name} · Pozastaveno`;
+      const nav = $("#driver-company-" + c.id); if (nav) nav.textContent = `${c.name} · Paused`;
       return;
     }
     companyDirty = false; companySnapshot = "";

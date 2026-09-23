@@ -570,7 +570,7 @@ async function renderBottom() {
           e.name ||
             {
               started: "start",
-              finished: "konec",
+              finished: "finished",
               error: "chyba",
               note: "info",
             }[e.type],
