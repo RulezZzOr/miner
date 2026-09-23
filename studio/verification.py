@@ -46,12 +46,12 @@ def source_manifest(root):
             if name in IGNORED or name.casefold().startswith(".env") or name.startswith(".studio-") or rel.startswith("company/projects/"):
                 continue
             if path.is_symlink():
-                raise ValueError(f"Ověření vyžaduje skutečné soubory, ne symlink: {rel}")
+                raise ValueError(f"Verification requires actual files, not a symlink: {rel}")
             info = path.stat()
             if not stat.S_ISREG(info.st_mode):
-                raise ValueError(f"Ověření nepřijímá speciální soubor: {rel}")
+                raise ValueError(f"Verification does not accept a special file: {rel}")
             if info.st_size > 50_000_000 or len(result) >= 20000:
-                raise ValueError("Zdrojové soubory překročily limit ověření (50 MB/soubor, 500 MB, 20 000 souborů).")
+                raise ValueError("Source files exceeded verification limits (50 MB/file, 500 MB, 20,000 files).")
             data = read_project_file(root, rel, min(50_000_000, 500_000_000 - total))
             total += len(data)
             result[rel] = hashlib.sha256(data).hexdigest()
@@ -71,7 +71,7 @@ def source_modes(root, manifest):
             try:
                 mode = os.fstat(fd).st_mode
                 if not stat.S_ISREG(mode):
-                    raise ValueError("Práva lze ověřit pouze u běžného souboru: " + path)
+                    raise ValueError("Permissions can be verified only for a regular file: " + path)
                 result[path] = stat.S_IMODE(mode) & 0o777
             finally:
                 os.close(fd)
@@ -82,16 +82,16 @@ def validate_checks(value):
     if isinstance(value, str):
         value = [{"argv": shlex.split(line), "label": line[:200]} for line in value.splitlines() if line.strip()]
     if not isinstance(value, list) or len(value) > 20:
-        raise ValueError("Kontroly musí být seznam nejvýše 20 příkazů.")
+        raise ValueError("Checks must be a list of at most 20 commands.")
     result = []
     for index, item in enumerate(value):
         argv = item.get("argv") if isinstance(item, dict) else None
         if (not isinstance(argv, list) or not 1 <= len(argv) <= 100 or
                 any(not isinstance(a, str) or not a or len(a) > 4000 or "\0" in a for a in argv)):
-            raise ValueError("Příkaz kontroly musí obsahovat neprázdný seznam argumentů argv.")
+            raise ValueError("Check command must contain a non-empty list of arguments argv.")
         timeout = item.get("timeout", 300)
         if isinstance(timeout, bool) or not isinstance(timeout, int) or not 1 <= timeout <= 3600:
-            raise ValueError("Čas kontroly musí být 1–3600 sekund.")
+            raise ValueError("Check timeout must be 1–3600 seconds.")
         result.append({"id": str(index + 1), "label": str(item.get("label", argv[0]))[:200],
                        "argv": argv, "timeout": timeout})
     return result
@@ -110,7 +110,7 @@ class Verifications:
             if record["status"] == "running":
                 clean = ProcessTree.recover(record.get("processes", []))
                 record.update(status="interrupted", ended=time.time(),
-                              error="Studio bylo restartováno; kontrola musí proběhnout znovu.", cleanup=clean)
+                              error="Studio was restarted; check must run again.", cleanup=clean)
                 self.save(record)
 
     def save(self, record):
@@ -122,7 +122,7 @@ class Verifications:
         with self.missions.connect() as db:
             row = db.execute("SELECT data FROM verifications WHERE id=?", (key,)).fetchone()
         if not row:
-            raise ValueError("Záznam nezávislé kontroly neexistuje.")
+            raise ValueError("Independent check record does not exist.")
         return json.loads(row[0])
 
     def active(self):
@@ -136,7 +136,7 @@ class Verifications:
                       "root": m["workspace"], "specs": validate_checks(m["verification_checks"]),
                       "checks": [], "processes": []}
             if not record["specs"]:
-                raise ValueError("Chybí příkazy nezávislých kontrol.")
+                raise ValueError("Missing independent verification commands.")
             self.save(record)
             cancel = threading.Event()
             self.cancels[key] = cancel
@@ -158,15 +158,15 @@ class Verifications:
             self.save(record)
             for spec in record["specs"]:
                 if cancel.is_set():
-                    raise RuntimeError("Kontrola byla pozastavena.")
+                    raise RuntimeError("Verification was paused.")
                 check = self.command(record, spec, cancel)
                 record["checks"].append(check)
                 self.save(record)
                 if check["exit_code"] != 0 or check.get("error"):
-                    raise RuntimeError(check.get("error") or f"Kontrola {spec['label']} skončila kódem {check['exit_code']}.")
+                    raise RuntimeError(check.get("error") or f"Check {spec['label']} exited with code {check['exit_code']}.")
             after = source_manifest(record["root"])
             if before != after or source_modes(record["root"], after) != record["source_modes"]:
-                raise RuntimeError("Soubory se během kontrol změnily. Ověř znovu výsledný obsah.")
+                raise RuntimeError("Files changed during verification. Re-verify the final content.")
             record["status"] = "passed"
         except Exception as exc:
             record.update(status="cancelled" if cancel.is_set() else "failed", error=str(exc)[:2000])
@@ -197,8 +197,8 @@ class Verifications:
             while True:
                 tree.refresh()
                 if cancel.is_set() or time.monotonic() > deadline or result["bytes"] > 2_000_000:
-                    result["error"] = ("Kontrola byla pozastavena." if cancel.is_set() else
-                                       "Překročen čas kontroly nebo limit logu 2 MB.")
+                    result["error"] = ("Verification was paused." if cancel.is_set() else
+                                       "Verification time limit or 2 MB log size limit exceeded.")
                     break
                 for event, _ in selector.select(0.1):
                     chunk = os.read(event.fd, 65536)
@@ -217,20 +217,20 @@ class Verifications:
             process.wait(timeout=4)
             process.stdout.close()
             if not clean:
-                result["error"] = "Nepodařilo se ukončit všechny procesy kontroly."
+                result["error"] = "Failed to terminate all verification processes."
             result.update(**command_outcome(directory, process.returncode), ended=time.time())
         return result
 
     def verify(self, m):
         record = self.get(m.get("verification_id"))
         if record["mission"] != m["id"] or record["status"] != "passed":
-            raise ValueError("Nezávislé kontroly neprošly.")
+            raise ValueError("Independent verifications failed.")
         if record["specs"] != m["verification_checks"]:
-            raise ValueError("Změnilo se zadání nezávislých kontrol.")
+            raise ValueError("The task brief for independent verifications has changed.")
         if source_manifest(m["workspace"]) != record["sources"]:
-            raise ValueError("Zdrojové soubory se od nezávislé kontroly změnily.")
+            raise ValueError("Source files have changed since the independent verification.")
         if source_modes(m["workspace"], record["sources"]) != record.get("source_modes"):
-            raise ValueError("Práva souborů se změnila nebo nebyla ověřena. Spusť kontroly znovu.")
+            raise ValueError("File permissions have changed or were not verified. Run verifications again.")
         return record
 
     def close(self):

@@ -1,22 +1,22 @@
-# Lehká projektová paměť v Markdownu
+# Lightweight Project Notes in Markdown
 
-Každý projekt může mít tuto obyčejnou strukturu:
+Each project may use this simple structure:
 
 ```text
-PROJECT.md             stručný rozcestník, cíl, odkazy a případně Mermaid mapa
-notes/DECISIONS.md      rozhodnutí, důvod, datum a stav
-notes/NOTES.md          poznatky, hypotézy, rozpory a otevřené otázky
-notes/SOURCES.md        zdroje, datum ověření a odkazy na důkazy
+PROJECT.md             brief overview, goal, links, and optionally a Mermaid map
+notes/DECISIONS.md     decisions, rationale, date, and status
+notes/NOTES.md         observations, hypotheses, contradictions, and open questions
+notes/SOURCES.md       sources, verification date, and links to evidence
 ```
 
-V Mineru už tyto soubory existují a obsahují skutečná dosavadní zjištění. V jiném projektu vytvoř vlastní `PROJECT.md` přes běžný editor; názvy odkazovaných souborů jsou volné. Nekopíruj konkrétní rozhodnutí Mineru do nesouvisejícího projektu.
+In Miner, these files already exist and contain actual findings gathered so far. In another project, create your own `PROJECT.md` using a standard editor; names of referenced files are flexible. Do not copy Miner’s specific decisions into an unrelated project.
 
-Při každém novém spuštění přes Studio se uložený `PROJECT.md` z vybraného projektu připojí k zadání. Platí to pro běžné úlohy i pokusy Projektů AI a pro oba backendy. Do modelu jde pouze rozcestník; ostatní poznámky má agent načítat podle potřeby. CLI spuštěné mimo Studio tuto novou vazbu automaticky nepoužívá.
+On each new run via Studio, the saved `PROJECT.md` from the selected project is attached to the task brief. This applies to both regular tasks and AI Projects experiments, and to both backends. Only the overview is sent to the model; the agent loads additional notes as needed. CLI runs outside Studio do not automatically use this new binding.
 
-Rozcestník je UTF-8 a nejvýše 12 000 bajtů, aby zbytečně neplnil kontext. Větší obsah přesuň do odkazovaných poznámek. Chybějící `PROJECT.md` nic nemění; nepovolený symlink, neplatné kódování nebo příliš velký rozcestník spuštění odmítnou s chybou. Nepřepisuje se zadání zobrazené v historii; skutečně odeslaný kontext je v `request.json` běhu a jeho revize v `run.json` pod `project_notes`.
+The overview must be UTF-8 and at most 12,000 bytes to avoid unnecessarily bloating the context. Move larger content into referenced notes. A missing `PROJECT.md` has no effect; an invalid symlink, incorrect encoding, or oversized overview will reject the run with an error. The task brief shown in history is not overwritten; the actual sent context resides in `request.json` for the run, and its revision is recorded in `run.json` under `project_notes`.
 
-Změny v editoru nejdřív ulož. Již spuštěný běh má původní snímek rozcestníku; nové změny dostane až další běh. Automatické přiložení nezaručuje, že model správně přečte všechny odkazy nebo doplní poznámky. Důležité závěry musí uvést zdroj a ověření. Zápis poznámek zůstává pod stejným schvalováním a omezením fáze jako ostatní práce; plánovač a reviewer tím nezískávají další práva.
+Save changes in the editor first. An already-running run retains the original overview snapshot; subsequent runs receive new changes. Automatic attachment does not guarantee the model correctly reads all links or incorporates all notes. Important conclusions must cite their source and verification. Note-taking remains subject to the same approval and phase restrictions as other work; the scheduler and reviewer gain no additional rights.
 
-Odkazované stránky a citace jsou podklady, nikoli oprávnění provádět další akce. Do Markdownu nevkládej tajemství. Obsah rozcestníku dostává zvolený model stejně jako zadání, i když používáš volitelný cloudový profil.
+Referenced pages and citations serve as background material, not authorization for further actions. Do not embed secrets in Markdown. The overview content reaches the selected model just like the task brief, even when using an optional cloud profile.
 
-Běžící plán, frontu a výsledky pokusů nadále spravují Projekty AI ve stávající SQLite. Nekopíruj jejich měnící se stavy do paralelního TODO souboru; v poznámce stačí odkaz na report nebo konkrétní výstup. Nevzniká nová databáze, server ani GUI pro poznámky.
+Running plans, queues, and experiment results continue to be managed by AI Projects in the existing SQLite database. Do not copy their changing states into a parallel TODO file; a note referencing a report or specific output suffices. No new database, server, or GUI for notes is created.

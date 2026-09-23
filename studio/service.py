@@ -28,11 +28,11 @@ def definition(root=ROOT):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Switch Studio: uživatelská služba macOS")
+    parser = argparse.ArgumentParser(description="Switch Studio: macOS user service")
     parser.add_argument("action", choices=["enable", "disable", "status"])
     args = parser.parse_args()
     if sys.platform != "darwin":
-        raise SystemExit("Tento instalátor je určený pro macOS. Na Linuxu spusť switch-studio jako uživatelskou systemd službu.")
+        raise SystemExit("This installer is for macOS only. On Linux, run switch-studio as a user systemd service.")
     domain = f"gui/{os.getuid()}"
     service = f"{domain}/{LABEL}"
     path = Path.home() / "Library" / "LaunchAgents" / (LABEL + ".plist")
@@ -42,12 +42,12 @@ def main():
         subprocess.run(["launchctl", "bootout", service], check=False)
         if path.exists():
             path.unlink()
-        print("Služba vypnuta. Projektová data zůstávají zachovaná.")
+        print("Service disabled. Project data remains preserved.")
         return
     path.parent.mkdir(parents=True, exist_ok=True)
     (ROOT / ".switch-agent" / "studio").mkdir(parents=True, exist_ok=True)
     if subprocess.run(["launchctl", "print", service], capture_output=True).returncode == 0:
-        print("Služba už je zapnutá.")
+        print("Service is already enabled.")
         return
     temporary = path.with_suffix(".tmp")
     temporary.write_bytes(plistlib.dumps(definition()))
@@ -61,13 +61,13 @@ def main():
             import urllib.request
             try:
                 with urllib.request.urlopen("http://127.0.0.1:4317/api/state", timeout=1):
-                    print("Služba odpovídá. Počítač musí zůstat zapnutý a vzhůru.")
+                    print("Service is responding. The computer must remain powered on and awake.")
                     return
             except OSError:
                 pass
     subprocess.run(["launchctl", "bootout", service], check=False)
     path.unlink(missing_ok=True)
-    raise SystemExit("Služba nenastartovala a byla vypnuta. Zkontroluj service-error.log; macOS může blokovat složku Dokumenty. Běžné Studio spusť přes ./switch-studio.")
+    raise SystemExit("Service failed to start and was disabled. Check service-error.log; macOS may block the Documents folder. Run standard Studio via ./switch-studio.")
 
 
 if __name__ == "__main__":

@@ -864,7 +864,7 @@ kbd {
 .composer:focus-within {
   border-color: #638e7c;
 }
-.composer > textarea {
+.composer textarea {
   display: block;
   width: 100%;
   background: transparent;
@@ -877,7 +877,7 @@ kbd {
   font-size: 12px;
   line-height: 1.7;
 }
-.composer > textarea::placeholder {
+.composer textarea::placeholder {
   color: #818c98;
 }
 .composer-meta {
@@ -1839,3 +1839,37 @@ dialog label select {
 .flow-edge{fill:none;stroke:#445567;stroke-width:1.7}.flow-edge.moving{stroke:#94ebc6;stroke-width:2.5;stroke-dasharray:6 5;animation:flow-travel 1.2s linear infinite}.flow-node{cursor:pointer;outline:none}.flow-node rect{fill:#1a222e;stroke:#394656;stroke-width:1.2}.flow-node circle{fill:#64758a}.flow-node text{font-family:var(--sans);pointer-events:none;stroke:none}.flow-node-status{font-size:10px;fill:#a5b2c2}.flow-node-title{font-size:12px;font-weight:600;fill:#eaf0f5}.flow-node-subtitle{font-size:9px;fill:#96a5b6}.flow-node.active rect{fill:#19362d;stroke:#94ebc6}.flow-node.active circle{fill:#94ebc6}.flow-node.done rect{fill:#1b2b38;stroke:#6597b9}.flow-node.done circle{fill:#7caed7}.flow-node.waiting rect{fill:#332b1d;stroke:#dbb976}.flow-node.waiting circle{fill:#f1c578}.flow-node.blocked rect{fill:#352129;stroke:#f39898}.flow-node.blocked circle{fill:#f39898}.flow-node.selected rect,.flow-node:focus-visible rect{stroke-width:3}.flow-node:focus-visible rect{stroke:#fff}.flow-node:hover rect{filter:brightness(1.3)}
 .flow-bottom{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:22px}.flow-bottom>section{padding:18px;border:1px solid #2b3642;border-radius:12px;min-width:0}.flow-bottom p{line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto}.flow-bottom .button{margin:8px 8px 0 0}.flow-badge{display:inline-block;border:1px solid #4c5969;border-radius:20px;padding:3px 9px;color:#b4c1d0;font-size:11px}.flow-badge.active{color:#94ebc6}.flow-badge.blocked{color:#f39898}.flow-badge.waiting{color:#f1c578}.flow-warning{color:#f39898!important}.flow-event{padding:9px 0;border-bottom:1px solid #27313d;display:grid;grid-template-columns:68px 1fr;gap:7px;font-size:12px}.flow-event time{color:#8193a7;font-family:var(--mono);font-size:10px}.flow-event p{grid-column:2;margin:0;color:#f39898;font-size:11px}.flow-event.issue>span{color:#f39898}.flow-offline .moving,.flow-offline .flow-pulse{animation:none!important}.flow-offline #flow-sync{color:#f39898}.flow-pulse{animation:flow-glow 1.7s ease-in-out infinite}
 @keyframes flow-travel{to{stroke-dashoffset:-22}}@keyframes flow-glow{50%{opacity:.35}}@media(prefers-reduced-motion:reduce){.flow-edge.moving,.flow-pulse{animation:none}}@media(max-width:760px){#flow-dialog{padding:16px}.flow-bottom{grid-template-columns:1fr}.flow-counter{display:none}.flow-toolbar select{width:100%;flex-basis:100%}.flow-summary-copy>strong{font-size:16px}.flow-legend{gap:9px}.flow-toolbar #flow-sync{margin-left:0}.flow-launch{padding:6px}}
+
+/* Contextual help never submits or changes a form. */
+.context-help-wrap{display:inline-flex;align-items:center;gap:5px;max-width:100%;vertical-align:middle;min-width:0}
+.context-help-wrap>button{min-width:0;max-width:100%}
+.context-help-field{width:100%}.context-help-field>input,.context-help-field>textarea,.context-help-field>select{flex:1;min-width:0}
+.context-help-trigger{display:inline-flex!important;align-items:center;justify-content:center;flex:0 0 19px;width:19px;height:19px;box-sizing:border-box;border:1px solid #536477;border-radius:50%;background:#202b37;color:#bddacb;font:600 11px/1 system-ui;cursor:help;user-select:none;text-transform:none;letter-spacing:normal}
+.context-help-trigger:hover,.context-help-trigger:focus-visible,.context-help-trigger[aria-expanded=true]{background:#263e36;color:#d5ffe9;border-color:#8eebc4;outline:2px solid #8eebc433;outline-offset:2px}
+.has-context-help{position:relative;padding-right:26px!important}.has-context-help>.context-help-trigger{position:absolute;right:0;top:0}
+summary>.context-help-trigger{margin-left:8px;vertical-align:middle}
+.context-help-popup{position:fixed;inset:auto;margin:0;width:340px;max-width:calc(100vw - 24px);max-height:calc(100dvh - 24px);overflow:auto;box-sizing:border-box;padding:18px;border:1px solid #506555;border-radius:14px;background:#171f28;color:#dce5ed;box-shadow:0 16px 70px #0009;font:13px/1.55 system-ui;z-index:99999;overflow-wrap:anywhere}
+.context-help-popup[hidden]{display:none}.context-help-popup::backdrop{background:transparent;pointer-events:none}
+.context-help-heading{display:flex;align-items:flex-start;gap:14px;justify-content:space-between}.context-help-heading strong{font-size:15px;color:#d5ffe9}
+.context-help-close{border:0;background:transparent;color:#b7c6d4;font-size:22px;line-height:1;padding:0 3px;cursor:pointer}
+.context-help-popup h4{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#90a99c;margin:16px 0 5px}.context-help-popup p{margin:0}.context-help-popup pre{margin:0;padding:10px;border-radius:7px;background:#0d141c;color:#bfe5d2;font:12px/1.5 var(--mono,monospace);white-space:pre-wrap;overflow-wrap:anywhere}
+@media(max-width:760px){.context-help-trigger{width:24px;height:24px;flex-basis:24px}.has-context-help{padding-right:30px!important}.context-help-wrap{gap:4px}}
+
+.context-help-wrap:has(> [hidden]),.context-help-wrap:has(> .hidden){display:none!important}
+.rail>.context-help-wrap{position:relative;display:flex;justify-content:center;width:100%}
+.rail>.context-help-wrap>.context-help-trigger{position:absolute;right:1px;bottom:0;width:16px;height:16px;font-size:10px}
+.mode-switch>.context-help-wrap{flex:1}.mode-switch>.context-help-wrap>button{flex:1}
+.starter-grid>.context-help-wrap{align-items:stretch}.starter-grid>.context-help-wrap>.starter{flex:1;width:100%}.starter-grid>.context-help-wrap>.context-help-trigger{align-self:flex-start;margin-top:10px}
+.approval-inbox .actions>.context-help-wrap{align-items:center}.approval-inbox .actions>.context-help-wrap>.button{flex:1}
+.approval-inbox .actions>.context-help-wrap:nth-child(3){grid-column:1 / -1}
+#mission-list>.context-help-wrap>button,#driver-list>.context-help-wrap>button{flex:1}
+
+/* Keep the additional help controls reachable at every window width. */
+body{height:100dvh;display:flex;flex-direction:column}
+.topbar{height:auto;min-height:62px;flex-shrink:0;flex-wrap:wrap;padding:10px 18px;gap:12px 22px}
+.project-switch{flex:0 1 260px;min-width:180px}.project-switch>.context-help-field{width:auto;flex:1}
+.top-actions{flex:1 1 880px;flex-wrap:wrap;gap:10px 16px;margin-left:0}
+.top-actions>.context-help-wrap{flex-shrink:0}
+.app-shell{height:auto;min-height:0;flex:1}.statusbar{flex-shrink:0}
+.composer>.context-help-field{padding-right:8px}.composer textarea{width:100%;min-width:0}
+@media(max-width:620px){body{height:auto;min-height:100dvh}.topbar{padding:10px;gap:10px}.project-switch{flex:1;min-width:120px}.top-actions{flex-basis:100%;gap:9px 12px}.app-shell{min-height:calc(100dvh - 160px)}}

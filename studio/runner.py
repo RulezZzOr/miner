@@ -42,12 +42,12 @@ def limit_mission_tools(settings, attempt_seconds):
 def normalize_report_args(args):
     """Validate controller JSON before writing and normalize encoded data."""
     if args.get("ops") or args.get("rows") is not None:
-        raise ValueError("Pro report použij data jako JSON objekt nebo content jako platný JSON text.")
+        raise ValueError("For the report, use data as a JSON object or content as valid JSON text.")
     report = args.get("data") if args.get("data") is not None else json.loads(args.get("content", ""))
     if isinstance(report, str):
         report = json.loads(report)
     if not isinstance(report, dict):
-        raise ValueError("Report musí být JSON objekt, ne seznam ani samostatný text.")
+        raise ValueError("The report must be a JSON object, not a list or standalone text.")
     normalized = {k: v for k, v in args.items() if k not in {"content", "data", "rows", "ops"}}
     return {**normalized, "data": report}
 
@@ -88,7 +88,7 @@ def run(directory: Path) -> int:
             root = Path(request["cwd"]).resolve()
             link = Path(os.environ["APODEX_WORKSPACE_LINK"])
             if not link.is_symlink():
-                raise RuntimeError("Chybí pracovní odkaz dlouhodobého projektu.")
+                raise RuntimeError("Missing working link for the long-term project.")
             link.unlink()
             link.symlink_to(root, target_is_directory=True)
             # Native file tools validate physical roots as well as /workspace.
@@ -115,8 +115,8 @@ def run(directory: Path) -> int:
                     allowed = candidate.resolve() == expected_report and not args.get("ops")
                 if not allowed:
                     return ToolCallIntervention(skip_with_result=
-                        "Tato fáze dovoluje čtecí nástroje a odevzdání přes save_mission_report. "
-                        "Produktové soubory neupravuj a nevybírej cestu reportu sám.")
+                        "This phase allows reading tools and submission via save_mission_report. "
+                        "Do not modify product files or select the report path yourself.")
                 return await original_call(observer, ctx, tool_call)
 
             TerminalObserver.on_tool_call = planning_call
@@ -131,7 +131,7 @@ def run(directory: Path) -> int:
                 try:
                     report = reporter.validate(tool_call.get("args") or {})
                 except (ValueError, TypeError, KeyError) as exc:
-                    message = "Report NEBYL uložen: " + str(exc)[:1800] + ". Oprav pole a znovu zavolej save_mission_report."
+                    message = "Report NOT saved: " + str(exc)[:1800] + ". Correct the fields and call save_mission_report again."
                     observer.r.note(message)
                     return ToolCallIntervention(skip_with_result=message)
                 # Keep the existing file-write approval and journal. The model
@@ -152,8 +152,8 @@ def run(directory: Path) -> int:
                         normalized = normalize_report_args(args)
                     except (ValueError, TypeError) as exc:
                         return ToolCallIntervention(skip_with_result=
-                            f"Report NEBYL uložen: {exc}. Oprav formát a zavolej create_file znovu; "
-                            "nejlépe předávej data přímo jako JSON objekt. Neoznačuj práci za hotovou.")
+                            f"Report NOT saved: {exc}. Fix the format and call create_file again; "
+                            "preferably pass data directly as a JSON object. Do not mark the work as complete.")
                     tool_call = {**tool_call, "args": normalized}
             prior = await original_guarded_call(observer, ctx, tool_call)
             if normalized is not None:
@@ -174,7 +174,7 @@ def run(directory: Path) -> int:
         TerminalObserver.on_tool_call = guarded_call
         TerminalObserver.on_turn_end = guarded_turn_end
     lock = threading.Lock()
-    outcome = {"status": "incomplete", "reason": "Proces skončil bez potvrzeného výsledku."}
+    outcome = {"status": "incomplete", "reason": "The process ended without a confirmed result."}
 
     def emit(kind, **data):
         event = {"type": kind, "time": time.time(), **data}
@@ -231,7 +231,7 @@ def run(directory: Path) -> int:
 
         def incomplete(self, text, **kwargs):
             if reporter and reporter.saved and kwargs.get("stopped_by") == "mission_report_saved":
-                self.final("Report ověřen a uložen. Řadič zkontroluje výsledek fáze.", **kwargs)
+                self.final("Report verified and saved. The controller will review the phase result.", **kwargs)
                 return
             outcome.update(status="incomplete", reason=kwargs.get("stopped_by", ""))
             emit("incomplete", text=text, **kwargs)
@@ -251,9 +251,9 @@ def run(directory: Path) -> int:
             visible = msg
             if msg.startswith("workflow →"):
                 visible = (
-                    "Pracovní režim: tým agentů"
+                    "Working mode: team of agents"
                     if request["mode"] == "agent_team"
-                    else "Pracovní režim: samostatný agent"
+                    else "Working mode: standalone agent"
                 )
             emit("note", text=visible)
             super().note(msg)
@@ -327,7 +327,7 @@ def run(directory: Path) -> int:
             "During BUILD, use create_file with literal content for product source code, without shell quoting. "
             "use relative paths there and never create or modify a /workspace mount or symlink. "
             "Native shell calls are one-shot: do not leave servers or jobs running in the background, "
-            "including nohup. Test a temporary service in one bounded Python script using Popen, "
+            "including nohup. Test and temporary service in one bounded Python script using Popen, "
             "request timeouts, and finally terminate/wait for only the child you started. "
             "The controller owns persistent deployment. If a check needs more time than allowed, "
             "report the limitation instead of evading the time limit. "

@@ -20,9 +20,9 @@ Operational equivalence depends on model capabilities, service credentials, sand
 
 ## Switch Studio (2026-09-22)
 
-Lokální webové IDE je v sousední složce `../studio/` a používá plný backend přes samostatný proces. Spouštěč `../switch-studio` a `../Switch Studio.command` otevře editor, konfiguraci modelů, úlohy, schvalování a výstupy. Původní terminálové rozhraní zůstává dostupné.
+The local web IDE is in the adjacent folder `../studio/` and uses the full backend via a separate process. The launcher scripts `../switch-studio` and `../Switch Studio.command` open the editor, model configuration, task brief, acceptance, and outputs. The original terminal interface remains available.
 
-Při integračním ověření byla opravena klasifikace dokončení v `apodex/task_runner.py`: Stateful ReAct používá `no_tool_behavior="stop"`, takže jeho přirozené `no_tool` ukončení smí být dokončené. Agent Team nadále zachovává nedokončený stav pro `no_tool`; limity a explicitně neúplné odpovědi se touto výjimkou nepovyšují na úspěch.
+During integration verification, the completion classification in `apodex/task_runner.py` was fixed: Stateful ReAct uses `no_tool_behavior="stop"`, so its natural `no_tool` termination may be marked as completed. Agent Team continues to preserve the incomplete state for `no_tool`; limits and explicitly incomplete responses do not count as success, except under this exception.
 
 ## Miner public source snapshot (2026-09-23)
 

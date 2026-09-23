@@ -99,14 +99,14 @@ def file_target(root, relative):
     relative = str(relative)
     parts = Path(relative).parts
     if not relative or Path(relative).is_absolute() or ".." in parts:
-        raise Problem("Neplatná cesta k souboru.")
+        raise Problem("Invalid file path.")
     if any(protected_name(p) for p in parts):
-        raise Problem("Tento soubor není dostupný v editoru.", 403)
+        raise Problem("This file is not available in the editor.", 403)
     path = root / relative
     if any(
         (root.joinpath(*parts[:i])).is_symlink() for i in range(1, len(parts) + 1)
     ) or not path.resolve().is_relative_to(root.resolve()):
-        raise Problem("Cesta vede mimo projekt nebo je symbolickým odkazem.", 403)
+        raise Problem("The path leads outside the project or is a symbolic link.", 403)
     return path
 
 
@@ -122,7 +122,7 @@ def file_parent(root, relative, *, create=False, directory=False):
         file_target(root, relative)
     parts = Path(relative).parts
     if not parts and not directory:
-        raise Problem("Neplatná cesta k souboru.")
+        raise Problem("Invalid file path.")
     fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
         for part in parts if directory else parts[:-1]:
@@ -137,9 +137,9 @@ def file_parent(root, relative, *, create=False, directory=False):
         yield fd, None if directory else parts[-1]
     except OSError as exc:
         if exc.errno in {errno.ELOOP, errno.ENOTDIR}:
-            raise Problem("Symbolické odkazy nejsou dostupné v editoru.", 403) from None
+            raise Problem("Symbolic links are not available in the editor.", 403) from None
         if exc.errno == errno.ENOENT:
-            raise Problem("Soubor nebo složka neexistuje.", 404) from None
+            raise Problem("File or folder does not exist.", 404) from None
         raise
     finally:
         os.close(fd)
@@ -150,10 +150,10 @@ def read_project_file(root, relative, limit):
         fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
         with os.fdopen(fd, "rb") as stream:
             if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
-                raise Problem("Cesta není běžný soubor.")
+                raise Problem("The path is not a regular file.")
             data = stream.read(limit + 1)
     if len(data) > limit:
-        raise Problem(f"Soubor překračuje limit {limit // 1_000_000} MB.")
+        raise Problem(f"File exceeds the limit of {limit // 1_000_000} MB.")
     return data
 
 
@@ -170,7 +170,7 @@ def toml_value(value):
         )
     if isinstance(value, list):
         return "[" + ", ".join(map(toml_value, value)) + "]"
-    raise Problem("Nepodporovaná hodnota konfigurace.")
+    raise Problem("Unsupported configuration value.")
 
 
 def write_config(path, profiles, default):
@@ -200,7 +200,7 @@ class Studio:
             if run.get("status") in ACTIVE:
                 identities = self.read_json(path.parent / "processes.json", [])
                 if not ProcessTree.recover(identities):
-                    raise RuntimeError("Předchozí pracovníci stále běží; obnova byla zastavena.")
+                    raise RuntimeError("Previous workers are still running; restoration has been stopped.")
                 run.update(status="interrupted", ended=time.time())
                 atomic_json(path, run)
             self.runs[run["id"]] = run
@@ -221,7 +221,7 @@ class Studio:
     def add_project(self, path, *, name=None):
         root = Path(path).expanduser().resolve()
         if not root.is_dir():
-            raise Problem("Složka projektu neexistuje.")
+            raise Problem("Project folder does not exist.")
         key = digest(str(root).encode())[:12]
         with self.lock:
             self.projects[key] = {"id": key, "name": name or root.name, "path": str(root)}
@@ -230,7 +230,7 @@ class Studio:
 
     def project(self, key):
         if key not in self.projects:
-            raise Problem("Neznámý projekt.", 404)
+            raise Problem("Unknown project.", 404)
         return Path(self.projects[key]["path"])
 
     def profiles(self):
@@ -302,7 +302,7 @@ class Studio:
                 raise UnicodeError()
         except UnicodeError:
             raise Problem(
-                "Tento soubor není textový UTF-8. Otevři jej v externí aplikaci."
+                "This file is not UTF-8 text. Open it in an external application."
             ) from None
         return {"path": relative, "content": text, "revision": digest(data)}
 
@@ -314,14 +314,14 @@ class Studio:
         root = self.project(body["project"])
         content = str(body["content"]).encode("utf-8")
         if len(content) > MAX_FILE:
-            raise Problem("Soubor překračuje 2 MB.")
+            raise Problem("File exceeds 2 MB.")
         with self.lock, file_parent(root, body["path"], create=True) as (parent, name):
             expected = body.get("revision")
             try:
                 fd = os.open(name, os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
             except FileNotFoundError:
                 if expected is not None:
-                    raise Problem("Soubor byl mezitím odstraněn.", 409) from None
+                    raise Problem("File was removed meanwhile.", 409) from None
                 fd = os.open(
                     name, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o666, dir_fd=parent
                 )
@@ -330,10 +330,10 @@ class Studio:
                 created = False
             with os.fdopen(fd, "r+b") as stream:
                 if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
-                    raise Problem("Cesta není běžný soubor.")
+                    raise Problem("The path is not a regular file.")
                 if not created and expected != digest(stream.read(MAX_FILE + 1)):
                     raise Problem(
-                        "Soubor se mezitím změnil. Načti jej znovu, aby se nepřepsaly cizí změny.",
+                        "File has changed meanwhile. Reload it to avoid overwriting external changes.",
                         409,
                     )
                 # Write through the checked descriptor, preserving executable bits.
@@ -371,28 +371,28 @@ class Studio:
             })
         except Problem as exc:
             if exc.status == 409:
-                raise Problem("Šablona už v projektu existuje. Tvoje úpravy zůstaly zachované.", 409) from None
+                raise Problem("Template already exists in the project. Your edits have been preserved.", 409) from None
             raise
         return {**result, "project": body["project"]}
 
     def save_model(self, body):
         name = str(body.get("id", "")).strip()
         if not re.fullmatch(r"[a-zA-Z0-9_-]{1,80}", name):
-            raise Problem("Název profilu může obsahovat písmena, čísla, pomlčky a podtržítka.")
+            raise Problem("Profile name may contain letters, numbers, hyphens, and underscores.")
         profiles, _ = self.profiles()
         if profiles.get(name, {}).get("oauth_provider"):
-            raise Problem("OAuth model spravuj pomocí připojení poskytovatele.")
+            raise Problem("Manage the OAuth model using the provider connection.")
         model = dict(profiles.get(name, {}))
         for field in ("model", "protocol", "chat_dialect", "base_url", "auth", "api_key_env"):
             if field in body:
                 model[field] = str(body[field]).strip()
         if model.get("protocol") not in {"chat_completions", "responses", "anthropic", "bedrock"}:
-            raise Problem("Nepodporovaný protokol.")
+            raise Problem("Unsupported protocol.")
         url = urllib.parse.urlsplit(model.get("base_url", ""))
         if url.scheme not in {"http", "https"} or not url.hostname or url.username or url.password:
-            raise Problem("Zadej HTTP(S) adresu serveru bez hesla v URL.")
+            raise Problem("Enter the HTTP(S) server address without password in the URL.")
         if not model.get("model"):
-            raise Problem("Vyplň název modelu.")
+            raise Problem("Enter the model name.")
         for field, default in (("context_window", 32768), ("max_output_tokens", 4096)):
             model[field] = int(body.get(field, model.get(field, default)))
         from apodex.switch_cli import workflow_settings
@@ -402,11 +402,11 @@ class Studio:
         except ValueError as exc:
             raise Problem(str(exc)) from None
         if model.get("auth") not in {"none", "env"}:
-            raise Problem("Neplatný způsob přihlášení.")
+            raise Problem("Invalid login method.")
         if model.get("auth") == "env" and not re.fullmatch(
             r"[A-Za-z_][A-Za-z0-9_]*", model.get("api_key_env", "")
         ):
-            raise Problem("Vyplň název proměnné prostředí s API klíčem.")
+            raise Problem("Enter the environment variable name for the API key.")
         with self.lock:
             extra = self.read_json(self.data / "models.json", {})
             extra[name] = model
@@ -416,11 +416,11 @@ class Studio:
     def connect_model(self, body):
         provider = body.get("provider")
         if provider not in PROVIDERS:
-            raise Problem("Neznámý poskytovatel OAuth.")
+            raise Problem("Unknown OAuth provider.")
         status = self.oauth.status(provider)
         model_id = str(body.get("model", ""))
         if not status["connected"] or model_id not in {m["id"] for m in status["models"]}:
-            raise Problem("Nejdřív se přihlas a vyber dostupný model.")
+            raise Problem("First, log in and select an available model.")
         name = provider + "-" + digest(model_id.encode())[:12]
         model = {
             "model": model_id,
@@ -449,10 +449,10 @@ class Studio:
         name = body.get("profile")
         profiles, _ = self.profiles()
         if not profiles.get(name, {}).get("oauth_provider"):
-            raise Problem("Toto není OAuth model.")
+            raise Problem("This is not an OAuth model.")
         with self.lock:
             if any(r["status"] in ACTIVE and r["profile"] == name for r in self.runs.values()):
-                raise Problem("Nejdřív zastav úlohu s tímto modelem.", 409)
+                raise Problem("First, stop the task running with this model.", 409)
             extra = self.read_json(self.data / "models.json", {})
             extra.pop(name, None)
             atomic_json(self.data / "models.json", extra)
@@ -461,10 +461,10 @@ class Studio:
     def probe(self, profile):
         profiles, _ = self.profiles()
         if profile not in profiles:
-            raise Problem("Neznámý modelový profil.")
+            raise Problem("Unknown model profile.")
         model = profiles[profile]
         if model.get("protocol") not in {"chat_completions", "responses"}:
-            raise Problem("Kontrola /models je dostupná pro kompatibilní OpenAI a Ollama API.")
+            raise Problem("The /models endpoint is available for compatible OpenAI and Ollama APIs.")
         from dotenv import load_dotenv
 
         load_dotenv(self.config.parent / ".env", override=False)
@@ -474,7 +474,7 @@ class Studio:
         try:
             key = credential_for(model)
         except ValueError:
-            raise Problem("Chybí proměnná prostředí s API klíčem.") from None
+            raise Problem("Missing environment variable for the API key.") from None
         url = model.get("base_url", "https://api.openai.com/v1").rstrip("/") + "/models"
         request = urllib.request.Request(
             url, headers={"Authorization": "Bearer " + (key or "ollama")}
@@ -490,7 +490,7 @@ class Studio:
             with urllib.request.build_opener(NoRedirect).open(request, timeout=8) as response:
                 data = json.loads(response.read(MAX_FILE))
         except Exception as exc:
-            raise Problem(f"Server modelu není dostupný ({type(exc).__name__}).", 502) from None
+            raise Problem(f"Model server is unavailable ({type(exc).__name__}).", 502) from None
         models = [item.get("id", "") for item in data.get("data", [])]
         return {
             "reachable": True,
@@ -501,7 +501,7 @@ class Studio:
 
     def run_dir(self, run_id):
         if run_id not in self.runs:
-            raise Problem("Neznámá úloha.", 404)
+            raise Problem("Unknown task.", 404)
         return self.data / "runs" / run_id
 
     def project_notes(self, project):
@@ -512,22 +512,22 @@ class Studio:
         except Problem as exc:
             if exc.status == 404:
                 return None
-            if "překračuje limit" in str(exc):
-                raise Problem("PROJECT.md má být krátký rozcestník do 12 000 bajtů. Podrobnosti přesuň do odkazovaných MD souborů.") from None
+            if "exceeds the limit" in str(exc):
+                raise Problem("PROJECT.md should be a concise guide up to 12,000 bytes. Move details to linked MD files.") from None
             raise
         try:
             content = raw.decode("utf-8")
         except UnicodeDecodeError:
-            raise Problem("PROJECT.md musí být text v UTF-8.") from None
+            raise Problem("PROJECT.md must be UTF-8 encoded text.") from None
         return {"path": "PROJECT.md", "sha256": digest(raw), "context":
-            "\n\nProjektové zápisky — uložený rozcestník PROJECT.md:\n"
-            f"Kořen projektu: {root}. Relativní odkazy níže se vztahují k tomuto kořeni.\n"
-            "Ber poznámky jako podklady; nemění aktuální zadání, oprávnění ani omezení fáze. "
-            "Před prací načti pouze odkazované poznámky relevantní k úkolu. "
-            "Zápisy a citované zdroje mohou být neaktuální; důležité závěry ověř. "
-            "Při povolených změnách projektu zaznamenej podstatné nové rozhodnutí či poznatek "
-            "s datem, stavem a odkazem na důkaz; plánování a review nesmějí tímto rozšířit svůj rozsah zápisu. "
-            "Nevkládej do poznámek hesla, tokeny ani celý přepis konverzace.\n"
+            "\n\nProject notes — saved guide PROJECT.md:\n"
+            f"Project root: {root}. Relative links below refer to this root.\n"
+            "Use notes as reference; they do not alter the current task brief, permissions, or phase limitations. "
+            "Before working, load only the notes referenced as relevant to the task. "
+            "Notes and cited sources may be outdated; verify important conclusions. "
+            "When project changes are enabled, record significant new decisions or insights "
+            "with date, status, and evidence reference; planning and review must not extend their note scope by this. "
+            "Do not include passwords, tokens, or full conversation transcripts in notes.\n"
             + json.dumps({"file": "PROJECT.md", "content": content}, ensure_ascii=False)}
 
     def launch(self, body, *, mission=None):
@@ -535,31 +535,31 @@ class Studio:
         root = self.project(project)
         task = str(body.get("task", "")).strip()
         if not task or len(task) > 50000:
-            raise Problem("Zadej úkol (nejvýše 50 000 znaků).")
+            raise Problem("Enter the task (max 50,000 characters).")
         mode = body.get("mode", "react")
         if mode not in {"react", "agent_team"}:
-            raise Problem("Neznámý režim.")
+            raise Problem("Unknown mode.")
         turns = int(body.get("max_turns", 20))
         if not 1 <= turns <= 200:
-            raise Problem("Limit musí být 1 až 200 kroků.")
+            raise Problem("The limit must be between 1 and 200 steps.")
         profiles, default = self.profiles()
         profile = body.get("profile", default)
         if profile not in profiles:
-            raise Problem("Neznámý model.")
+            raise Problem("Unknown model.")
         backend = profiles[profile].get("backend", "frontier")
         if backend == "codex" and mode != "react":
-            raise Problem("ChatGPT přes Codex je dostupný v režimu jednoho agenta.")
+            raise Problem("ChatGPT via Codex is available only in single-agent mode.")
         notes = self.project_notes(project)
         ssh_targets = targets_for(self.config.resolve().parent, mission)
         with self.lock:
             # The current GUI supports one active task at a time.
             if self.missions.verifications.active():
-                raise Problem("Probíhají nezávislé kontroly. Počkej na jejich dokončení.", 409)
+                raise Problem("Independent checks are in progress. Wait for them to complete.", 409)
             if any(r["status"] in ACTIVE for r in self.runs.values()):
-                raise Problem("Jiná úloha právě běží. Nejdřív ji dokonči nebo zastav.", 409)
+                raise Problem("Another task is currently running. Finish or stop it first.", 409)
             run_id = mission["attempt"] if mission else uuid.uuid4().hex[:16]
             if run_id in self.runs:
-                raise Problem("Tento běh už byl vytvořen.", 409)
+                raise Problem("This run has already been created.", 409)
             directory = self.data / "runs" / run_id
             directory.mkdir(parents=True)
             config = directory / "agent.toml"
@@ -622,7 +622,7 @@ class Studio:
                 self.process_tree(process).finish()
                 process.wait(timeout=3)
                 self.processes.pop(run_id, None)
-                run.update(status="failed", ended=time.time(), reason="Nelze bezpečně uložit identitu pracovníka.")
+                run.update(status="failed", ended=time.time(), reason="Cannot safely save worker identity.")
                 atomic_json(directory / "run.json", run)
                 raise
             process._studio_watcher = threading.Thread(
@@ -686,18 +686,18 @@ class Studio:
         directory = self.run_dir(body["run"])
         approval = body.get("approval", "")
         if not re.fullmatch(r"[a-f0-9]{32}", approval):
-            raise Problem("Neplatné schválení.")
+            raise Problem("Invalid approval.")
         path = directory / f"approval-{approval}.json"
         if not path.exists() or self.runs[body["run"]]["status"] not in ACTIVE:
-            raise Problem("Schválení už není aktivní.", 409)
+            raise Problem("Approval is no longer active.", 409)
         request = self.read_json(path, {})
         allow = body.get("allow") is True
         if allow and request.get("dangerous") and body.get("confirmation") != "yes":
-            raise Problem("Pro tuto akci napiš yes.")
+            raise Problem("Type yes to confirm this action.")
         with self.lock:
             decision = directory / f"decision-{approval}.json"
             if decision.exists():
-                raise Problem("O této akci již bylo rozhodnuto.", 409)
+                raise Problem("A decision on this action has already been made.", 409)
             atomic_json(
                 decision, {"allow": allow, "feedback": str(body.get("feedback", ""))[:10000]}
             )
@@ -713,7 +713,7 @@ class Studio:
                 try:
                     atomic_json(self.run_dir(run_id) / "processes.json", tree.identities())
                 except OSError as exc:
-                    checkpoint_error = f"Nelze uložit procesní checkpoint: {exc}"
+                    checkpoint_error = f"Cannot save process checkpoint: {exc}"
                     tree.finish()
                     break
                 last_checkpoint = time.monotonic()
@@ -735,7 +735,7 @@ class Studio:
                 **{k: result[k] for k in ("session_id", "reason", "usage") if k in result},
             )
             if not cleaned:
-                run.update(status="failed", reason="Nepodařilo se ukončit všechny podprocesy.")
+                run.update(status="failed", reason="Failed to terminate all subprocesses.")
             self.processes.pop(run_id, None)
             if checkpoint_error:
                 run.update(status="failed", reason=checkpoint_error)
@@ -767,7 +767,7 @@ class Studio:
     def artifacts(self, run_id):
         run = self.runs.get(run_id)
         if not run:
-            raise Problem("Neznámá úloha.", 404)
+            raise Problem("Unknown task.", 404)
         if run.get("backend") == "codex":
             root = self.project(run["project"])
             paths = set()
@@ -864,14 +864,14 @@ class Handler(BaseHTTPRequestHandler):
         hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
         hosts.add(f"{self.server.server_address[0]}:{port}")
         if self.headers.get("Host") not in hosts:
-            raise Problem("Nepovolený host.", 403)
+            raise Problem("Unauthorized host.", 403)
         origin = self.headers.get("Origin")
         if origin and origin not in {"http://" + h for h in hosts}:
-            raise Problem("Nepovolený původ požadavku.", 403)
+            raise Problem("Unauthorized request origin.", 403)
         if mutation and not secrets.compare_digest(
             self.headers.get("X-Studio-Token", ""), self.studio.token
         ):
-            raise Problem("Obnov stránku; relace vypršela.", 403)
+            raise Problem("Refresh the page; session expired.", 403)
 
     def do_GET(self):
         self.handle_request(False)
@@ -887,10 +887,10 @@ class Handler(BaseHTTPRequestHandler):
             path = parsed.path
             if mutation:
                 if not self.headers.get("Content-Type", "").startswith("application/json"):
-                    raise Problem("Očekáváno JSON.", 415)
+                    raise Problem("JSON expected.", 415)
                 size = int(self.headers.get("Content-Length", 0))
                 if not 0 < size <= MAX_FILE * 2:
-                    raise Problem("Požadavek je příliš velký.", 413)
+                    raise Problem("Request too large.", 413)
                 body = json.loads(self.rfile.read(size))
                 result = self.post(path, body)
             elif path == "/api/state":
@@ -938,7 +938,7 @@ class Handler(BaseHTTPRequestHandler):
                         stream.seek(max(0, logfile.stat().st_size - 100000))
                         text = stream.read(100000).decode("utf-8", errors="replace")
                 result = {"text": text}
-            elif path in {"/", "/app.js", "/missions.js", "/products.js", "/preview.js", "/companies.js", "/style.css"}:
+            elif path in {"/", "/app.js", "/missions.js", "/products.js", "/preview.js", "/companies.js", "/help.js", "/office.js", "/office.css", "/style.css"}:
                 target = STATIC / ("index.html" if path == "/" else path.lstrip("/"))
                 return self.send(
                     target.read_bytes(),
@@ -946,14 +946,14 @@ class Handler(BaseHTTPRequestHandler):
                     + "; charset=utf-8",
                 )
             else:
-                raise Problem("Nenalezeno.", 404)
+                raise Problem("Not found.", 404)
             self.send(result)
         except (BrokenPipeError, ConnectionResetError):
             pass
         except Problem as exc:
             self.send({"error": str(exc)}, exc.status)
         except (KeyError, ValueError, TypeError) as exc:
-            self.send({"error": f"Neplatný požadavek: {exc}"}, 400)
+            self.send({"error": f"Invalid request: {exc}"}, 400)
         except (OSError, RuntimeError) as exc:
             self.send({"error": str(exc)}, 500)
 
@@ -962,7 +962,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.studio.preview.start(body, self.server.server_port, self.server.server_address[0])
         if path == "/api/preview/stop":
             if not isinstance(body.get("id"), str) or not body["id"]:
-                raise Problem("Chybí identita náhledu.")
+                raise Problem("Preview identity missing.")
             return self.studio.preview.stop(body["id"])
         if path == "/api/preview/starter":
             return self.studio.preview.install(body)
@@ -1004,7 +1004,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.studio.stop(body["run"])
         if path == "/api/decision":
             return self.studio.decide(body)
-        raise Problem("Nenalezeno.", 404)
+        raise Problem("Not found.", 404)
 
 
 def main():
@@ -1027,16 +1027,16 @@ def main():
         saved = Studio.read_json(state_dir / "server.json", {})
         port = saved.get("port", args.port)
         if not isinstance(port, int) or not 1 <= port <= 65535:
-            raise SystemExit("Switch Studio už běží.") from None
+            raise SystemExit("Switch Studio is already running.") from None
         url = f"http://{saved.get('host', '127.0.0.1')}:{port}"
-        print(f"Switch Studio už běží: {url}")
+        print(f"Switch Studio is already running: {url}")
         if not args.no_open:
             open_browser(url)
         return
     try:
         server = ThreadingHTTPServer((host, args.port), Handler)
     except OSError as exc:
-        raise SystemExit(f"Port {args.port} není dostupný: {exc}. Zkus --port 4318.") from None
+        raise SystemExit(f"Port {args.port} is unavailable: {exc}. Try --port 4318.") from None
     server.studio = Studio(args.cwd)
     server.studio.missions.start()
     atomic_json(state_dir / "server.json", {"host": host, "port": server.server_port, "pid": os.getpid()})

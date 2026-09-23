@@ -84,7 +84,7 @@ for line in sys.stdin:
             item={
                 "id": "answer",
                 "type": "agentMessage",
-                "text": "Hotovo" if allowed else "Odmítnuto",
+                "text": "Done" if allowed else "Rejected",
             },
         )
         event("turn/completed", turn={"id": "test-turn", "status": "completed"})

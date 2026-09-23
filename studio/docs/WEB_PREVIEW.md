@@ -1,27 +1,27 @@
-# Náhled webu
+# Web Preview
 
-V horní liště Studia klikni na **Náhled**. Zadej cestu k uloženému HTML souboru v aktuálním projektu a klikni na **Spustit náhled**. Pro nový web zvol název nové složky a **Vytvořit startovací web**: uloží se skutečný `index.html` a otevře se jeho náhled. Existující složka se nepřepisuje.
+In the Studio’s top bar, click **Preview**. Enter the path to a saved HTML file within the current project and click **Start Preview**. For a new web page, choose a name for a new folder and click **Create starter web**: an actual `index.html` file will be saved, and its preview will open. Existing folders are not overwritten.
 
-- **Upravit soubor** otevře vstupní HTML v editoru. Změny ulož přes Cmd/Ctrl+S a vrať se do náhledu.
-- Náhled každé dvě sekundy kontroluje načtené soubory. Po změně HTML, CSS, JS nebo jiného načteného podkladu obnoví stránku. Sleduje i chybějící podklady, které teprve vytvoříš.
-- **Obnovovat po změně** lze vypnout, aby obnovení nemařilo rozpracovaný formulář. **Obnovit** načte stránku ručně.
-- **Mobil · 390 px** mění šířku vykreslení. Nejde o emulaci zařízení nebo mobilního prohlížeče.
-- **Otevřít ↗** otevře web samostatně. Automatické obnovování se týká vloženého náhledu ve Studiu, ne této nové záložky.
-- Zavření dialogu nezastaví server. **Zastavit** zavře port; ukončení Studia jej také zavře. Po restartu Studia náhled spusť znovu.
-- Současně běží jeden náhled. Jiný projekt ani záložka ho nemohou při Start tiše nahradit; nejdřív je nutné použít Stop.
+- **Edit file** opens the entry HTML file in the editor. Save changes via Cmd/Ctrl+S and return to the preview.
+- The preview checks loaded files every two seconds. Upon changes to HTML, CSS, JS, or any other loaded asset, the page is refreshed. It also tracks missing assets you have not yet created.
+- **Reload on change** can be disabled to prevent reloading from discarding an in-progress form. **Reload** manually refreshes the page.
+- **Mobile · 390 px** adjusts the rendering width. This is not device or mobile browser emulation.
+- **Open ↗** opens the web page in a separate tab. Automatic reloading applies only to the embedded preview in Studio, not this new tab.
+- Closing the dialog does not stop the server. **Stop** closes the port; exiting Studio also closes it. After restarting Studio, start the preview again.
+- Only one preview can run at a time. Another project or tab cannot silently replace it upon Start—you must first use Stop.
 
-## Co lze zobrazit
+## What can be displayed
 
-Samostatné HTML/CSS/JS weby a hotové statické buildy s lokálními podklady, například `dist/index.html`. Složka obsahující vstupní HTML je kořenem webu; absolutní odkazy `/app.js` míří do této složky. Použij složku určenou pro veřejné podklady. Statický server nabízí běžné webové typy souborů včetně JSON, obrázků a fontů, nejvýše 20 MB na soubor; nepřekládá TypeScript/JSX, nespouští npm, Python, PHP ani aplikační backend. Nemá SPA fallback pro libovolné URL.
+Standalone HTML/CSS/JS websites and pre-built static builds with local assets, e.g., `dist/index.html`. The folder containing the entry HTML serves as the web root; absolute paths like `/app.js` resolve within this folder. Use a folder designated for public assets. The static server serves common web file types—including JSON, images, and fonts—with a maximum file size of 20 MB; it does not transpile TypeScript/JSX, run npm, Python, PHP, or any application backend, nor does it provide SPA fallback for arbitrary URLs.
 
-Externí CDN, vzdálená API, vnořené stránky a service workers jsou zablokované. Cílem je lokální ověření vlastních statických souborů. Databáze, přihlášení, platby ani hosting se vytvořením šablony nepřidávají. Ukázkový seznam nápadů existuje pouze v paměti stránky.
+External CDNs, remote APIs, embedded pages, and service workers are blocked. The goal is local validation of your own static files. Databases, authentication, payments, or hosting are not added by creating a template. The sample idea list exists only in the page’s memory.
 
-## Oddělení od Studia
+## Separation from Studio
 
-Server používá jiný loopback port než Studio a samostatný krátkodobý token. Token se při otevření převede na HttpOnly cookie; přístup bez něj je odmítnutý. Vložený web má sandbox a vlastní Content Security Policy. Nemá přístup k DOM ani API Studia. Skryté soubory, vybrané konfigurační soubory, backendové typy, cesty nad kořen a symbolické odkazy nejsou dostupné. Otevírání adresářů využívá stejnou ochranu proti výměně za symlink jako editor. Nejde o sandbox pro spouštění libovolných serverových programů; ty tato funkce vůbec nespouští.
+The server uses a different loopback port than Studio and a separate short-lived token. Upon opening, the token is converted into an HttpOnly cookie; access without it is denied. The embedded web page runs in a sandbox with its own Content Security Policy. It has no access to Studio’s DOM or APIs. Hidden files, selected configuration files, backend file types, paths above the root, and symbolic links are inaccessible. Directory opening uses the same symlink replacement protection as the editor. This is not a sandbox for executing arbitrary server-side programs; this feature does not run such programs at all.
 
-## Ověření
+## Verification
 
-`studio/tests/test_preview.py` ověřuje skutečné HTTP požadavky, oddělený port, tokeny, absolutní cesty k podkladům, změny souborů, Stop, souběh záložek a ochranu cest. `studio/tests/preview-ui.cjs` ověřuje obnovování a zpožděné odpovědi při změně projektu nebo stavu náhledu.
+`studio/tests/test_preview.py` verifies actual HTTP requests, separate ports, tokens, absolute paths to assets, file changes, Stop, concurrent tabs, and path protection. `studio/tests/preview-ui.cjs` verifies reloading and delayed responses upon project changes or preview state changes.
 
-V Chrome byl ověřen také postup vytvoření webu přes GUI, kliknutí v aplikaci, změna HTML v editoru, uložení a zobrazení změny v náhledu.
+In Chrome, the GUI-based web creation flow, clicking within the app, editing HTML in the editor, saving, and observing the change in the preview were also verified.

@@ -2,11 +2,12 @@
 
 A self-hosted web IDE and workflow manager for building and maintaining digital products with AI agents.
 
-**Status: `0.4.0-alpha.1` · experimental · macOS / Linux / Windows via WSL2**
+**Status: `0.4.0-alpha.2` · experimental · macOS / Linux / Windows via WSL2**
 
 Miner is the repository name; the application is called **Switch Studio**. It provides
-a browser interface, persistent project workflows and a Company Builder & Driver. The current interface and most
-Studio documentation are in Czech; the backend and upstream documentation are in English.
+a browser interface, persistent project workflows and a Company Builder & Driver. The interface, built-in instructions and Studio documentation are in English.
+Question-mark help beside controls explains their purpose, use and a concrete example.
+Existing user-authored task briefs and history keep their original language.
 
 ## What it does
 
@@ -16,7 +17,8 @@ Studio documentation are in Czech; the backend and upstream documentation are in
 - Plan a project, execute tasks, request a separate model review and run explicit verification commands.
 - Keep task dependencies, questions, evidence, attempt limits and recovery state in SQLite.
 - Organize projects and recurring work through Company Builder & Driver.
-- Follow work and blockers on a live dependency diagram.
+- Follow work and blockers on a live dependency diagram or the interactive **3D Office**.
+- Select a department desk to inspect real status, the latest model run and its blockers.
 - Track product versions, stage changes in a working copy and manage optional local services and repair queues.
 - Keep project knowledge in ordinary Markdown files, starting with `PROJECT.md`.
 
@@ -35,7 +37,7 @@ sh setup-studio
 sh switch-studio --no-open
 ```
 
-Open **http://127.0.0.1:4317**. In **Modely**, configure a reachable model endpoint and a model
+Open **http://127.0.0.1:4317**. In **Models**, configure a reachable model endpoint and a model
 that is actually available on it. The supplied model name is a placeholder; no model weights
 or paid provider account are included. The installer downloads Python 3.12 and locked dependencies.
 

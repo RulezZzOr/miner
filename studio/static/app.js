@@ -52,14 +52,14 @@ const state = {
   treeEpoch: 0,
 };
 const labels = {
-  running: "Pracuje",
-  waiting: "Čeká na schválení",
-  stopping: "Zastavuje se",
-  completed: "Dokončeno",
-  failed: "Chyba",
-  incomplete: "Nedokončeno",
-  cancelled: "Zastaveno",
-  interrupted: "Přerušeno",
+  running: "Working",
+  waiting: "Awaiting approval",
+  stopping: "Stopping",
+  completed: "Completed",
+  failed: "Error",
+  incomplete: "Incomplete",
+  cancelled: "Stopped",
+  interrupted: "Interrupted",
 };
 const active = (r) =>
   r && ["running", "waiting", "stopping"].includes(r.status);
@@ -94,7 +94,7 @@ async function api(path, body) {
         },
   );
   const result = await response.json();
-  if (!response.ok) throw new Error(result.error || "Požadavek se nezdařil.");
+  if (!response.ok) throw new Error(result.error || "Request failed.");
   return result;
 }
 function bind(selector, event, fn) {
@@ -112,26 +112,26 @@ function run() {
 }
 function canLeave() {
   return (
-    !state.dirty || confirm("Máš neuložené změny. Opravdu je chceš zahodit?")
+    !state.dirty || confirm("You have unsaved changes. Are you sure you want to discard them?")
   );
 }
 function markDirty() {
   state.fileEpoch++;
   state.dirty = state.file && $("#editor").value !== state.file.content;
-  $("#dirty-label").textContent = state.dirty ? "Neuloženo" : "";
+  $("#dirty-label").textContent = state.dirty ? "Unsaved" : "";
   $("#save-file").disabled = !state.dirty;
 }
 function updateModelLabel() {
   const p = state.data.profiles.find((p) => p.id === $("#model-select").value);
   $("#footer-model").textContent = p
     ? `${p.model} · ${p.oauth_provider === "chatgpt" ? "ChatGPT / Codex" : p.oauth_provider === "claude_console" ? "Claude Console" : p.chat_dialect === "ollama" ? "Ollama" : p.protocol}`
-    : "Vyber model";
+    : "Select a model";
   const codex = p?.backend === "codex";
   $("#mode-team").disabled = codex;
   $("#turn-limit").disabled = codex;
   $("#turn-limit").parentElement.title = codex
-    ? "Délku běhu spravuje Codex. Úlohu lze kdykoliv zastavit."
-    : "Maximální počet kroků hlavního agenta";
+    ? "Run duration is managed by Codex. The task can be stopped at any time."
+    : "Maximum number of main agent steps";
   $("#turn-limit").parentElement.classList.toggle("hidden", codex);
   setMode(codex ? "react" : state.mode);
 }
@@ -165,7 +165,7 @@ function fillSelectors() {
   $("#model-select").value = state.data.profiles.some((p) => p.id === current)
     ? current
     : state.data.default_profile;
-  $("#project-label").textContent = "⌄  " + (project()?.name || "Projekt");
+  $("#project-label").textContent = "⌄  " + (project()?.name || "Project");
   $("#footer-project").textContent = project()?.name || "";
   updateModelLabel();
 }
@@ -274,7 +274,7 @@ async function saveFile() {
     state.file = { ...file, content, revision: result.revision };
     markDirty();
   }
-  toast("Soubor uložen.");
+  toast("File saved.");
 }
 function updateLines() {
   $("#line-numbers").textContent = Array.from(
@@ -287,7 +287,7 @@ function updateCursor() {
     .value.slice(0, $("#editor").selectionStart)
     .split("\n");
   $("#cursor-position").textContent =
-    `Řádek ${text.length}, sloupec ${text.at(-1).length + 1}`;
+    `Line ${text.length}, sloupec ${text.at(-1).length + 1}`;
 }
 function clearFile() {
   state.fileEpoch++;
@@ -297,9 +297,9 @@ function clearFile() {
   $("#editor-pane").classList.add("hidden");
   $("#save-file").classList.add("hidden");
   $("#reload-file").classList.add("hidden");
-  $("#tab-name").textContent = "ϟ  Vítej ve Studiu";
+  $("#tab-name").textContent = "ϟ Welcome to Studio";
   $("#dirty-label").textContent = "";
-  $("#context-file").textContent = "Kontext projektu";
+  $("#context-file").textContent = "Project context";
 }
 async function selectProject(id) {
   if (!canLeave()) {
@@ -326,9 +326,9 @@ async function renderSidebar() {
     b.classList.toggle("active", b.dataset.view === state.view),
   );
   $("#sidebar-title").textContent = {
-    files: "PRŮZKUMNÍK",
-    runs: "HISTORIE ÚLOH",
-    team: "TÝM AGENTŮ",
+    files: "EXPLORER",
+    runs: "TASK HISTORY",
+    team: "AGENT TEAM",
   }[state.view];
   $("#file-actions").classList.toggle("hidden", state.view !== "files");
   if (state.view === "files") return loadTree();
@@ -339,7 +339,7 @@ async function renderSidebar() {
     const runs = state.data.runs.filter((r) => r.project === state.project);
     if (!runs.length)
       list.append(
-        el("p", "sidebar-note", "Zatím žádné úlohy. Zadej první úkol vpravo."),
+        el("p", "sidebar-note", "No tasks yet. Enter your first task on the right."),
       );
     for (const r of runs) {
       const b = el(
@@ -351,7 +351,7 @@ async function renderSidebar() {
         el(
           "small",
           "",
-          `${labels[r.status] || r.status} · ${new Date(r.created * 1000).toLocaleString("cs-CZ", { day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" })}`,
+          `${labels[r.status] || r.status} · ${new Date(r.created * 1000).toLocaleString("en-GB", { day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" })}`,
         ),
       );
       b.onclick = () => selectRun(r.id).catch((e) => toast(e.message, true));
@@ -364,7 +364,7 @@ async function renderSidebar() {
         el(
           "p",
           "sidebar-note",
-          "Spusť týmovou úlohu. Tady se objeví koordinátor a pracovníci, které skutečně vytvoří.",
+          "Launch a team task. Here, the coordinator and workers you actually create will appear.",
         ),
       );
       return;
@@ -374,7 +374,7 @@ async function renderSidebar() {
       el(
         "strong",
         "",
-        r.mode === "agent_team" ? "Koordinátor" : "Hlavní agent",
+        r.mode === "agent_team" ? "Coordinator" : "Main agent",
       ),
       el("small", "", r.model),
       el("small", "", labels[r.status] || r.status),
@@ -390,7 +390,7 @@ async function renderSidebar() {
         const c = el("div", "agent-card worker");
         c.append(
           el("strong", "", a.name),
-          el("small", "", "Požadavek na vytvoření pracovníka"),
+          el("small", "", "Worker creation request"),
           el("pre", "", a.system_prompt || ""),
         );
         list.append(c);
@@ -399,7 +399,7 @@ async function renderSidebar() {
       el(
         "p",
         "sidebar-note",
-        "Strom vychází z volání nástrojů. Výsledek delegování ověř v aktivitě. Další úroveň oddělení zatím není zapojená.",
+        "The tree is based on tool calls. Verify the delegation result in the activity. Further separation levels are not yet involved.",
       ),
     );
   }
@@ -414,10 +414,10 @@ function setMode(mode) {
     b.classList.toggle("selected", b.dataset.mode === mode),
   );
   $("#mode-description").textContent = codex
-    ? "ChatGPT přes Codex · jeden agent. Běží v sandboxu projektu; rizikové příkazy žádají schválení. Délku běhu spravuje Codex."
+    ? "ChatGPT via Codex · one agent. Runs in the project sandbox; risky commands request approval. Run duration is managed by Codex."
     : mode === "agent_team"
-      ? "Koordinátor rozděluje práci mezi své pracovníky."
-      : "Jeden agent řeší zadání a používá nástroje.";
+      ? "The coordinator distributes work among its workers."
+      : "One agent handles the task and uses tools.";
 }
 function message(kind, text, label) {
   const m = el("div", "message " + kind);
@@ -431,7 +431,7 @@ function renderEvent(e) {
   if (e.type === "thinking") {
     if (!state.thinking) {
       const d = el("details", "thinking-block");
-      d.append(el("summary", "", "Uvažování modelu"));
+      d.append(el("summary", "", "Model reasoning"));
       state.thinking = el("pre", "", "");
       d.append(state.thinking);
       $("#conversation").append(d);
@@ -453,7 +453,7 @@ function renderEvent(e) {
     badge.append(el("span", "", `↳ ${e.name}`));
     const d = el("details");
     d.append(
-      el("summary", "", "Zobrazit parametry"),
+      el("summary", "", "Show parameters"),
       el("pre", "", JSON.stringify(e.args, null, 2)),
     );
     badge.append(d);
@@ -464,15 +464,15 @@ function renderEvent(e) {
       e.type === "error" ? "error" : "final",
       e.text,
       e.type === "final"
-        ? "Výsledek"
+        ? "Result"
         : e.type === "incomplete"
-          ? "Částečný výsledek"
-          : "Chyba",
+          ? "Partial result"
+          : "Error",
     );
     state.stream = null;
     state.thinking = null;
   }
-  if (e.type === "plan") message("assistant", e.text, "Návrh plánu");
+  if (e.type === "plan") message("assistant", e.text, "Plan proposal");
 }
 function updateRunControls() {
   const r = run();
@@ -482,7 +482,7 @@ function updateRunControls() {
   $("#stop-task").disabled = r?.status === "stopping";
   $("#run-status").textContent = r
     ? labels[r.status] || r.status
-    : "Připraveno";
+    : "Ready";
   if (r) {
     const seconds = Math.max(
       0,
@@ -511,7 +511,7 @@ async function selectRun(id) {
   state.approvalKey = "";
   localStorage.setItem("switch.run", id);
   $("#conversation").replaceChildren();
-  message("user", r.task, "Zadání");
+  message("user", r.task, "Task brief");
   updateRunControls();
   await pollRun();
   if (state.view !== "files") await renderSidebar();
@@ -531,7 +531,7 @@ async function pollRun() {
   data.events.forEach(renderEvent);
   if (nearBottom) c.scrollTop = c.scrollHeight;
   updateRunControls();
-  if (data.approvals.length) $("#run-status").textContent = "Čeká na schválení";
+  if (data.approvals.length) $("#run-status").textContent = "Awaiting approval";
   if (data.events.length || state.bottom === "outputs") await renderBottom();
   if (state.view === "team" && data.events.length) await renderSidebar();
 }
@@ -553,7 +553,7 @@ async function renderBottom() {
     panel.replaceChildren();
     if (!events.length) {
       panel.append(
-        el("div", "empty-inline", "Až spustíš úkol, uvidíš tady každý krok."),
+        el("div", "empty-inline", "Once you launch the task, you will see each step here."),
       );
       return;
     }
@@ -563,7 +563,7 @@ async function renderBottom() {
         "activity-row" + (e.is_error || e.type === "error" ? " error" : ""),
       );
       row.append(
-        el("time", "", new Date(e.time * 1000).toLocaleTimeString("cs-CZ")),
+        el("time", "", new Date(e.time * 1000).toLocaleTimeString("en-GB")),
         el(
           "strong",
           "",
@@ -597,7 +597,7 @@ async function renderBottom() {
         el(
           "div",
           "empty-inline",
-          "Zatím žádné soubory ve výstupech této úlohy.",
+          "No files in the outputs of this task yet.",
         ),
       );
     for (const f of files) {
@@ -609,7 +609,7 @@ async function renderBottom() {
         el("small", "", `${f.size} B`),
       );
       b.onclick = () => openFile(f.path).catch((e) => toast(e.message, true));
-      const download = el("a", "download-link", "Stáhnout ↓");
+      const download = el("a", "download-link", "Download ↓");
       download.href = `/api/download?project=${state.project}&path=${encodeURIComponent(f.path)}`;
       download.download = f.name;
       row.append(b, download);
@@ -619,7 +619,7 @@ async function renderBottom() {
     const id = state.run;
     const data = id
       ? await api(`/api/log?run=${id}`)
-      : { text: "Konzole se naplní po spuštění úlohy." };
+      : { text: "The console will be populated after the task is started." };
     if (id !== state.run) return;
     panel.replaceChildren(el("pre", "log-text", data.text));
     panel.scrollTop = panel.scrollHeight;
@@ -629,14 +629,14 @@ async function launchTask(e) {
   e.preventDefault();
   if (state.dirty)
     throw new Error(
-      "Nejdřív ulož otevřený soubor. Agent pracuje se soubory na disku.",
+      "First, save the open file. The agent works with files on disk.",
     );
   let task = $("#task-input").value.trim();
   if (!task) {
     $("#task-input").focus();
     return;
   }
-  if (state.file) task += `\n\nSoubor otevřený v editoru: ${state.file.path}`;
+  if (state.file) task += `File open in editor: ${state.file.path}`;
   $("#run-task").disabled = true;
   try {
     const r = await api("/api/runs", {
@@ -650,7 +650,7 @@ async function launchTask(e) {
     state.data.runs.unshift(r);
     await selectRun(r.id);
     $("#task-input").value = "";
-    toast("Úloha spuštěna.");
+    toast("Task started.");
   } finally {
     updateRunControls();
   }
@@ -663,8 +663,8 @@ function fillModel(profile) {
     $("#oauth-model-name").textContent = profile.model;
     $("#oauth-model-info").textContent =
       profile.oauth_provider === "chatgpt"
-        ? "ChatGPT přes přihlášený Codex. Účet a dostupnost modelu spravuje OpenAI. Tento profil používá jednoho Codex agenta."
-        : "Claude Console přes OAuth. Používá samostatné účtování API a podporuje oba pracovní režimy Studia.";
+        ? "ChatGPT via Codex login. Account and model availability are managed by OpenAI. This profile uses one Codex agent."
+        : "Claude Console via OAuth. Uses separate API billing and supports both Studio working modes.";
     $("#oauth-remove").dataset.profile = profile.id;
   }
   const form = $("#model-form");
@@ -720,17 +720,17 @@ function renderOAuth(data) {
   const waiting = login?.status === "waiting";
   const suffix =
     login?.status === "failed"
-      ? " Přihlášení se nepodařilo; zkus jej znovu."
+      ? " Login failed; try again."
       : login?.status === "cancelled"
-        ? " Přihlášení bylo zrušeno."
+        ? " Login was cancelled."
         : "";
   $("#oauth-status").textContent = waiting
-    ? "Dokonči přihlášení v prohlížeči. Čekám na potvrzení…"
+    ? "Complete login in your browser. Waiting for confirmation…"
     : data.message + suffix;
   $("#oauth-login").disabled = waiting;
   $("#oauth-login").textContent = data.connected
-    ? "Přihlásit jiný účet"
-    : "Přihlásit v prohlížeči";
+    ? "Log in with another account"
+    : "Log in via browser";
   $("#oauth-cancel").classList.toggle("hidden", !waiting);
   $("#oauth-link").classList.toggle("hidden", !(waiting && login?.url));
   if (waiting && login?.url) $("#oauth-link").href = login.url;
@@ -784,9 +784,9 @@ async function showOAuth(provider) {
   $("#oauth-panel").classList.remove("hidden");
   $("#oauth-description").textContent =
     provider === "chatgpt"
-      ? "ChatGPT · přihlášení přes oficiální Codex. Lze použít účet, který už je na tomto počítači přihlášený."
-      : "Claude Console · OAuth pro API. Spotřeba se účtuje v Console, odděleně od předplatného Claude Pro/Max.";
-  $("#oauth-status").textContent = "Ověřuji připojení…";
+      ? "ChatGPT · login via official Codex. You can use an account already logged in on this machine."
+      : "Claude Console · OAuth for API. Usage is billed in Console, separately from the Claude Pro/Max subscription.";
+  $("#oauth-status").textContent = "Verifying connection…";
   $("#oauth-model-picker").classList.add("hidden");
   $("#oauth-link").classList.add("hidden");
   $("#oauth-cancel").classList.add("hidden");
@@ -798,10 +798,10 @@ let companyEpoch = 0;
 let companyBusy = false;
 function renderCompany(data) {
   const t = data.template;
-  const roleName = (id) => t.roles.find((r) => r.id === id)?.title || "Ty · vlastník";
+  const roleName = (id) => t.roles.find((r) => r.id === id)?.title || "You · owner";
   $("#company-summary").replaceChildren(...[
-    `${t.role_count} AI rolí`, `${t.departments.length} oddělení`,
-    `${t.max_reporting_layers} řídicí vrstvy`, "3 vývojové týmy × 5",
+    `${t.role_count} AI roles`, `${t.departments.length} separation`,
+    `${t.max_reporting_layers} control layer`, "3 dev teams × 5",
   ].map((text) => el("span", "company-badge", text)));
   const departments = $("#company-departments");
   departments.replaceChildren();
@@ -814,14 +814,14 @@ function renderCompany(data) {
       const summary = el("summary", "", role.title);
       if (role.squad) summary.append(el("span", "company-squad", role.squad));
       detail.append(summary, el("p", "", role.mission));
-      detail.append(el("p", "company-role-meta", `Nadřízený: ${roleName(role.reports_to)} · Kontrola: ${roleName(role.reviewed_by)}`));
-      for (const [title, items] of [["Odpovědnosti", role.responsibilities], ["Výstupy", role.deliverables]]) {
+      detail.append(el("p", "company-role-meta", `Supervisor: ${roleName(role.reports_to)} · Reviewer: ${roleName(role.reviewed_by)}`));
+      for (const [title, items] of [["Responsibilities", role.responsibilities], ["Outputs", role.deliverables]]) {
         detail.append(el("strong", "", title));
         const list = el("ul");
         list.append(...items.map((text) => el("li", "", text)));
         detail.append(list);
       }
-      if (role.player_coach) detail.append(el("p", "company-role-meta", "Vedoucí zároveň vykonává odbornou práci."));
+      if (role.player_coach) detail.append(el("p", "company-role-meta", "The supervisor also performs expert work."));
       card.append(detail);
     }
     departments.append(card);
@@ -833,12 +833,12 @@ function renderCompany(data) {
   }));
   $("#company-rules").replaceChildren(...t.operating_rules.map((text) => el("li", "", text)));
   $("#company-notice").textContent = t.runtime_notice;
-  $("#company-project").textContent = `Projekt: ${project().name} · ${project().path}`;
+  $("#company-project").textContent = `Project: ${project().name} · ${project().path}`;
   $("#company-status").textContent = data.installed
-    ? `Uloženo: ${data.path}. Nahoře je náhled výchozí šablony; vlastní úpravy najdeš v souboru projektu.`
-    : `Uloží se do ${data.path}. Potom ji můžeš upravit v editoru a přidat k zadání. Žádná úloha se sama nespustí.`;
+    ? `Saved: ${data.path}. A preview of the default template is shown above; your custom edits are in the project file.`
+    : `Will be saved to ${data.path}. Then you can edit it in the editor and add it to the task brief. No task will start automatically.`;
   $("#company-install").disabled = data.installed;
-  $("#company-install").textContent = data.installed ? "Uloženo v projektu" : "Uložit do projektu";
+  $("#company-install").textContent = data.installed ? "Saved in project" : "Save to project";
   $("#company-open").disabled = !data.installed;
   $("#company-context").disabled = !data.installed;
 }
@@ -853,7 +853,7 @@ async function showCompany() {
 }
 function currentCompany() {
   if (!companyPreview || companyPreview.project !== state.project)
-    throw new Error("Projekt se změnil. Otevři šablonu znovu.");
+    throw new Error("The project has changed. Reopen the template.");
   return companyPreview;
 }
 async function installCompany() {
@@ -867,7 +867,7 @@ async function installCompany() {
     preview.installed = true;
     renderCompany(preview);
     await loadTree();
-    toast("AI Build Company je uložená v projektu.");
+    toast("AI Build Company is saved in the project.");
   } finally {
     companyBusy = false;
     if (companyPreview === preview)
@@ -878,11 +878,11 @@ function companyTaskContext(draft, path) {
   const marker = `[AI Build Company: ${path}]`;
   if (draft.includes(marker)) return draft;
   return (draft ? draft + "\n\n" : "") + marker + "\n" +
-    `Přečti soubor ${path} v kořeni aktuálního projektu. Použij jeho pravidla, ` +
-    "role a předávání práce pro toto zadání. Aktivuj jen potřebné role v možnostech " +
-    "zvoleného režimu; netvrď, že existují samostatní pracovníci nebo nezávislé review, " +
-    "pokud je runtime skutečně nevytvořil. Ulož výstupy do sjednaných souborů a dolož " +
-    "provedené kontroly. Pokud chybí konkrétní cíl, nejdřív si ho vyžádej.";
+    `Read the file ${path} in the root of the current project. Use its rules, ` +
+    "roles, and handover procedures for this task. Activate only the necessary roles in the " +
+    "selected mode; do not assert the existence of separate workers or independent reviews " +
+    "if the runtime did not actually create them. Save outputs to agreed files and document " +
+    "performed checks. If a specific goal is missing, request it first.";
 }
 async function addCompanyContext() {
   const preview = currentCompany();
@@ -890,12 +890,12 @@ async function addCompanyContext() {
   await api(`/api/file?project=${encodeURIComponent(preview.project)}&path=${encodeURIComponent(preview.path)}`);
   if (state.project !== preview.project || companyPreview !== preview) return;
   if (state.dirty && state.file?.path === preview.path)
-    throw new Error("Nejdřív ulož změny šablony v editoru; agent čte soubor z disku.");
+    throw new Error("First, save template changes in the editor; the agent reads the file from disk.");
   const input = $("#task-input");
   input.value = companyTaskContext(input.value, preview.path);
   $("#company-dialog").close();
   input.focus();
-  toast("Instrukce přidané. Doplň konkrétní cíl a spusť úlohu, až budeš připravený.");
+  toast("Instructions added. Add a specific goal and start the task once you are ready.");
 }
 async function init() {
   icons();
@@ -1011,7 +1011,7 @@ async function init() {
     fillSelectors();
     renderModels();
     fillModel(state.data.profiles.find((p) => p.id === result.id));
-    toast("Model přidán. Pro úlohu jej vyber v seznamu modelů.");
+    toast("Model added. Select it for the task in the model list.");
   });
   bind("#oauth-remove", "click", async () => {
     await api("/api/oauth/disconnect", {
@@ -1020,23 +1020,23 @@ async function init() {
     await refreshState();
     fillSelectors();
     renderModels();
-    toast("Profil odebrán ze Studia. Přihlášení účtu zůstává zachováno.");
+    toast("Profile removed from Studio. The account login remains intact.");
   });
   bind("#model-form", "submit", async (e) => {
     e.preventDefault();
     await saveModel();
-    toast("Model uložen.");
+    toast("Model saved.");
   });
   bind("#probe-model", "click", async () => {
     const b = $("#probe-model");
     b.disabled = true;
-    $("#probe-result").textContent = "Ověřuji dostupnost…";
+    $("#probe-result").textContent = "Verifying availability…";
     try {
       const id = await saveModel();
       const r = await api("/api/probe", { profile: id });
       $("#probe-result").textContent = r.model_found
-        ? `Připojeno · model nalezen · ${r.ms} ms`
-        : `Server odpovídá, ale model není v seznamu. Dostupné: ${r.models.join(", ")}`;
+        ? `Connected · model found · ${r.ms} ms`
+        : `Server responds, but the model is not in the list. Available: ${r.models.join(", ")}`;
     } catch (e) {
       $("#probe-result").textContent = e.message;
     } finally {
@@ -1056,12 +1056,12 @@ async function init() {
   bind("#stop-task", "click", async () => {
     await api("/api/stop", { run: state.run });
     await pollRun();
-    toast("Zastavuji úlohu…");
+    toast("Stopping task…");
   });
   bind("#new-task", "click", () => {
     if (active(run())) {
       $("#task-input").focus();
-      toast("Nejdřív dokonči nebo zastav běžící úlohu.");
+      toast("First, finish or stop the running task.");
       return;
     }
     state.run = null;
@@ -1126,17 +1126,17 @@ async function init() {
       if (state.view === "runs") await renderSidebar();
       $("#connection").replaceChildren(
         el("i"),
-        document.createTextNode(" Připojeno lokálně"),
+        document.createTextNode(" Connected locally"),
       );
     } catch (e) {
-      $("#connection").textContent = "Spojení přerušeno";
+      $("#connection").textContent = "Connection lost";
     } finally {
       state.polling = false;
     }
   }, 1500);
 }
 init()
-  .catch((e) => toast("Studio se nepodařilo načíst: " + e.message, true))
+  .catch((e) => toast("Failed to load Studio: " + e.message, true))
   .finally(() => {
     document.body.inert = false;
   });

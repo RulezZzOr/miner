@@ -34,13 +34,13 @@ IDENTIFIER = re.compile(r"[a-zA-Z0-9_-]{1,60}\Z")
 
 def text(value, name, limit=12000):
     if not isinstance(value, str) or not value.strip() or len(value) > limit:
-        raise ValueError(f"Vyplň {name} (nejvýše {limit} znaků).")
+        raise ValueError(f"Fill in {name} (at most {limit} characters).")
     return value.strip()
 
 
 def number(value, low, high, name):
     if isinstance(value, bool):
-        raise ValueError(f"Neplatný limit: {name}.")
+        raise ValueError(f"Invalid limit: {name}.")
     value = int(value)
     if not low <= value <= high:
         raise ValueError(f"{name}: rozsah {low}–{high}.")
@@ -49,34 +49,34 @@ def number(value, low, high, name):
 
 def strings(value, name, maximum=50):
     if not isinstance(value, list) or not 1 <= len(value) <= maximum:
-        raise ValueError(f"{name}: očekáván neprázdný seznam, nejvýše {maximum} položek.")
+        raise ValueError(f"{name}: expected a non-empty list with at most {maximum} items.")
     return [text(v, name, 3000) for v in value]
 
 
 def parse_plan(report):
     tasks = report.get("tasks")
     if not isinstance(tasks, list) or not 1 <= len(tasks) <= 40:
-        raise ValueError("Plán musí mít 1–40 úkolů.")
+        raise ValueError("Plan must have 1–40 tasks.")
     result = []
     ids = set()
     for item in tasks:
-        key = text(item.get("id"), "ID úkolu", 60)
+        key = text(item.get("id"), "Task ID", 60)
         if not IDENTIFIER.fullmatch(key) or key in ids:
-            raise ValueError("ID úkolů musí být jedinečná, bez mezer a lomítek.")
+            raise ValueError("Task IDs must be unique, without spaces or slashes.")
         ids.add(key)
         deps = item.get("depends_on", [])
         if not isinstance(deps, list) or any(not isinstance(d, str) for d in deps):
-            raise ValueError("Závislosti musí být seznam ID.")
-        result.append({"id": key, "title": text(item.get("title"), "název", 200),
+            raise ValueError("Dependencies must be a list of IDs.")
+        result.append({"id": key, "title": text(item.get("title"), "name", 200),
                        "instructions": text(item.get("instructions"), "instrukce"),
-                       "criteria": strings(item.get("criteria"), "kritéria", 20),
+                       "criteria": strings(item.get("criteria"), "criteria", 20),
                        "depends_on": list(dict.fromkeys(deps)), "status": "pending",
                        "cycles": 0, "artifacts": [], "feedback": ""})
     done = set()
     while len(done) < len(ids):
         ready = {t["id"] for t in result if set(t["depends_on"]) <= done} - done
         if not ready:
-            raise ValueError("Plán obsahuje cyklus nebo neexistující závislost.")
+            raise ValueError("The plan contains a cycle or a non-existent dependency.")
         done.update(ready)
     return result
 
@@ -124,7 +124,7 @@ class Missions:
         with self.connect() as db:
             row = db.execute("SELECT data FROM missions WHERE id=?", (key,)).fetchone()
         if not row:
-            raise ValueError("Dlouhodobý projekt neexistuje.")
+            raise ValueError("The long-term project does not exist.")
         return json.loads(row[0])
 
     def trace(self, key):
@@ -152,16 +152,16 @@ class Missions:
         profile = body.get("profile", default)
         reviewer = body.get("review_profile", profile)
         if profile not in profiles or reviewer not in profiles:
-            raise ValueError("Vyber dostupný model pro práci i review.")
+            raise ValueError("Select an available model for work and review.")
         decision_profile = body.get("decision_profile") or None
         if decision_profile and (decision_profile not in profiles or profiles[decision_profile].get("protocol") != "chat_completions"
                                  or profiles[decision_profile].get("oauth_provider")):
-            raise ValueError("Rozhodovací model musí být profil kompatibilního chat API bez OAuth.")
+            raise ValueError("The decision model must be a profile-compatible chat API without OAuth.")
         now = self.clock()
         m = {"id": uuid.uuid4().hex[:16], "project": body["project"],
-             "title": text(body.get("title"), "název projektu", 160),
-             "goal": text(body.get("goal"), "cílový produkt"),
-             "criteria": strings(body.get("criteria"), "podmínky hotového produktu", 40),
+             "title": text(body.get("title"), "project name", 160),
+             "goal": text(body.get("goal"), "target product"),
+             "criteria": strings(body.get("criteria"), "conditions for a completed product", 40),
              "constraints": str(body.get("constraints", ""))[:12000],
              "sources": str(body.get("sources", ""))[:12000],
              "profile": profile, "review_profile": reviewer,
@@ -170,13 +170,13 @@ class Missions:
              "verification_checks": validate_checks(body.get("verification_checks", [])),
              "verification_id": None,
              "isolated": body.get("isolated", True) is not False,
-             "days": number(body.get("days", 7), 1, 30, "Délka projektu ve dnech"),
-             "max_attempts": number(body.get("max_attempts", 100), 2, 1000, "Počet běhů"),
-             "attempt_minutes": number(body.get("attempt_minutes", 30), 1, 360, "Minuty na běh"),
-             "max_turns": number(body.get("max_turns", 40), 1, 200, "Kroky na běh"),
+             "days": number(body.get("days", 7), 1, 30, "Project duration in days"),
+             "max_attempts": number(body.get("max_attempts", 100), 2, 1000, "Number of runs"),
+             "attempt_minutes": number(body.get("attempt_minutes", 30), 1, 360, "Minutes per run"),
+             "max_turns": number(body.get("max_turns", 40), 1, 200, "Steps per run"),
              "status": "draft", "phase": "plan", "created": now, "updated": now,
              "deadline": None, "attempts": [], "tasks": [], "questions": [],
-             "active_attempt": None, "message": "Zkontroluj zadání a spusť přípravu.",
+             "active_attempt": None, "message": "Check the task brief and start preparation.",
              "retry_at": 0, "failures": 0, "final_report": None,
              "final_cycles": 0, "evidence": [],
              "workspace": str(root)}
@@ -184,11 +184,11 @@ class Missions:
 
     def questions(self, m, values, task=None):
         if not isinstance(values, list) or not 1 <= len(values) <= 20:
-            raise ValueError("Blokace musí obsahovat 1–20 otázek.")
+            raise ValueError("The block must contain 1–20 questions.")
         for item in values:
             m["questions"].append({"id": uuid.uuid4().hex[:12],
-                "question": text(item.get("question"), "otázku", 3000),
-                "reason": text(item.get("reason"), "důvod otázky", 3000),
+                "question": text(item.get("question"), "question", 3000),
+                "reason": text(item.get("reason"), "question reason", 3000),
                 "task": task, "answer": None, "created": self.clock()})
 
     def action(self, body):
@@ -199,35 +199,35 @@ class Missions:
             if company and action in {"accept", "manual_accept"}:
                 self.require_active_product(m)
             if company and action == "runtime_settings":
-                raise ValueError("Firemní realizace má rezervované limity a modely. Pro změnu založ nový úkol ve firmě.")
+                raise ValueError("Corporate execution has reserved limits and models. To change them, create a new task in the company.")
             if action in {"start", "resume", "approve_plan", "recheck"}:
                 self.require_active_product(m)
             if action == "runtime_settings" and m["status"] in {"draft", "paused", "blocked"}:
                 if m.get("active_attempt"):
-                    raise ValueError("Počkej na ukončení rozpracovaného běhu.")
+                    raise ValueError("Wait for the ongoing run to finish.")
                 profiles, _ = self.studio.profiles()
                 profile = body.get("profile", m["profile"])
                 reviewer = body.get("review_profile", m["review_profile"])
                 if profile not in profiles or reviewer not in profiles:
-                    raise ValueError("Vyber dostupný model pro práci i review.")
-                minutes = number(body.get("attempt_minutes", m["attempt_minutes"]), 1, 360, "Minuty na běh")
-                turns = number(body.get("max_turns", m["max_turns"]), 1, 200, "Kroky na běh")
-                attempts = number(body.get("max_attempts", m["max_attempts"]), max(2, len(m["attempts"]) + 1), 1000, "Počet běhů")
+                    raise ValueError("Select an available model for work and review.")
+                minutes = number(body.get("attempt_minutes", m["attempt_minutes"]), 1, 360, "Minutes per run")
+                turns = number(body.get("max_turns", m["max_turns"]), 1, 200, "Steps per run")
+                attempts = number(body.get("max_attempts", m["max_attempts"]), max(2, len(m["attempts"]) + 1), 1000, "Number of runs")
                 m.update(profile=profile, review_profile=reviewer, attempt_minutes=minutes,
                          max_turns=turns, max_attempts=attempts,
-                         message="Modely a limity uloženy. Pokračování spusť samostatně; celkový termín se nemění.")
+                         message="Models and limits saved. Continue independently; the overall deadline remains unchanged.")
             elif action == "revise_task" and m["status"] in {"paused", "blocked"}:
                 if m.get("active_attempt"):
-                    raise ValueError("Počkej na ukončení rozpracovaného běhu.")
+                    raise ValueError("Wait for the ongoing run to finish.")
                 if company and self.studio.companies.get(company["id"])["status"] != "paused":
-                    raise ValueError("Před úpravou zadání pozastav nadřazený Driver.")
+                    raise ValueError("Pause the parent Driver before editing the task brief.")
                 task = next((t for t in m["tasks"] if t["id"] == body.get("task")), None)
                 if not task or task["status"] not in {"pending", "waiting"}:
-                    raise ValueError("Upravovat lze jen dosud nepřijatý úkol.")
+                    raise ValueError("Only tasks not yet accepted can be edited.")
                 if body.get("expected_criteria") != task["criteria"]:
-                    raise ValueError("Kritéria se mezitím změnila. Obnov přehled.")
-                reason = text(body.get("reason"), "důvod změny", 3000)
-                criteria = strings(body.get("criteria"), "kritéria úkolu", 20)
+                    raise ValueError("The criteria have changed meanwhile. Refresh the overview.")
+                reason = text(body.get("reason"), "reason for change", 3000)
+                criteria = strings(body.get("criteria"), "task criteria", 20)
                 instructions = text(body.get("instructions", task["instructions"]), "instrukce", 12000)
                 m.setdefault("plan_revisions", []).append({"at": self.clock(), "task": task["id"],
                     "reason": reason, "before": {"criteria": task["criteria"], "instructions": task["instructions"]},
@@ -235,76 +235,76 @@ class Missions:
                 task.update(criteria=criteria, instructions=instructions)
                 for q in m["questions"]:
                     if q["task"] == task["id"] and q["answer"] is None and q.get("kind") == "criterion" and q.get("criterion") not in criteria:
-                        q["answer"] = "Kritérium nahrazeno zaznamenanou úpravou zadání: " + reason
+                        q["answer"] = "Criterion replaced by recorded task brief adjustment: " + reason
                 if task["status"] == "waiting" and not any(q["task"] == task["id"] and q["answer"] is None for q in m["questions"]):
                     task["status"] = "pending"
-                m.update(failures=0, retry_at=0, message="Zadání úkolu upraveno; původní znění zůstává v historii. Pokračování spusť samostatně.")
+                m.update(failures=0, retry_at=0, message="Task brief adjusted; original wording remains in history. Continue independently.")
             elif action == "set_checks" and m["status"] in {"draft", "paused", "awaiting_plan", "awaiting_checks", "ready"}:
                 checks = validate_checks(body.get("verification_checks"))
                 if not checks:
-                    raise ValueError("Přidej alespoň jeden příkaz kontroly.")
+                    raise ValueError("Add at least one verification command.")
                 m.update(verification_checks=checks, verification_id=None)
                 if m["status"] in {"awaiting_checks", "ready"}:
                     self.require_active_product(m)
-                    m.update(status="verifying", message="Spustím schválené kontroly.")
+                    m.update(status="verifying", message="I will execute approved verifications.")
                 elif m["status"] == "paused" and m.get("final_report"):
                     m["resume_status"] = "verifying"
             elif action == "manual_accept" and m["status"] == "awaiting_checks":
                 if body.get("acknowledge_unverified") is not True:
-                    raise ValueError("Potvrď ruční převzetí bez automatických kontrol.")
+                    raise ValueError("Confirm manual acceptance without automatic verifications.")
                 self.verify_delivery(m, require_checks=False)
                 self.capture_delivery(m)
                 m.update(status="accepted", acceptance={"kind": "manual", "at": self.clock()},
-                         message="Ručně převzato vlastníkem bez nezávislých automatických kontrol.")
+                         message="Manually accepted by owner without independent automatic verifications.")
             elif action == "answer":
                 q = next((q for q in m["questions"] if q["id"] == body.get("question")), None)
                 if not q or q["answer"] is not None or m["status"] in TERMINAL:
-                    raise ValueError("Otázka už není otevřená.")
-                q["answer"] = text(body.get("answer"), "odpověď", 12000)
+                    raise ValueError("The question is no longer open.")
+                q["answer"] = text(body.get("answer"), "answer", 12000)
                 pending = [x for x in m["questions"] if x["task"] == q["task"] and x["answer"] is None]
                 if not pending and q["task"]:
                     task = next(t for t in m["tasks"] if t["id"] == q["task"])
                     task["status"] = "pending"
                 if m["status"] == "waiting" and not any(q["answer"] is None for q in m["questions"]):
                     m["status"] = "awaiting_plan" if m["phase"] == "plan" and m["tasks"] else "running"
-                m["message"] = "Odpověď uložena."
+                m["message"] = "Answer saved."
             elif action == "start" and m["status"] == "draft":
                 m.update(status="running", deadline=self.clock() + m["days"] * 86400,
-                         message="Připravuji plán a vstupní otázky.")
+                         message="Preparing the plan and input questions.")
             elif action == "approve_plan" and m["status"] == "awaiting_plan":
                 if any(q["answer"] is None for q in m["questions"]):
-                    raise ValueError("Nejdřív zodpověz vstupní otázky.")
-                m.update(status="running", phase="build", message="Plán potvrzen. Pokračuji realizací.")
+                    raise ValueError("First, answer the input questions.")
+                m.update(status="running", phase="build", message="Plan confirmed. Proceeding with execution.")
             elif action in {"pause", "cancel"} and m["status"] not in TERMINAL:
                 if m["status"] != "paused":
                     m["resume_status"] = m["status"]
                 m.update(status="paused" if action == "pause" else "cancelled",
-                         message="Pozastaveno uživatelem." if action == "pause" else "Ukončeno uživatelem.")
+                         message="Paused by user." if action == "pause" else "Terminated by user.")
                 self.save(m)  # persist intent before terminating a worker
                 self.verifications.stop(m.get("verification_id"))
                 if m["active_attempt"] in self.studio.runs:
                     self.studio.stop(m["active_attempt"])
             elif action == "resume" and m["status"] in {"paused", "blocked"}:
                 if m["deadline"] is not None and self.clock() >= m["deadline"]:
-                    raise ValueError("Časový limit vypršel; založ navazující projekt s novým rozsahem.")
+                    raise ValueError("Time limit expired; create a follow-up project with a new scope.")
                 if len(m["attempts"]) >= m["max_attempts"]:
-                    raise ValueError("Limit běhů byl vyčerpán; založ navazující projekt.")
+                    raise ValueError("Run limit exhausted; create a follow-up project.")
                 previous = m.get("resume_status", "running") if m["status"] == "paused" else "running"
                 if previous == "blocked":
                     previous = "running"
                 if previous == "waiting" and not any(q["answer"] is None for q in m["questions"]):
                     previous = "awaiting_plan" if m["phase"] == "plan" and m["tasks"] else "running"
-                m.update(status=previous, failures=0, retry_at=0, message="Pokračuji z uloženého stavu.")
+                m.update(status=previous, failures=0, retry_at=0, message="Continuing from saved state.")
             elif action == "recheck" and m["status"] in {"ready", "awaiting_checks"}:
-                m.update(status="running", final_report=None, verification_id=None, message="Znovu ověřím produkt.")
+                m.update(status="running", final_report=None, verification_id=None, message="Re-verifying the product.")
             elif action == "accept" and m["status"] == "ready":
                 # Re-check the delivered files; accepting stale evidence would hide later edits.
                 self.verify_delivery(m)
                 self.capture_delivery(m)
                 m.update(status="accepted", acceptance={"kind": "verified", "at": self.clock()},
-                         message="Produkt převzat po nezávislých kontrolách.")
+                         message="Product accepted after independent verifications.")
             else:
-                raise ValueError("Tato akce není v aktuálním stavu dostupná.")
+                raise ValueError("This action is not available in the current state.")
             self.save(m)
             return m
 
@@ -314,12 +314,12 @@ class Missions:
         if company_id:
             company = self.studio.companies.get(company_id)
             if company["status"] != "active" or not company["deadline"] or self.clock() >= company["deadline"]:
-                raise ValueError("Nejdřív obnov nadřazenou firmu a její časový horizont.")
+                raise ValueError("First, restore the parent company and its time horizon.")
         product_id = (m.get("product_context") or {}).get("id")
         if product_id:
             product = self.studio.products.get(product_id)
             if product["status"] != "active":
-                raise ValueError("Nejdřív obnov nadřazený produkt; jeho realizace je pozastavená.")
+                raise ValueError("First, restore the parent product; its execution is paused.")
 
     def ensure_workspace(self, m):
         if not m.get("isolated") or m.get("work_project"):
@@ -327,7 +327,7 @@ class Missions:
         root = self.studio.project(m["project"])
         self.versions.recover(root)
         if not m.get("base_version"):
-            m["base_version"] = self.versions.snapshot(root, label="Výchozí stav realizace " + m["id"])["id"]
+            m["base_version"] = self.versions.snapshot(root, label="Default execution state " + m["id"])["id"]
             self.save(m)
         base = self.versions.get(m["base_version"])
         destination = self.studio.data / "workspaces" / m["id"]
@@ -338,8 +338,8 @@ class Missions:
         else:
             from_manifest = self.versions.preview(destination, base)
             if from_manifest["changed"]:
-                raise ValueError("Nedokončená příprava pracovního prostoru obsahuje změny; automatické přepsání odmítnuto.")
-        project = self.studio.add_project(destination, name=m["title"][:70] + " · pracovní verze")
+                raise ValueError("Incomplete workspace preparation contains changes; automatic overwrite rejected.")
+        project = self.studio.add_project(destination, name=m["title"][:70] + " · working version")
         m.update(work_project=project["id"], workspace=str(destination))
         self.save(m)
 
@@ -363,100 +363,77 @@ class Missions:
     def prompt(self, m, a):
         task = next((t for t in m["tasks"] if t["id"] == a["task"]), None)
         path = self.report_path(m, a)
-        common = f"""Pracuješ na dlouhodobém projektu AI Build Company: {m['title']}.
-FÁZE TOHOTO BĚHU: {a['phase']}. Cíl produktu níže je kontext; proveď pouze instrukce této fáze.
-Kořen projektu je {m['workspace']}. Souborové nástroje přijímají /workspace jako alias této složky.
-Shell běží ve fyzické složce projektu: používej relativní cesty, nevytvářej systémový /workspace.
-Cíl: {m['goal']}
-Kritéria produktu: {json.dumps(m['criteria'], ensure_ascii=False)}
-Omezení: {m['constraints']}
-Příkazy kontrol schválené vlastníkem (řadič je spustí nezávisle po review): {json.dumps(m.get('verification_checks', []), ensure_ascii=False)}
-Podklady a veřejné zdroje: {m['sources']}
-Odpovědi vlastníka: {json.dumps([q for q in m['questions'] if q['answer'] is not None], ensure_ascii=False)}
-Pracuj jen v rozsahu zadání a povolených nástrojů aktuální fáze. Nevymýšlej zdroje ani kontroly.
-Neznámé zjistitelné průzkumem patří do realizačních úkolů; otázky vlastníkovi používej pro nezbytná rozhodnutí.
-Po přerušení nejdřív prohlédni soubory a dřívější reporty v company/projects/{m['id']}/reports/;
-neopakuj naslepo již provedené akce. Neprováděj platby, zprávy třetím stranám ani nasazení;
-připrav tyto kroky jako podklady k rozhodnutí vlastníka. Nepřepisuj databázi ani konfiguraci Studia.
-Existuje-li company/ai-build-company.json, přečti relevantní pravidla a instrukce rolí.
-Výsledky ukládej přímo do dohodnutých cest projektu, ne pouze do dočasných /outputs.
-Na závěr zavolej save_mission_report s pojmenovanými poli status, tasks, questions nebo poli výsledku podle fáze.
-Aplikace ověří obsah a uloží JSON soubor {path} v projektu. Nevytvářej tento soubor ručně.
-Nepředávej cestu, content, data ani serializovaný JSON text. Použij přímo pole nástroje.
-Dodrž přesně zadaná jména polí a hodnotu status; nepřidávej vlastní formát reportu.
-Chyby předchozích pokusů, které musíš napravit: {json.dumps([x.get('error') for x in m['attempts'][-4:] if x.get('error')], ensure_ascii=False)}
-Report nesmí sám sebe uvést jako produktový artefakt. Cesty jsou relativní ke kořeni projektu.
-Pokud potřebuješ rozhodnutí člověka, vrať {{"status":"blocked","questions":[{{"question":"...","reason":"..."}}]}}.
+        common = f"""You are working on the long-running AI Build Company project: {m['title']}.
+PHASE OF THIS RUN: {a['phase']}. The product goal below is context; follow only the instructions for this phase.
+The project root is {m['workspace']}. File tools accept /workspace as an alias for this folder.
+The shell runs in the physical project directory: use relative paths; do not create a system /workspace.
+Goal: {m['goal']}
+Product criteria: {json.dumps(m['criteria'], ensure_ascii=False)}
+Constraints: {m['constraints']}
+Verification commands approved by the owner (the controller will run them independently after review): {json.dumps(m.get('verification_checks', []), ensure_ascii=False)}
+Background and public sources: {m['sources']}
+Owner answers: {json.dumps([q for q in m['questions'] if q['answer'] is not None], ensure_ascii=False)}
+Work only within the task scope and the tools permitted for the current phase. Do not invent sources or checks.
+Unknowns that can be resolved through exploration belong in execution tasks; ask the owner only for necessary decisions.
+After an interruption, first inspect files and previous reports in company/projects/{m['id']}/reports/;
+do not blindly repeat completed actions. Do not make payments, message third parties or deploy;
+prepare these steps as material for the owner to decide on. Do not overwrite the Studio database or configuration.
+If company/ai-build-company.json exists, read the relevant rules and role instructions.
+Save results directly to the agreed project paths, not only to temporary /outputs.
+Finally, call save_mission_report with the named fields status, tasks, questions or the result fields for the phase.
+The application will validate the content and save the JSON file {path} in the project. Do not create this file manually.
+Do not pass a path, content, data or serialized JSON text. Use the tool fields directly.
+Follow the specified field names and status value exactly; do not invent a report format.
+Errors from previous attempts that you must fix: {json.dumps([x.get('error') for x in m['attempts'][-4:] if x.get('error')], ensure_ascii=False)}
+The report must not list itself as a product artifact. Paths are relative to the project root.
+If you need a human decision, return {{"status":"blocked","questions":[{{"question":"...","reason":"..."}}]}}.
 """
         if m.get("company_context"):
-            common += "\nKontext firmy a oddělení: " + json.dumps(m["company_context"], ensure_ascii=False) + "\n"
+            common += "\nCompany and department context: " + json.dumps(m["company_context"], ensure_ascii=False) + "\n"
         if m.get("product_context"):
-            common += "\nKontext trvale spravovaného produktu: " + json.dumps(m["product_context"], ensure_ascii=False) + "\n"
-            common += ("Navazuj na existující soubory. Zachovej dosavadní funkce a data; "
-                       "nepřepisuj celý produkt bez důvodu. Ověř regresní kritéria i nový požadavek. "
-                       "Připrav návod ke spuštění, ověření a údržbě odpovídající typu produktu. "
-                       "Fyzickou výrobu, nasazení nebo externí službu neoznačuj za hotové bez skutečného důkazu.\n")
+            common += "\nContext of permanently managed product: " + json.dumps(m["product_context"], ensure_ascii=False) + "\n"
+            common += ("Build upon existing files. Preserve existing functions and data; "
+                       "do not rewrite the entire product without justification. Verify regression criteria as well as the new requirement. "
+                       "Prepare instructions for running, verifying, and maintaining the product appropriate to its type. "
+                       "Do not mark physical production, deployment, or external services as complete without actual proof.\n")
         if a["phase"] == "plan":
-            return common + """Jsi plánovač. TEĎ POUZE PLÁNUJ, NEVYTVÁŘEJ FINÁLNÍ PRODUKT.
-Použij nejvýše tři čtecí volání pro místní podklady, potom rovnou ulož plán.
-Buď stručný: obvykle stačí 2–5 realizačních úkolů, krátké instrukce a konkrétní kritéria.
-Úkolem plánovače je sestavit kroky, nikoli získat výsledky těchto kroků.
-V této fázi nejsou shell a web dostupné záměrně; realizátor je může mít. To není důkaz chybějícího přístupu.
-Pokud zadání obsahuje server, URL nebo příkaz pro přístup, přenes jej přesně do realizačního úkolu a naplánuj jeho skutečné ověření.
-Například existující SSH příkaz má realizátor nejprve vyzkoušet; neptej se znovu, jak se připojit nebo zda smí provést už zadané čtení.
-O přístupových problémech se ptej až po konkrétním selhání v realizaci. Nikdy nevyžaduj vypsání tajných údajů.
-Než položíš otázku, ověř, zda ji už neřeší zadání. Chybějící šablona Markdownu, neexistující výstupní soubor
-nebo dosud neprovedený průzkum nejsou blokace plánu. Formát navrhni podle kritérií produktu.
-Otázky polož jen tam, kde bez rozhodnutí vlastníka nelze ani sestavit bezpečný první úkol.
-Realizační úkoly mají vytvářet požadovaný produkt. Vytvoření nebo kontrolu tohoto plánovacího JSONu
-mezi ně nezařazuj: validaci plánu a oddělené review provádí řadič automaticky.
-Kritéria úkolů nesmějí zpřísnit cíl vlastníka. U inventury, která dovoluje neznámé nebo chybějící
-služby, je platným výsledkem také doložené nenalezení s uvedeným rozsahem průzkumu a omezeními.
-Nevyžaduj jako podmínku úspěchu nalezení nebo funkčnost služby, jejíž existenci zadání teprve zjišťuje.
-Přesně zachovej cílové cesty ze zadání. Složka company/projects/.../reports je pouze pro interní reporty,
-není automaticky složkou produktu. Samotné názvy souborů v zadání znamenají cesty od kořene projektu.
-Nevytvářej zatím produkt a nedělej změny mimo svůj report. Veřejně dohledatelné věci zařaď jako rešeršní úkol.
-Report: {"status":"plan","questions":[{"question":"...","reason":"..."}],"tasks":[
-{"id":"task-1","title":"...","instructions":"Konkrétní práce a cílové soubory",
-"depends_on":[],"criteria":["Ověřitelná podmínka"]}]}. Otázky mohou být prázdné.
-Úkoly musí mít jedinečná ID, žádné cykly a žádné závislosti na neexistujících úkolech. Nejvýše 40 úkolů.
-"""
+            return common + "You are the planner. PLAN ONLY NOW, DO NOT CREATE THE FINAL PRODUCT.\nUse at most three read calls for local references, then immediately save the plan.\nBe concise: usually 2–5 execution tasks, brief instructions, and specific criteria suffice.\nThe planner’s role is to outline steps, not to obtain results from those steps.\nShell and web access are intentionally unavailable at this stage; the worker may have them. This is not evidence of missing access.\nIf the task brief includes a server, URL, or access command, transfer it exactly into the execution task and plan its actual verification.\nFor example, if an existing SSH command is provided, the worker should first test it; do not ask again how to connect or whether they may perform the already-specified read.\nOnly ask about access issues after a concrete failure in execution. Never require disclosure of secrets.\nBefore asking a question, verify whether the task brief already resolves it. Missing Markdown template, non-existent output file,\nor exploration that has not yet been performed are not plan blockers. Design the format according to product criteria.\nAsk questions only where a decision by the owner is required to even draft a safe first task.\nExecution tasks must produce the desired product. Creating or verifying this planning JSON\nmust not be among them: plan validation and separate review are performed automatically by the controller.\nTask criteria must not tighten the owner’s goal. For an inventory that allows unknown or missing\nservices, a valid outcome is also documented non-discovery, stating the exploration scope and limitations.\nDo not require finding or service functionality whose existence the task brief is still determining.\nStrictly preserve target paths from the task brief. The folder company/projects/.../reports is only for internal reports,\nit is not automatically a product folder. File names mentioned in the task brief imply paths relative to the project root.\nDo not yet create the product or make changes outside your report. Publicly discoverable items belong in the research task.\nReport: {\"status\":\"plan\",\"questions\":[{\"question\":\"...\",\"reason\":\"...\"}],\"tasks\":[\n{\"id\":\"task-1\",\"title\":\"...\",\"instructions\":\"Specific work and target files\",\n\"depends_on\":[],\"criteria\":[\"Verifiable condition\"]}]}. Questions may be empty.\nTasks must have unique IDs, no cycles, and no dependencies on non-existent tasks. Maximum 40 tasks.\n"
         if a["phase"] == "build":
-            template = {"status": "done", "summary": "Doplň shrnutí provedené práce.",
-                "artifacts": ["relativni/soubor"],
-                "checks": [{"criterion": criterion, "passed": False, "evidence": "Doplň skutečný výsledek."}
+            template = {"status": "done", "summary": "Add summary of completed work.",
+                "artifacts": ["relative/file"],
+                "checks": [{"criterion": criterion, "passed": False, "evidence": "Add actual result."}
                            for criterion in task["criteria"]], "sources": []}
-            return common + f"""Jsi realizátor úkolu: {json.dumps(task, ensure_ascii=False)}
-Splň tento úkol a zkontroluj výstupy. Report musí pokrýt kritéria tohoto úkolu;
-obecná kritéria produktu je nenahrazují. Zachovej přesná znění criterion z této šablony:
+            return common + f"""You are the worker for task: {json.dumps(task, ensure_ascii=False)}
+Complete this task and check its outputs. The report must cover this task's criteria;
+general product criteria are not a substitute. Preserve the exact criterion wording from this template:
 {json.dumps(template, ensure_ascii=False)}
-Doplň skutečné soubory, shrnutí a důkazy; passed změň na true pouze po ověření.
-Neúspěch neoznačuj jako passed. Pokud jsi použil zdroje, sources má položky url a finding.
+Fill in the actual files, summary and evidence; change passed to true only after verification.
+Do not mark a failure as passed. If you used sources, each sources entry has url and finding fields.
 """
         criteria = task["criteria"] if task else m["criteria"]
         evidence = task if task else m["tasks"]
-        template = {"status": "changes", "summary": "Doplň nálezy nebo výsledek review.",
-            "artifacts": ["ověřený/soubor"],
-            "checks": [{"criterion": criterion, "passed": False, "evidence": "Doplň vlastní zjištění ze souborů."}
+        template = {"status": "changes", "summary": "Add findings or review result.",
+            "artifacts": ["verified/file"],
+            "checks": [{"criterion": criterion, "passed": False, "evidence": "Add your own findings from files."}
                        for criterion in criteria]}
-        return common + f"""Jsi nezávislý reviewer v nové relaci. Prohlédni skutečné soubory a posuď kritéria podle jejich obsahu;
-nespoléhej na tvrzení autora. Neupravuj produktové soubory, pouze svůj report. Nálezy vrať autorovi.
-V této fázi nemáš shell. Nezávislé příkazy spustí řadič po závěrečném review; netvrď, že jsi je spustil sám.
-Podklady: {json.dumps(evidence, ensure_ascii=False)}
-Kritéria k ověření: {json.dumps(criteria, ensure_ascii=False)}
-Zachovej přesná znění criterion z této šablony a doplň vlastní zjištění:
+        return common + f"""You are an independent reviewer in a new session. Inspect the actual files and evaluate the criteria against their content;
+do not rely on the author's claims. Do not edit product files, only your report. Return findings to the author.
+You have no shell in this phase. The controller will run independent commands after the final review; do not claim you ran them yourself.
+Background: {json.dumps(evidence, ensure_ascii=False)}
+Criteria to verify: {json.dumps(criteria, ensure_ascii=False)}
+Preserve the exact criterion wording from this template and add your own findings:
 {json.dumps(template, ensure_ascii=False)}
-Pro KAŽDÉ kritérium uveď kontrolu, passed true pouze po skutečném ověření. Status změň
-na pass pouze při splnění všech kritérií; jinak použij changes.
-Při changes uveď konkrétní reprodukovatelné vady v summary.
+Provide a check for EVERY criterion, with passed true only after actual verification. Change status
+to pass only when all criteria are met; otherwise use changes.
+For changes, describe specific reproducible defects in summary.
 """
 
     def artifacts(self, m, paths):
-        paths = strings(paths, "výstupní soubory", 100)
+        paths = strings(paths, "output files", 100)
         result = []
         for path in dict.fromkeys(paths):
             if path.startswith("company/projects/") or path.startswith(".apodex/"):
-                raise ValueError("Report nebo dočasný výstup není finální produktový soubor.")
+                raise ValueError("Report or temporary output is not a final product file.")
             revision = self.studio.artifact_revision(m.get("work_project", m["project"]), path)
             result.append({"path": path, "sha256": revision})
         return result
@@ -464,29 +441,29 @@ Při changes uveď konkrétní reprodukovatelné vady v summary.
     def checks(self, report, criteria, passing=True):
         checks = report.get("checks")
         if not isinstance(checks, list) or len(checks) > 100:
-            raise ValueError("Chybí doložené kontroly.")
+            raise ValueError("Missing documented checks.")
         found = set()
         for item in checks:
-            criterion = text(item.get("criterion"), "kritérium", 3000)
-            text(item.get("evidence"), "důkaz kontroly", 6000)
+            criterion = text(item.get("criterion"), "criterion", 3000)
+            text(item.get("evidence"), "proof of check", 6000)
             if not isinstance(item.get("passed"), bool) or (passing and not item["passed"]):
-                raise ValueError("Některé kontroly neprošly.")
+                raise ValueError("Some checks failed.")
             found.add(criterion)
         if not set(criteria) <= found:
             missing = [criterion for criterion in criteria if criterion not in found]
-            raise ValueError("Report nepokrývá všechna kritéria. Chybí přesné znění: " +
+            raise ValueError("Report does not cover all criteria. Missing precise wording: " +
                              json.dumps(missing, ensure_ascii=False)[:1800])
         return checks
 
     def verify_delivery(self, m, require_checks=True):
         report = m["final_report"]
         if not report:
-            raise ValueError("Chybí závěrečné review.")
+            raise ValueError("Missing final review.")
         for item in report["verified_artifacts"]:
             project = m["project"] if m["status"] == "accepted" else m.get("work_project", m["project"])
             current = self.studio.artifact_revision(project, item["path"])
             if current != item["sha256"]:
-                raise ValueError(f"Soubor {item['path']} se od review změnil. Je nutné nové ověření.")
+                raise ValueError(f"File {item['path']} has changed since review. New verification is required.")
         legacy_accepted = m["status"] == "accepted" and "verification_checks" not in m
         if require_checks and not legacy_accepted and (m.get("acceptance") or {}).get("kind") != "manual":
             self.verifications.verify(m)
@@ -500,7 +477,7 @@ Při changes uveď konkrétní reprodukovatelné vady v summary.
         if isinstance(report, str):
             report = json.loads(report)
         if not isinstance(report, dict):
-            raise ValueError("Report musí být JSON objekt.")
+            raise ValueError("Report must be a JSON object.")
         phase, task_id = a["phase"], a["task"]
         task = next((t for t in m["tasks"] if t["id"] == task_id), None)
         status = report.get("status")
@@ -510,44 +487,44 @@ Při changes uveď konkrétní reprodukovatelné vady v summary.
                 task["status"] = "waiting"
             else:
                 m["status"] = "waiting"
-            m["message"] = "Potřebuji odpověď; nezávislé úkoly mohou pokračovat."
+            m["message"] = "I need an answer; independent tasks may proceed."
         elif phase == "plan" and status == "plan":
             tasks = parse_plan(report)
             if any(a["id"] + ".json" in json.dumps(t, ensure_ascii=False) for t in tasks):
-                raise ValueError("Realizační úkol nesmí vytvářet ani kontrolovat vlastní plánovací report. "
-                                 "Odstraň tento interní krok; validaci plánu a review provádí řadič.")
+                raise ValueError("Execution task must not create or verify its own planning report. "
+                                 "Remove this internal step; plan validation and review are performed by the controller.")
             if report.get("questions"):
                 self.questions(m, report["questions"])
             m.update(tasks=tasks, status="waiting" if any(q["answer"] is None for q in m["questions"]) else "awaiting_plan",
-                     message="Zkontroluj vstupní otázky a navržený plán.")
+                     message="Review input questions and proposed plan.")
         elif phase == "build" and status == "done":
             checked = self.artifacts(m, report.get("artifacts"))
             checks = self.checks(report, task["criteria"], passing=False)
             failed = [c for c in checks if not c["passed"]]
             if failed:
                 question_start = len(m["questions"])
-                self.questions(m, [{"question": "Nesplněné kritérium: " + c["criterion"][:2300] +
-                    " — doplň podklady nebo uprav zadání úkolu.", "reason": c["evidence"][:3000]}
+                self.questions(m, [{"question": "Unmet criterion: " + c["criterion"][:2300] +
+                    " — add supporting details or adjust task brief.", "reason": c["evidence"][:3000]}
                     for c in failed[:20]], task_id)
                 for q, check in zip(m["questions"][question_start:], failed):
                     q.update(kind="criterion", criterion=check["criterion"])
                 task["status"] = "waiting"
-                m["message"] = "Výsledek nesplňuje kritéria. Čekám na upřesnění bez opakování stejného pokusu."
+                m["message"] = "Result does not meet criteria. Waiting for clarification without repeating the same attempt."
             else:
                 task.update(status="review", artifacts=checked, checks=checks,
-                            summary=text(report.get("summary"), "shrnutí"), build_run=a["id"])
+                            summary=text(report.get("summary"), "summary"), build_run=a["id"])
         elif phase in {"review", "final"} and status in {"pass", "changes"}:
-            summary = text(report.get("summary"), "shrnutí review")
+            summary = text(report.get("summary"), "review summary")
             if status == "changes":
                 if task:
                     task["cycles"] += 1
                     task.update(status="pending", feedback=summary)
                     if task["cycles"] >= 3:
-                        m.update(status="blocked", message="Tři kola oprav bez přijetí. Je potřeba upravit zadání.")
+                        m.update(status="blocked", message="Three rounds of corrections without acceptance. Task brief needs adjustment.")
                 else:
                     m["final_cycles"] += 1
                     m.update(status="blocked" if m["final_cycles"] >= 3 else "running",
-                             message="Závěrečná kontrola vrátila vady: " + summary)
+                             message="Final check returned defects: " + summary)
                     # Preserve completed work but reopen a delivery task with the findings.
                     m["tasks"][-1].update(status="pending", feedback=summary)
             else:
@@ -556,18 +533,18 @@ Při changes uveď konkrétní reprodukovatelné vady v summary.
                 checked = self.artifacts(m, report.get("artifacts"))
                 expected = task["artifacts"] if task else [x for t in m["tasks"] for x in t["artifacts"]]
                 if not {x["path"] for x in expected} <= {x["path"] for x in checked}:
-                    raise ValueError("Review nepokrývá všechny výstupní soubory.")
+                    raise ValueError("Review does not cover all output files.")
                 if task:
                     # A reviewer may not quietly change what it was asked to review.
                     if any(x not in checked for x in expected):
-                        raise ValueError("Výstupy se během review změnily; je potřeba nové zpracování.")
+                        raise ValueError("Outputs changed during review; reprocessing is required.")
                     task.update(status="done", review_run=a["id"], review_summary=summary, review_checks=checks)
                 else:
                     m.update(status="verifying", verification_id=None,
-                             message="Review dokončeno. Následují nezávislé kontroly.",
+                             message="Review completed. Independent checks follow.",
                              final_report={**report, "verified_artifacts": checked, "run": a["id"]})
         else:
-            raise ValueError(f"Neočekávaný report pro fázi {phase}: {status}.")
+            raise ValueError(f"Unexpected report for phase {phase}: {status}.")
         a["report"] = self.report_path(m, a)
         a["report_sha256"] = hashlib.sha256(raw["content"].encode()).hexdigest()
         m["evidence"].append({"attempt": a["id"], "phase": phase, "task": task_id,
@@ -580,14 +557,14 @@ Při changes uveď konkrétní reprodukovatelné vady v summary.
         m["failures"] += 1
         m["message"] = str(reason)[:2000]
         if str(reason).startswith("progress_guard:") or (a["phase"] == "plan" and
-                ("časový limit" in str(reason) or str(reason) == "max_turns")):
+                ("time limit" in str(reason) or str(reason) == "max_turns")):
             m["status"] = "blocked"
-            m["message"] = "Běh zastaven bez automatického opakování. " + str(reason)[:1600]
+            m["message"] = "Run stopped without automatic retry. " + str(reason)[:1600]
             if not any(q["answer"] is None for q in m["questions"]):
-                self.questions(m, [{"question": "Jak mám upravit postup, než úlohu znovu spustíš?", "reason": m["message"]}])
+                self.questions(m, [{"question": "How should I adjust the approach before restarting the task?", "reason": m["message"]}])
         elif m["failures"] >= 3:
             m["status"] = "blocked"
-            m["message"] = "Tři neúspěšné pokusy. " + m["message"]
+            m["message"] = "Three unsuccessful attempts. " + m["message"]
         else:
             m["retry_at"] = self.clock() + 30 * 2 ** (m["failures"] - 1)
 
@@ -603,7 +580,7 @@ Při changes uveď konkrétní reprodukovatelné vady v summary.
             return self.decisions.select(m, candidates)
         if len(done) == len(m["tasks"]) and done:
             return "final", None
-        m.update(status="waiting", message="Čekám na odpovědi k zablokovaným úkolům.")
+        m.update(status="waiting", message="Waiting for answers to blocked tasks.")
         return None
 
     def tick(self):
@@ -624,7 +601,7 @@ Při changes uveď konkrétní reprodukovatelné vady v summary.
                 if a and a["id"] in self.studio.runs:
                     self.studio.stop(a["id"])
         if m["deadline"] and now >= m["deadline"] and m["status"] not in TERMINAL | {"ready", "awaiting_checks"}:
-            m.update(status="expired", message="Vypršel časový limit projektu; výsledky zůstávají uložené.")
+            m.update(status="expired", message="Project time limit exceeded; results remain saved.")
             self.save(m)
             self.verifications.stop(m.get("verification_id"))
             if a and a["id"] in self.studio.runs:
@@ -635,12 +612,12 @@ Při changes uveď konkrétní reprodukovatelné vady v summary.
                 error_before = a.get("error")
                 waiting = self.studio.approval_wait_seconds(a["id"], now)
                 if now - a["started"] - waiting > a.get("budget_seconds", m["attempt_minutes"] * 60):
-                    a["error"] = "Běh překročil časový limit."
+                    a["error"] = "Run exceeded time limit."
                     self.studio.stop(a["id"])
                 directory = self.studio.run_dir(a["id"])
                 size = sum(p.stat().st_size for p in directory.glob('*') if p.is_file())
                 if size > 128_000_000 or size + sum(x.get("log_bytes", 0) for x in m["attempts"]) > 1_000_000_000:
-                    a["error"] = "Projekt překročil limit logů (128 MB na běh, 1 GB na projekt)."
+                    a["error"] = "Project exceeded log limit (128 MB per run, 1 GB per project)."
                     self.studio.stop(a["id"])
                     m["status"] = "blocked"
                 if a.get("error") != error_before:
@@ -655,7 +632,7 @@ Při changes uveď konkrétní reprodukovatelné vady v summary.
             if a.get("source_version"):
                 try:
                     from_version = self.versions.get(a["source_version"])
-                    current_version = self.versions.snapshot(m["workspace"], label="Po běhu " + a["id"])
+                    current_version = self.versions.snapshot(m["workspace"], label="After run " + a["id"])
                     before, after = from_version["files"], current_version["files"]
                     a["result_version"] = current_version["id"]
                     a["file_changes"] = [{"path": p, "before": before.get(p), "after": after.get(p),
@@ -672,7 +649,7 @@ Při changes uveď konkrétní reprodukovatelné vady v summary.
                     if a.get("change_capture_error"):
                         raise ValueError(a["change_capture_error"])
                     if a["phase"] in {"plan", "review", "final"} and a.get("file_changes"):
-                        raise ValueError("Plánování nebo review změnilo produktové soubory; výstup nelze převzít.")
+                        raise ValueError("Planning or review modified product files; output cannot be accepted.")
                     # Validate on a copy so rejected reports cannot partially advance the project.
                     copy = json.loads(json.dumps(m))
                     ca = next(x for x in copy["attempts"] if x["id"] == a["id"])
@@ -680,12 +657,12 @@ Při changes uveď konkrétní reprodukovatelné vady v summary.
                     ca["outcome"] = "reported"
                     m = copy
                 except (ValueError, TypeError, KeyError, OSError, RuntimeError) as exc:
-                    self.fail(m, a, f"Neplatný výstup: {exc}")
+                    self.fail(m, a, f"Invalid output: {exc}")
                 except Exception as exc:
                     # Studio's protected-file errors also invalidate a report.
-                    self.fail(m, a, f"Výstup nelze ověřit: {exc}")
+                    self.fail(m, a, f"Cannot verify output: {exc}")
             else:
-                self.fail(m, a, a.get("error") or (run or {}).get("reason") or "Přerušený běh; ověřím dosavadní soubory a navážu.")
+                self.fail(m, a, a.get("error") or (run or {}).get("reason") or "Interrupted run; verifying existing files and resuming.")
             self.save(m)
         if m["status"] == "verifying":
             self.advance_verification(m)
@@ -699,11 +676,11 @@ Při changes uveď konkrétní reprodukovatelné vady v summary.
         try:
             self.ensure_workspace(m)
         except Exception as exc:
-            m.update(status="blocked", message="Příprava pracovního prostoru selhala: " + str(exc))
+            m.update(status="blocked", message="Workspace preparation failed: " + str(exc))
             self.save(m)
             return
         if len(m["attempts"]) >= m["max_attempts"]:
-            m.update(status="blocked", message="Vyčerpán limit běhů; dosavadní výsledky jsou uložené.")
+            m.update(status="blocked", message="Run limit exhausted; current results are saved.")
             self.save(m)
             return
         work = self.next_work(m)
@@ -718,15 +695,15 @@ Při changes uveď konkrétní reprodukovatelné vady v summary.
         seconds, turns = phase_limits(phase, m["attempt_minutes"] * 60, m["max_turns"])
         a = {"id": uuid.uuid4().hex[:16], "phase": phase, "task": task_id, "started": now, "budget_seconds": seconds}
         try:
-            a["source_version"] = self.versions.snapshot(m["workspace"], label="Před během " + a["id"])["id"]
+            a["source_version"] = self.versions.snapshot(m["workspace"], label="Before run " + a["id"])["id"]
         except Exception as exc:
-            m.update(status="blocked", message="Nelze uložit výchozí stav běhu: " + str(exc))
+            m.update(status="blocked", message="Cannot save initial run state: " + str(exc))
             self.save(m)
             return
         m["attempts"].append(a)
         m["active_attempt"] = a["id"]
-        m["message"] = {"plan": "Připravuji plán a otázky.", "build": "Pracuji na úkolu: ",
-                        "review": "Modelové review úkolu: ", "final": "Závěrečné modelové review produktu."}[phase] + (task_id or "")
+        m["message"] = {"plan": "Preparing plan and questions.", "build": "Working on task: ",
+                        "review": "Model review of task: ", "final": "Final model review of product."}[phase] + (task_id or "")
         self.save(m)  # crash before launch is a retryable reserved attempt, never a duplicate
         try:
             self.studio.launch({"project": m.get("work_project", m["project"]), "task": self.prompt(m, a),
@@ -741,7 +718,7 @@ Při changes uveď konkrétní reprodukovatelné vady v summary.
 
     def advance_verification(self, m):
         if not m.get("verification_checks"):
-            m.update(status="awaiting_checks", message="Review je hotové. Zadej příkazy nezávislých kontrol, nebo výslovně převezmi výsledek ručně.")
+            m.update(status="awaiting_checks", message="Review complete. Provide commands for independent checks, or explicitly accept the result manually.")
             self.save(m)
             return
         key = m.get("verification_id")
@@ -755,16 +732,16 @@ Při changes uveď konkrétní reprodukovatelné vady v summary.
             if record["status"] == "passed":
                 try:
                     self.verify_delivery(m)
-                    m.update(status="ready", message="Nezávislé kontroly i review prošly. Připraveno k převzetí.")
+                    m.update(status="ready", message="Independent checks and review passed. Ready for acceptance.")
                 except Exception as exc:
                     m.update(status="blocked", resume_status="verifying", verification_id=None, message=str(exc))
             else:
-                reason = record.get("error", "Kontrola neprošla.")
+                reason = record.get("error", "Check failed.")
                 m["final_cycles"] += 1
                 log = "\n".join(c.get("log", "")[-6000:] for c in record["checks"][-2:])
-                m["tasks"][-1].update(status="pending", feedback=f"Nezávislá kontrola {key}: {reason}\n{log}")
+                m["tasks"][-1].update(status="pending", feedback=f"Independent check {key}: {reason}\n{log}")
                 m.update(status="blocked" if m["final_cycles"] >= 3 else "running", final_report=None,
-                         verification_id=None, message="Nezávislé kontroly vrátily opravu: " + reason)
+                         verification_id=None, message="Independent checks returned corrections: " + reason)
             self.save(m)
         elif not self.verifications.active() and not any(r["status"] in ACTIVE_RUN for r in self.studio.runs.values()):
             m["verification_id"] = self.verifications.start(m)
@@ -797,9 +774,9 @@ Při changes uveď konkrétní reprodukovatelné vady v summary.
         env = {**dotenv_values(fallback), **dotenv_values(self.studio.config.parent / ".env"), **os.environ}
         key = env.get("SERPER_API_KEY", "") or ""
         return {"web_search_configured": bool(key.strip()),
-                "search_status": "Nastavené přihlašování Serper; dostupnost nebyla živě ověřena."
-                if key.strip() else "Vyhledávání není nastavené (Serper). Dodej odkazy nebo nastav SERPER_API_KEY.",
-                "direct_fetch": True, "controller": "Studio na tomto počítači; musí zůstat spuštěné."}
+                "search_status": "Serper login configured; availability not live-verified."
+                if key.strip() else "Search not configured (Serper). Provide links or set SERPER_API_KEY.",
+                "direct_fetch": True, "controller": "Studio on this computer; it must remain running."}
 
     def close(self):
         self.stop_event.set()

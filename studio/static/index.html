@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="cs">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -10,68 +10,72 @@
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%238eebc4'/%3E%3Cpath d='M39 13 21 34h15l-11 17 22-23H31z' fill='%23111318'/%3E%3C/svg%3E"
     />
     <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="/office.css" />
     <script src="/missions.js" defer></script>
     <script src="/products.js" defer></script>
     <script src="/preview.js" defer></script>
     <script src="/companies.js" defer></script>
     <script src="/app.js" defer></script>
+    <script src="/help.js" defer></script>
+    <script src="/office.js" defer></script>
   </head>
   <body inert>
     <header class="topbar">
-      <a class="brand" href="/" aria-label="Switch Studio úvod"
+      <a class="brand" href="/" aria-label="Studio introduction"
         ><span class="brand-mark">ϟ</span
         ><strong>switch<span>studio</span></strong
         ><span class="local-tag">LOCAL</span></a
       >
       <div class="project-switch">
         <span class="icon" data-icon="folder"></span
-        ><select id="project-select" aria-label="Projekt"></select
+        ><select id="project-select" aria-label="Project"></select
         ><button
           id="open-project"
           class="icon-btn"
-          title="Otevřít projekt"
-          aria-label="Otevřít projekt"
+          title="Open project"
+          aria-label="Open project"
         >
           +
         </button>
       </div>
       <div class="top-actions">
-        <button id="flow-button" class="button flow-launch"><span data-icon="pulse"></span> Živá mapa</button>
-        <button id="approval-jump" class="button approval-jump" hidden>Čeká na tebe <span id="approval-count">0</span></button>
-        <button id="driver-button" class="button primary">Firma · Builder &amp; Driver</button>
-        <button id="products-button" class="button subtle"><span class="icon" data-icon="folder"></span> Produkty</button>
-        <button id="preview-button" class="button subtle"><span class="icon" data-icon="preview"></span> Náhled</button>
-        <span id="connection" class="connection"><i></i> Připojeno lokálně</span
+        <button id="office-button" class="button flow-launch">3D Office</button>
+        <button id="flow-button" class="button flow-launch"><span data-icon="pulse"></span> Live map</button>
+        <button id="approval-jump" class="button approval-jump" hidden>Waiting for you <span id="approval-count">0</span></button>
+        <button id="driver-button" class="button primary">Company · Builder &amp; Driver</button>
+        <button id="products-button" class="button subtle"><span class="icon" data-icon="folder"></span> Products</button>
+        <button id="preview-button" class="button subtle"><span class="icon" data-icon="preview"></span> Preview</button>
+        <span id="connection" class="connection"><i></i> Connected locally</span
         ><button id="missions-button" class="button subtle">
-          <span class="icon" data-icon="pulse"></span> Projekty AI
+          <span class="icon" data-icon="pulse"></span> AI Projects
         </button><button id="templates-button" class="button subtle">
-          <span class="icon" data-icon="team"></span> Šablony
+          <span class="icon" data-icon="team"></span> Templates
         </button><button id="models-button" class="button subtle">
-          <span class="icon" data-icon="sliders"></span> Modely
+          <span class="icon" data-icon="sliders"></span> Models
         </button>
       </div>
     </header>
     <div class="app-shell">
-      <nav class="rail" aria-label="Hlavní navigace">
+      <nav class="rail" aria-label="Main navigation">
         <button
           class="rail-btn active"
           data-view="files"
-          title="Soubory"
-          aria-label="Soubory"
+          title="Files"
+          aria-label="Files"
         >
           <span data-icon="files"></span></button
         ><button
           class="rail-btn"
           data-view="runs"
-          title="Historie úloh"
-          aria-label="Historie úloh"
+          title="Task history"
+          aria-label="Task history"
         >
           <span data-icon="history"></span></button
         ><button
           class="rail-btn"
           data-view="team"
-          title="Tým agentů"
-          aria-label="Tým agentů"
+          title="Agent team"
+          aria-label="Agent team"
         >
           <span data-icon="team"></span>
         </button>
@@ -79,28 +83,28 @@
         <button
           class="rail-btn"
           id="help-button"
-          title="Jak začít"
-          aria-label="Jak začít"
+          title="Getting started"
+          aria-label="Getting started"
         >
           <span data-icon="help"></span></button
-        ><span class="avatar">TY</span>
+        ><span class="avatar">YOU</span>
       </nav>
       <aside class="sidebar">
         <div class="panel-title">
-          <span id="sidebar-title">PRŮZKUMNÍK</span>
+          <span id="sidebar-title">EXPLORER</span>
           <div id="file-actions">
             <button
               id="new-file"
               class="icon-btn"
-              title="Nový soubor"
-              aria-label="Nový soubor"
+              title="New file"
+              aria-label="New file"
             >
               +</button
             ><button
               id="refresh-files"
               class="icon-btn"
-              title="Obnovit soubory"
-              aria-label="Obnovit soubory"
+              title="Refresh files"
+              aria-label="Refresh files"
             >
               ↻
             </button>
@@ -108,65 +112,65 @@
         </div>
         <div id="project-label" class="project-label"></div>
         <div id="sidebar-content" class="sidebar-content"></div>
-        <div class="sidebar-footer"><i></i> Tvůj projekt. Tvoje modely.</div>
+        <div class="sidebar-footer"><i></i> Your project. Your models.</div>
       </aside>
       <main class="workspace">
         <div class="editor-tabs">
           <div id="tab-name" class="editor-tab">
-            <span data-icon="spark"></span> Vítej ve Studiu
+            <span data-icon="spark"></span> Welcome to Studio
           </div>
           <div class="editor-actions">
             <span id="dirty-label"></span
             ><button
               id="reload-file"
               class="icon-btn hidden"
-              title="Načíst soubor z disku"
-              aria-label="Načíst soubor z disku"
+              title="Load file from disk"
+              aria-label="Load file from disk"
             >
               ↻</button
             ><button id="save-file" class="button small hidden">
-              Uložit <kbd>⌘ S</kbd>
+              Save <kbd>⌘ S</kbd>
             </button>
           </div>
         </div>
         <section id="welcome" class="welcome">
           <div class="welcome-top">
-            <span class="eyebrow"><i></i> TVOJE LOKÁLNÍ AI DÍLNA</span>
+            <span class="eyebrow"><i></i> YOUR LOCAL AI WORKSHOP</span>
             <div class="welcome-emblem">ϟ</div>
-            <h1>Od nápadu<br />k hotové práci<span>.</span></h1>
+            <h1>From idea<br />to finished work<span>.</span></h1>
             <p>
-              Kód, modely a agenti na jednom místě.<br />Otevři soubor nebo
-              zadej první úkol svému týmu.
+              Code, models, and agents in one place.<br />Open a file or
+              assign your first task to your team.
             </p>
             <div class="welcome-actions">
               <button id="welcome-task" class="button primary">
-                Zadat první úkol <span>↗</span></button
+                Assign first task <span>↗</span></button
               ><button id="welcome-project" class="button">
-                Otevřít projekt
+                Open project
               </button>
             </div>
           </div>
           <div class="starter-grid">
             <button
               class="starter"
-              data-prompt="Prozkoumej tento projekt. Popiš jeho strukturu, hlavní vstupní body a jak se spouští. Zatím nic neupravuj."
+              data-prompt="Explore this project. Describe its structure, main entry points, and how it runs. Do not make any changes yet."
             >
               <span data-icon="search"></span
-              ><strong>Zorientovat se v projektu</strong
-              ><small>Struktura, souvislosti a první kroky</small
+              ><strong>Get oriented in the project</strong
+              ><small>Structure, relationships, and first steps</small
               ><span class="arrow">↗</span></button
             ><button
               class="starter"
-              data-prompt="Proveď review kódu v tomto projektu. Najdi konkrétní chyby a navrhni opravy. U každé uveď soubor a závažnost. Zatím nic neupravuj."
+              data-prompt="Review code in this project. Find specific bugs and propose fixes. For each, specify the file and severity. Do not make any changes yet."
             >
-              <span data-icon="check"></span><strong>Zkontrolovat kód</strong
-              ><small>Chyby, jejich dopad a návrhy oprav</small
+              <span data-icon="check"></span><strong>Check code</strong
+              ><small>Bugs, their impact, and proposed fixes</small
               ><span class="arrow">↗</span>
             </button>
           </div>
           <div class="welcome-bottom">
             <span data-icon="shield"></span
-            ><span>Běží na tvém počítači. Model si vybíráš ty.</span
+            ><span>Runs on your computer. You choose the model.</span
             ><span class="version">STUDIO / 01</span>
           </div>
         </section>
@@ -179,26 +183,25 @@
               spellcheck="false"
               autocomplete="off"
               autocapitalize="off"
-              aria-label="Editor souboru"
+              aria-label="File editor"
             ></textarea>
           </div>
           <div class="editor-footer">
-            <span id="cursor-position">Řádek 1, sloupec 1</span
+            <span id="cursor-position">Row 1, column 1</span
             ><span>UTF-8 <b>·</b> <span id="file-type">Text</span></span>
           </div>
         </section>
         <section class="bottom-panel">
           <div class="bottom-tabs">
             <button class="bottom-tab active" data-bottom="activity">
-              Aktivita <span id="activity-count">0</span></button
-            ><button class="bottom-tab" data-bottom="outputs">Výstupy</button
-            ><button class="bottom-tab" data-bottom="log">Konzole</button
-            ><span id="run-status" class="status-chip">Připraveno</span>
+              Activity <span id="activity-count">0</span></button
+            ><button class="bottom-tab" data-bottom="outputs">Outputs</button
+            ><button class="bottom-tab" data-bottom="log">Console</button
+            ><span id="run-status" class="status-chip">Ready</span>
           </div>
           <div id="bottom-content" class="bottom-content">
             <div class="empty-inline">
-              <span data-icon="pulse"></span> Až spustíš úkol, uvidíš tady každý
-              krok.
+              <span data-icon="pulse"></span> Once you start the task, you’ll see each step here.
             </div>
           </div>
         </section>
@@ -207,68 +210,68 @@
         <div class="assistant-heading">
           <div>
             <span class="assistant-logo" data-icon="spark"></span
-            ><strong>Pracovní prostor agenta</strong>
+            ><strong>Agent workspace</strong>
           </div>
           <button
             id="new-task"
             class="icon-btn"
-            title="Nové zadání"
-            aria-label="Nové zadání"
+            title="New task brief"
+            aria-label="New task brief"
           >
             +
           </button>
         </div>
-        <section id="approval-inbox" class="approval-inbox" aria-label="Schválení a odpovědi" tabindex="-1">
-          <div class="approval-inbox-heading"><strong id="approval-heading">Schválení a odpovědi</strong><span id="approval-total">0</span></div>
-          <p id="approval-status" role="status" aria-live="polite">Kontroluji čekající požadavky…</p>
+        <section id="approval-inbox" class="approval-inbox" aria-label="Approvals and responses" tabindex="-1">
+          <div class="approval-inbox-heading"><strong id="approval-heading">Approvals and responses</strong><span id="approval-total">0</span></div>
+          <p id="approval-status" role="status" aria-live="polite">Checking pending requests…</p>
           <div id="approvals" class="approvals"></div>
         </section>
         <div class="agent-controls">
           <label class="field-label" for="model-select">MODEL</label
           ><select id="model-select"></select>
-          <div class="mode-switch" role="group" aria-label="Režim práce">
+          <div class="mode-switch" role="group" aria-label="Work mode">
             <button id="mode-react" class="selected" data-mode="react">
-              <span data-icon="spark"></span> Jeden agent</button
+              <span data-icon="spark"></span> Single agent</button
             ><button id="mode-team" data-mode="agent_team">
-              <span data-icon="team"></span> Tým agentů
+              <span data-icon="team"></span> Agent team
             </button>
           </div>
           <p id="mode-description" class="mode-description">
-            Jeden agent řeší zadání a používá nástroje.
+            One agent solves the task and uses tools.
           </p>
         </div>
         <div id="conversation" class="conversation">
           <div class="assistant-empty">
             <span class="empty-orbit" data-icon="spark"></span>
-            <h2>Na čem dnes pracujeme?</h2>
+            <h2>What are we working on today?</h2>
             <p>
-              Napiš, čeho chceš dosáhnout.<br />Průběh i výsledky uvidíš tady.
+              Describe what you want to achieve.<br />You’ll see progress and results here.
             </p>
             <div class="capability">
-              <span data-icon="files"></span> Čtení a úpravy souborů
+              <span data-icon="files"></span> Reading and editing files
             </div>
             <div class="capability">
-              <span data-icon="terminal"></span> Spouštění příkazů a testů
+              <span data-icon="terminal"></span> Running commands and tests
             </div>
             <div class="capability">
-              <span data-icon="team"></span> Delegování na pracovní agenty
+              <span data-icon="team"></span> Delegating to worker agents
             </div>
           </div>
         </div>
         <form id="task-form" class="composer">
-          <label class="sr-only" for="task-input">Zadání pro agenta</label
+          <label class="sr-only" for="task-input">Task brief for agent</label
           ><textarea
             id="task-input"
-            placeholder="Popiš úkol pro agenta…"
+            placeholder="Describe the task for the agent…"
             rows="3"
           ></textarea>
           <div class="composer-meta">
             <span id="context-file"
-              ><span data-icon="folder"></span> Kontext projektu</span
+              ><span data-icon="folder"></span> Project context</span
             ><span>⌘ ↵</span>
           </div>
           <div class="run-options">
-            <label title="Maximální počet kroků hlavního agenta"
+            <label title="Maximum number of main agent steps"
               >Limit
               <input
                 id="turn-limit"
@@ -277,18 +280,17 @@
                 max="200"
                 value="20"
               />
-              kroků</label
-            ><label title="Povolí agentovi akce bez jednotlivého potvrzování"
-              ><input id="auto-approve" type="checkbox" /> Povolit akce
-              automaticky</label
+              steps</label
+            ><label title="Allows the agent to perform actions without individual confirmation"
+              ><input id="auto-approve" type="checkbox" /> Enable automatic actions</label
             >
           </div>
           <div class="composer-footer">
-            <span><i></i> Nativní běh na tomto počítači</span
+            <span><i></i> Native run on this computer</span
             ><button id="stop-task" type="button" class="button danger hidden">
-              ■ Zastavit</button
+              ■ Stop</button
             ><button id="run-task" type="submit" class="button primary">
-              Spustit <span>↑</span>
+              Run <span>↑</span>
             </button>
           </div>
         </form>
@@ -297,179 +299,180 @@
     <footer class="statusbar">
       <span
         ><i></i> Switch Studio <b>/</b>
-        <span id="footer-project">Lokální prostředí</span></span
-      ><span id="footer-model">Načítání modelu…</span
-      ><span id="footer-hint">⌘ S uložit <b>·</b> ⌘ Enter spustit</span>
+        <span id="footer-project">Local environment</span></span
+      ><span id="footer-model">Loading model…</span
+      ><span id="footer-hint">⌘ S Save <b>·</b> ⌘ Enter Run</span>
     </footer>
     <dialog id="flow-dialog" aria-labelledby="flow-title">
-      <div class="dialog-heading"><div><span class="eyebrow">PRŮBĚH PRÁCE</span><h2 id="flow-title">Živá mapa</h2></div><button type="button" class="icon-btn close-dialog" aria-label="Zavřít živou mapu">×</button></div>
-      <div class="flow-toolbar"><label for="flow-mission">Realizace</label><select id="flow-mission"></select><button id="flow-follow" class="button small" type="button">Najít aktuální krok</button><span id="flow-sync" role="status">Načítám…</span></div>
+      <div class="dialog-heading"><div><span class="eyebrow">WORK PROGRESS</span><h2 id="flow-title">Live map</h2></div><button type="button" class="icon-btn close-dialog" aria-label="Close live map">×</button></div>
+      <div class="flow-toolbar"><label for="flow-mission">Execution</label><select id="flow-mission"></select><button id="flow-follow" class="button small" type="button">Find current step</button><span id="flow-sync" role="status">Loading…</span></div>
       <section id="flow-summary" aria-live="polite"></section>
-      <div class="flow-legend"><span class="flow-key active">Pracuje</span><span class="flow-key done">Ověřeno</span><span class="flow-key waiting">Čeká</span><span class="flow-key blocked">Překážka</span><span class="flow-key pending">Před námi</span><span>Šipky = skutečné návaznosti úkolů</span></div>
-      <div id="flow-canvas" tabindex="0" aria-label="Mapa návazností, posouvatelná vodorovně"></div>
-      <div class="flow-bottom"><section id="flow-detail" aria-label="Detail kroku"></section><section id="flow-activity" aria-label="Poslední události"></section></div>
+      <div class="flow-legend"><span class="flow-key active">Working</span><span class="flow-key done">Verified</span><span class="flow-key waiting">Pending</span><span class="flow-key blocked">Obstacle</span><span class="flow-key pending">Ahead</span><span>Arrows = actual task dependencies</span></div>
+      <div id="flow-canvas" tabindex="0" aria-label="Dependency map, horizontally scrollable"></div>
+      <div class="flow-bottom"><section id="flow-detail" aria-label="Step details"></section><section id="flow-activity" aria-label="Latest events"></section></div>
     </dialog>
     <dialog id="project-dialog">
       <form id="project-form">
         <div class="dialog-heading">
           <div>
-            <span class="eyebrow">PRACOVNÍ PROSTOR</span>
-            <h2>Otevřít projekt</h2>
+            <span class="eyebrow">WORKSPACE</span>
+            <h2>Open project</h2>
           </div>
           <button
             type="button"
             class="icon-btn close-dialog"
-            aria-label="Zavřít"
+            aria-label="Close"
           >
             ×
           </button>
         </div>
-        <p>Zadej cestu ke složce na tomto počítači.</p>
+        <p>Enter the path to a folder on this computer.</p>
         <label
-          >Složka projektu<input
+          >Project folder<input
             id="project-path"
             placeholder="/home/user/projects/my-project"
             required
         /></label>
         <div class="dialog-footer">
-          <button class="button primary" type="submit">Otevřít složku →</button>
+          <button class="button primary" type="submit">Open folder →</button>
         </div>
       </form>
     </dialog>
     <dialog id="file-dialog">
       <form id="file-form">
         <div class="dialog-heading">
-          <h2>Nový soubor</h2>
+          <h2>New file</h2>
           <button
             type="button"
             class="icon-btn close-dialog"
-            aria-label="Zavřít"
+            aria-label="Close"
           >
             ×
           </button>
         </div>
         <label
-          >Cesta v projektu<input
+          >Path within project<input
             id="new-file-path"
             placeholder="src/example.py"
             required
         /></label>
         <div class="dialog-footer">
           <button class="button primary" type="submit">
-            Vytvořit a otevřít
+            Create and open
           </button>
         </div>
       </form>
     </dialog>
     <dialog id="preview-dialog" class="preview-dialog" aria-labelledby="preview-title">
-      <div class="dialog-heading"><div><span class="eyebrow">TVŮJ WEB V AKCI</span><h2 id="preview-title">Náhled aplikace</h2></div><button class="icon-btn close-dialog" aria-label="Zavřít náhled">×</button></div>
+      <div class="dialog-heading"><div><span class="eyebrow">YOUR WEB IN ACTION</span><h2 id="preview-title">App preview</h2></div><button class="icon-btn close-dialog" aria-label="Close preview">×</button></div>
       <p id="preview-project"></p>
       <form id="preview-form" class="preview-controls">
-        <label>Vstupní HTML soubor<input id="preview-entry" required placeholder="web-preview/index.html nebo dist/index.html" /></label>
-        <button id="preview-start" class="button primary" type="submit">Spustit náhled</button>
-        <button id="preview-stop" class="button" type="button" disabled>Zastavit</button>
+        <label>Input HTML file<input id="preview-entry" required placeholder="web-preview/index.html or dist/index.html" /></label>
+        <button id="preview-start" class="button primary" type="submit">Start preview</button>
+        <button id="preview-stop" class="button" type="button" disabled>Stop</button>
       </form>
       <div class="preview-toolbar">
-        <span id="preview-status" role="status" aria-live="polite">Vyber uložený HTML soubor.</span>
-        <label class="preview-auto"><input id="preview-auto" type="checkbox" checked /> Obnovovat po změně</label>
-        <select id="preview-size" aria-label="Šířka náhledu"><option value="desktop">Počítač</option><option value="mobile">Mobil · 390 px</option></select>
-        <button id="preview-refresh" class="button small" disabled>Obnovit</button>
-        <a id="preview-external" class="button small hidden" target="_blank" rel="noopener noreferrer">Otevřít ↗</a>
+        <span id="preview-status" role="status" aria-live="polite">Select a saved HTML file.</span>
+        <label class="preview-auto"><input id="preview-auto" type="checkbox" checked /> Refresh on change</label>
+        <select id="preview-size" aria-label="Preview width"><option value="desktop">Computer</option><option value="mobile">Mobile · 390 px</option></select>
+        <button id="preview-refresh" class="button small" disabled>Refresh</button>
+        <a id="preview-external" class="button small hidden" target="_blank" rel="noopener noreferrer">Open ↗</a>
       </div>
       <div id="preview-stage" class="preview-stage">
-        <div id="preview-empty" class="preview-empty"><span data-icon="preview"></span><h3>Uvidíš, co jsi postavil.</h3><p>Spusť vlastní HTML web nebo si vytvoř první stránku.</p>
-          <form id="preview-starter-form"><label>Nová složka pro web<input id="preview-folder" value="web-preview" required pattern="[A-Za-z0-9_-]{1,80}" maxlength="80" /></label><button id="preview-starter" class="button primary">Vytvořit startovací web</button></form>
+        <div id="preview-empty" class="preview-empty"><span data-icon="preview"></span><h3>You’ll see what you built.</h3><p>Launch your own HTML website or create your first page.</p>
+          <form id="preview-starter-form"><label>New folder for the website<input id="preview-folder" value="web-preview" required pattern="[A-Za-z0-9_-]{1,80}" maxlength="80" /></label><button id="preview-starter" class="button primary">Create starter website</button></form>
         </div>
-        <iframe id="preview-frame" class="hidden" title="Živý náhled vytvořeného webu" sandbox="allow-scripts allow-same-origin allow-forms" referrerpolicy="no-referrer"></iframe>
+        <iframe id="preview-frame" class="hidden" title="Live preview of the created website" sandbox="allow-scripts allow-same-origin allow-forms" referrerpolicy="no-referrer"></iframe>
       </div>
-      <div class="preview-footer"><p>HTML/CSS/JS a hotové statické buildy. Externí CDN, backend a npm se zde nespouštějí. Změny nejdřív ulož v editoru.</p><button id="preview-edit" class="button small" disabled>Upravit soubor</button></div>
+      <div class="preview-footer"><p>HTML/CSS/JS and ready static builds. External CDN, backend, and npm are not executed here. Save changes in the editor first.</p><button id="preview-edit" class="button small" disabled>Edit file</button></div>
     </dialog>
     <dialog id="products-dialog" class="missions-dialog" aria-labelledby="products-title">
-      <div class="dialog-heading"><div><span class="eyebrow">VÝVOJ A DALŠÍ ROZVOJ</span><h2 id="products-title">Produkty</h2></div><button class="icon-btn close-dialog" aria-label="Zavřít produkty">×</button></div>
+      <div class="dialog-heading"><div><span class="eyebrow">DEVELOPMENT AND FURTHER DEVELOPMENT</span><h2 id="products-title">Products</h2></div><button class="icon-btn close-dialog" aria-label="Close products">×</button></div>
       <p id="products-health" class="missions-note"></p>
-      <details id="product-new" class="product-form-panel"><summary>Nový produkt</summary>
+      <details id="product-new" class="product-form-panel"><summary>New product</summary>
         <form id="product-form">
-          <div class="mission-fields"><label>Název<input id="product-title" required maxlength="160" /></label><label>Typ<select id="product-kind"><option value="web">Web a aplikace</option><option value="service">API a služba</option><option value="automation">Automatizace</option><option value="data">Data a analytika</option><option value="content">Obsah a dokumentace</option><option value="custom">Vlastní digitální produkt</option></select></label></div>
-          <label>Co stavíme, pro koho a proč?<textarea id="product-goal" required rows="4" maxlength="12000" placeholder="Popiš produkt, jeho uživatele a očekávaný výsledek."></textarea></label>
-          <label>Trvalá kritéria produktu, každé na řádek<textarea id="product-criteria" required rows="3" placeholder="Tato kritéria musí splnit i každá další verze."></textarea></label>
-          <label>Příkazy nezávislých kontrol, každý na řádek<textarea id="product-checks" rows="2" placeholder="npm test&#10;npm run build"></textarea></label>
-          <p class="missions-note">Studio spustí tyto příkazy samo v pracovní složce a uloží výsledek. Bez příkazů bude vyžadováno výslovné ruční převzetí.</p>
-          <div class="mission-fields"><label>Podklady a odkazy<textarea id="product-sources" rows="2" maxlength="12000"></textarea></label><label>Omezení a věci mimo rozsah<textarea id="product-constraints" rows="2" maxlength="12000"></textarea></label></div>
-          <div class="mission-fields"><label>Model pro realizaci<select id="product-profile"></select></label><label>Model pro review<select id="product-review-profile"></select></label></div>
-          <label>Výběr dalšího úkolu (volitelné)<select id="product-decision-profile"><option value="">Pořadí plánu · bez dalšího modelu</option></select></label>
-          <div class="mission-limits"><label>Dní na realizaci<input id="product-days" type="number" min="1" max="30" value="7" required /></label><label>Běhů na realizaci<input id="product-attempts" type="number" min="2" max="1000" value="30" required /></label><label>Minut na běh<input id="product-minutes" type="number" min="1" max="360" value="30" required /></label><label>Kroků na běh<input id="product-turns" type="number" min="1" max="200" value="40" required /></label></div>
-          <label class="mission-permission"><input id="product-auto" type="checkbox" /> Povolit nástroje bez jednotlivého schvalování pro realizace tohoto produktu</label>
-          <p class="missions-note">Typ produktu pomáhá zadání; není zárukou dodání. Nasazení a přístupy k externím službám je třeba připravit zvlášť. Nativní agent pracuje s oprávněními uživatele. Limity běhů nejsou peněžní rozpočet.</p>
-          <button class="button primary" type="submit">Založit produkt</button>
+          <div class="mission-fields"><label>Name<input id="product-title" required maxlength="160" /></label><label>Type<select id="product-kind"><option value="web">Websites and apps</option><option value="service">API and service</option><option value="automation">Automation</option><option value="data">Data and analytics</option><option value="content">Content and documentation</option><option value="custom">Custom digital product</option></select></label></div>
+          <label>What are we building, for whom, and why?<textarea id="product-goal" required rows="4" maxlength="12000" placeholder="Describe the product, its users, and the expected outcome."></textarea></label>
+          <label>Permanent product criteria, one per line<textarea id="product-criteria" required rows="3" placeholder="Each subsequent version must also meet these criteria."></textarea></label>
+          <label>Commands for independent checks, one per line<textarea id="product-checks" rows="2" placeholder="npm test&#10;npm run build"></textarea></label>
+          <p class="missions-note">Studio will run these commands automatically in the working directory and save the result. Without commands, explicit manual acceptance will be required.</p>
+          <div class="mission-fields"><label>Context and links<textarea id="product-sources" rows="2" maxlength="12000"></textarea></label><label>Limitations and out-of-scope items<textarea id="product-constraints" rows="2" maxlength="12000"></textarea></label></div>
+          <div class="mission-fields"><label>Worker model<select id="product-profile"></select></label><label>Review model<select id="product-review-profile"></select></label></div>
+          <label>Select next task (optional)<select id="product-decision-profile"><option value="">Plan order · no further model</option></select></label>
+          <div class="mission-limits"><label>Days for execution<input id="product-days" type="number" min="1" max="30" value="7" required /></label><label>Runs for execution<input id="product-attempts" type="number" min="2" max="1000" value="30" required /></label><label>Minutes for run<input id="product-minutes" type="number" min="1" max="360" value="30" required /></label><label>Steps per run<input id="product-turns" type="number" min="1" max="200" value="40" required /></label></div>
+          <label class="mission-permission"><input id="product-auto" type="checkbox" /> Enable tools without individual approval for executions of this product</label>
+          <p class="missions-note">Product type helps define the task brief; it is not a guarantee of delivery. Deployment and access to external services must be prepared separately. The native agent operates with the user’s permissions. Run limits are not a monetary budget.</p>
+          <button class="button primary" type="submit">Create product</button>
         </form>
       </details>
-      <div class="missions-layout"><nav id="product-list" aria-label="Produkty v této složce"></nav><section id="product-detail" aria-live="polite"></section></div>
+      <div class="missions-layout"><nav id="product-list" aria-label="Products in this folder"></nav><section id="product-detail" aria-live="polite"></section></div>
     </dialog>
     <dialog id="missions-dialog" class="missions-dialog" aria-labelledby="missions-title">
-      <div class="dialog-heading"><div><span class="eyebrow">OD ZADÁNÍ K PRODUKTU</span><h2 id="missions-title">Dlouhodobé projekty AI</h2></div><button class="icon-btn close-dialog" aria-label="Zavřít">×</button></div>
-      <p>Nejdřív plán a otázky. Pak realizace, samostatné review a ověření produktu. Postup se ukládá průběžně.</p>
+      <div class="dialog-heading"><div><span class="eyebrow">FROM TASK BRIEF TO PRODUCT</span><h2 id="missions-title">Long-term AI projects</h2></div><button class="icon-btn close-dialog" aria-label="Close">×</button></div>
+      <p>First, plan and ask questions. Then execution, independent review, and product verification. The process is saved continuously.</p>
       <p id="missions-health" class="missions-note" role="status"></p>
-      <details id="mission-new"><summary>+ Nový dlouhodobý projekt</summary>
+      <details id="mission-new"><summary>+ New long-term project</summary>
         <form id="mission-form">
-          <label>Název projektu<input id="mission-title" required maxlength="160" placeholder="Například: firemní web s poptávkovým formulářem" /></label>
-          <label>Jaký finální produkt chceš?<textarea id="mission-goal" required rows="3" maxlength="12000" placeholder="Pro koho je určený, co má dělat a kde mají být výstupy…"></textarea></label>
-          <label>Podle čeho poznáme, že je hotovo? Jedna podmínka na řádek.<textarea id="mission-criteria" required rows="3" placeholder="Web lze spustit podle README.&#10;Formulář ověřuje povinná pole."></textarea></label>
-          <label>Příkazy nezávislých kontrol, každý na řádek<textarea id="mission-checks" rows="2" placeholder="npm test&#10;npm run build"></textarea></label>
-          <div class="mission-fields"><label>Podklady a odkazy<textarea id="mission-sources" rows="3" placeholder="Cesty k podkladům a veřejné URL. Nevkládej hesla ani tokeny."></textarea></label>
-          <label>Omezení a rozhodnutí<textarea id="mission-constraints" rows="3" placeholder="Technologie, rozsah, věci mimo zadání…"></textarea></label></div>
-          <div class="mission-fields"><label>Model pro plán a práci<select id="mission-profile"></select></label><label>Model pro nezávislé review<select id="mission-review-profile"></select></label></div>
-          <label>Výběr dalšího úkolu (volitelné)<select id="mission-decision-profile"><option value="">Pořadí plánu · bez dalšího modelu</option></select></label>
-          <div class="mission-limits"><label>Limit dní<input id="mission-days" type="number" min="1" max="30" value="7" required /></label><label>Celkem běhů<input id="mission-attempts" type="number" min="2" max="1000" value="100" required /></label><label>Minut na běh<input id="mission-minutes" type="number" min="1" max="360" value="30" required /></label><label>Kroků na běh<input id="mission-turns" type="number" min="1" max="200" value="40" required /></label></div>
-          <label class="mission-permission"><input id="mission-auto" type="checkbox" /> Povolit akce bez jednotlivého schvalování</label>
-          <p class="missions-note">Bez této volby pracovníci čekají na schválení nástrojů ve Studiu. Nativní backend má oprávnění tohoto uživatele; role nejsou sandbox. Limity běhů nejsou peněžní rozpočet. Použij jen modely, jejichž spotřebu chceš povolit.</p>
-          <div class="dialog-footer"><button class="button primary" type="submit">Uložit zadání</button></div>
+          <label>Project name<input id="mission-title" required maxlength="160" placeholder="E.g., corporate website with inquiry form" /></label>
+          <label>What final product do you want?<textarea id="mission-goal" required rows="3" maxlength="12000" placeholder="Who is it for, what should it do, and where should outputs be delivered…"></textarea></label>
+          <label>How do we know it’s complete? One condition per line.<textarea id="mission-criteria" required rows="3" placeholder="Website can be launched per README.
+Form validates required fields."></textarea></label>
+          <label>Commands for independent checks, one per line<textarea id="mission-checks" rows="2" placeholder="npm test&#10;npm run build"></textarea></label>
+          <div class="mission-fields"><label>Context and links<textarea id="mission-sources" rows="3" placeholder="Paths to resources and public URLs. Do not include passwords or tokens."></textarea></label>
+          <label>Limitations and decisions<textarea id="mission-constraints" rows="3" placeholder="Technologies, scope, out-of-scope items…"></textarea></label></div>
+          <div class="mission-fields"><label>Model for planning and work<select id="mission-profile"></select></label><label>Model for independent review<select id="mission-review-profile"></select></label></div>
+          <label>Select next task (optional)<select id="mission-decision-profile"><option value="">Plan order · no further model</option></select></label>
+          <div class="mission-limits"><label>Day limit<input id="mission-days" type="number" min="1" max="30" value="7" required /></label><label>Total runs<input id="mission-attempts" type="number" min="2" max="1000" value="100" required /></label><label>Minutes for run<input id="mission-minutes" type="number" min="1" max="360" value="30" required /></label><label>Steps per run<input id="mission-turns" type="number" min="1" max="200" value="40" required /></label></div>
+          <label class="mission-permission"><input id="mission-auto" type="checkbox" /> Enable actions without individual approval</label>
+          <p class="missions-note">Without this option, workers wait for tool approval in Studio. The native backend has this user’s permissions; roles are not sandboxed. Run limits are not a monetary budget. Only use models whose consumption you wish to allow.</p>
+          <div class="dialog-footer"><button class="button primary" type="submit">Save task brief</button></div>
         </form>
       </details>
-      <div class="missions-layout"><nav id="mission-list" aria-label="Dlouhodobé projekty"></nav><section id="mission-detail" aria-live="polite"></section></div>
+      <div class="missions-layout"><nav id="mission-list" aria-label="Long-term projects"></nav><section id="mission-detail" aria-live="polite"></section></div>
     </dialog>
     <dialog id="driver-dialog" class="missions-dialog driver-dialog" aria-labelledby="driver-title">
-      <div class="dialog-heading"><div><span class="eyebrow">COMPANY BUILDER &amp; DRIVER</span><h2 id="driver-title">Tvoje společnost, projekty a pracovní smyčka</h2></div><button class="icon-btn close-dialog" aria-label="Zavřít">×</button></div>
-      <p>Stanov cíle, připoj projekty a zapni řízenou práci oddělení. Nejasnosti a externí kroky přijdou do fronty rozhodnutí.</p>
+      <div class="dialog-heading"><div><span class="eyebrow">COMPANY BUILDER &amp; DRIVER</span><h2 id="driver-title">Your company, projects, and workflow loop</h2></div><button class="icon-btn close-dialog" aria-label="Close">×</button></div>
+      <p>Set goals, connect projects, and enable managed departmental work. Unclear items and external steps go into the decision queue.</p>
       <p id="driver-health" class="missions-note" role="status"></p>
-      <button id="driver-refresh" class="button">Obnovit přehled a formuláře</button>
-      <details id="driver-new"><summary>+ Založit společnost</summary><form id="driver-create"></form></details>
-      <div class="missions-layout"><nav id="driver-list" aria-label="Společnosti"></nav><section id="driver-detail" aria-live="polite"></section></div>
+      <button id="driver-refresh" class="button">Refresh overview and forms</button>
+      <details id="driver-new"><summary>+ Create company</summary><form id="driver-create"></form></details>
+      <div class="missions-layout"><nav id="driver-list" aria-label="Companies"></nav><section id="driver-detail" aria-live="polite"></section></div>
     </dialog>
     <dialog id="company-dialog" class="company-dialog" aria-labelledby="company-title">
       <div class="dialog-heading">
-        <div><span class="eyebrow">ŠABLONA ORGANIZACE</span><h2 id="company-title">AI Build Company</h2></div>
-        <button class="icon-btn close-dialog" aria-label="Zavřít">×</button>
+        <div><span class="eyebrow">ORGANIZATION TEMPLATE</span><h2 id="company-title">AI Build Company</h2></div>
+        <button class="icon-btn close-dialog" aria-label="Close">×</button>
       </div>
-      <p>Tvůj tým pro vývoj digitálních produktů. Rozklikni roli a prohlédni si její odpovědnosti a výstupy.</p>
+      <p>Your team for developing digital products. Expand roles to review their responsibilities and outputs.</p>
       <div id="company-summary" class="company-summary"></div>
-      <div class="company-owner">Ty · cíle, rozhodnutí a převzetí výsledku</div>
-      <div class="company-hierarchy">CEO → vedoucí oddělení → specialisté</div>
+      <div class="company-owner">You · goals, decisions, and acceptance of outcomes</div>
+      <div class="company-hierarchy">CEO → department head → specialists</div>
       <div id="company-departments" class="company-departments"></div>
-      <h3>Od zadání k výsledku</h3>
+      <h3>From task brief to outcome</h3>
       <ol id="company-workflow" class="company-workflow"></ol>
-      <details class="company-rules"><summary>Pravidla spolupráce</summary><ul id="company-rules"></ul></details>
+      <details class="company-rules"><summary>Rules of Collaboration</summary><ul id="company-rules"></ul></details>
       <p id="company-notice" class="company-notice"></p>
       <div class="company-project"><strong id="company-project"></strong><p id="company-status" role="status"></p></div>
       <div class="dialog-footer company-actions">
-        <button id="company-open" class="button">Otevřít soubor</button>
-        <button id="company-context" class="button">Přidat k zadání</button>
-        <button id="company-install" class="button primary">Uložit do projektu</button>
+        <button id="company-open" class="button">Open File</button>
+        <button id="company-context" class="button">Add to Task Brief</button>
+        <button id="company-install" class="button primary">Save to project</button>
       </div>
     </dialog>
     <dialog id="models-dialog" class="wide-dialog">
       <div class="dialog-heading">
         <div>
-          <span class="eyebrow">PŘIPOJENÍ</span>
-          <h2>Tvoje modely</h2>
+          <span class="eyebrow">CONNECTIONS</span>
+          <h2>Your models</h2>
         </div>
-        <button class="icon-btn close-dialog" aria-label="Zavřít">×</button>
+        <button class="icon-btn close-dialog" aria-label="Close">×</button>
       </div>
       <p>
-        Interní modely fungují samostatně. Cloudový účet můžeš přidat volitelně.
+        Internal models work independently. You can optionally add a cloud account.
       </p>
-      <section class="oauth-section" aria-label="Volitelná připojení účtů">
+      <section class="oauth-section" aria-label="Optional Account Connections">
         <div class="oauth-heading">
-          <strong>Účty · volitelné</strong><span>Bez kopírování API klíčů</span>
+          <strong>Accounts · Optional</strong><span>No API Key Copying Required</span>
         </div>
         <div class="oauth-actions">
           <button class="button" id="oauth-chatgpt">+ ChatGPT</button>
@@ -480,31 +483,31 @@
           <p id="oauth-status" role="status" aria-live="polite"></p>
           <div class="oauth-actions">
             <button class="button" id="oauth-login">
-              Přihlásit v prohlížeči
+              Log in in Browser
             </button>
             <a
               id="oauth-link"
               class="button hidden"
               target="_blank"
               rel="noopener noreferrer"
-              >Otevřít přihlášení ↗</a
+              >Open Login ↗</a
             >
             <button class="button hidden" id="oauth-cancel">
-              Zrušit přihlášení
+              Log Out
             </button>
             <button class="button subtle" id="oauth-refresh">
-              Obnovit stav
+              Refresh Status
             </button>
           </div>
           <div id="oauth-model-picker" class="oauth-actions hidden">
             <label
-              >Dostupný model<select
+              >Available Model<select
                 id="oauth-models"
-                aria-label="Dostupný cloudový model"
+                aria-label="Available Cloud Model"
               ></select
             ></label>
             <button class="button primary" id="oauth-add">
-              Přidat vybraný model
+              Add Selected Model
             </button>
           </div>
         </div>
@@ -512,24 +515,24 @@
       <div class="models-layout">
         <div>
           <div id="models-list"></div>
-          <button id="add-model" class="button full">+ Přidat model</button>
+          <button id="add-model" class="button full">+ Add Model</button>
         </div>
         <div id="oauth-model-detail" class="hidden">
           <h3 id="oauth-model-name"></h3>
           <p id="oauth-model-info"></p>
           <p class="small-note">
-            Odstranění profilu ze Studia neodhlásí tvůj účet v ostatních
-            aplikacích. Výchozí interní model zůstává zachovaný.
+            Removing a profile from Studio does not log you out of your account in other
+            applications. The default internal model remains unchanged.
           </p>
-          <button id="oauth-remove" class="button">Odebrat ze Studia</button>
+          <button id="oauth-remove" class="button">Remove from Studio</button>
         </div>
         <form id="model-form">
           <label
-            >Název profilu<input name="id" required placeholder="interni-coder"
+            >Profile Name<input name="id" required placeholder="local-coder"
           /></label>
           <div class="form-row">
             <label
-              >Protokol<select name="protocol">
+              >Protocol<select name="protocol">
                 <option value="chat_completions">Chat Completions</option>
                 <option value="responses">Responses</option>
                 <option value="anthropic">Anthropic</option>
@@ -538,27 +541,27 @@
             ><label
               >Server<select name="chat_dialect">
                 <option value="ollama">Ollama</option>
-                <option value="openai">OpenAI kompatibilní</option>
+                <option value="openai">OpenAI Compatible</option>
               </select></label
             >
           </div>
           <label
-            >Adresa API<input
+            >API URL<input
               name="base_url"
               required
               placeholder="http://localhost:11434/v1" /></label
           ><label
-            >Název modelu<input name="model" required placeholder="qwen3.8:27b"
+            >Model Name<input name="model" required placeholder="qwen3.8:27b"
           /></label>
           <div class="form-row">
             <label
-              >Kontext<input
+              >Context<input
                 name="context_window"
                 type="number"
                 value="32768"
                 required /></label
             ><label
-              >Max. výstup<input
+              >Max Output<input
                 name="max_output_tokens"
                 type="number"
                 value="4096"
@@ -567,53 +570,62 @@
           </div>
           <div class="form-row">
             <label
-              >Přihlášení<select name="auth">
-                <option value="none">Bez klíče (interní)</option>
-                <option value="env">Klíč z prostředí</option>
+              >Login<select name="auth">
+                <option value="none">No Key (Internal)</option>
+                <option value="env">Key from Environment</option>
               </select></label
             ><label
-              >Proměnná s API klíčem<input
+              >API Key Environment Variable<input
                 name="api_key_env"
                 placeholder="INTERNAL_API_KEY"
             /></label>
           </div>
           <p class="small-note">
-            Klíče se zadávají přes prostředí nebo .env. Přiřazení různých modelů
-            jednotlivým rolím bude další rozšíření.
+            Keys are provided via environment variables or .env files. Assigning different models
+            to specific roles is a future enhancement.
           </p>
           <div id="probe-result" role="status"></div>
           <div class="dialog-footer">
             <button id="probe-model" type="button" class="button">
-              Uložit a ověřit</button
-            ><button class="button primary" type="submit">Uložit model</button>
+              Save and Verify</button
+            ><button class="button primary" type="submit">Save Model</button>
           </div>
         </form>
       </div>
     </dialog>
+
+    <dialog id="office-dialog" aria-labelledby="office-title">
+      <div class="dialog-heading office-heading"><div><span class="eyebrow">YOUR WORK, IN ONE PLACE</span><h2 id="office-title">Agent office</h2></div><button class="icon-btn close-dialog" aria-label="Close office">×</button></div>
+      <div class="office-topline"><label>Company workspace<select id="office-company"><option value="">All workspaces</option></select></label><div class="office-metrics"><div><strong id="office-active-count">0</strong><small>ACTIVE NOW</small></div><div><strong id="office-attention-count">0</strong><small>NEEDS ATTENTION</small></div><div><strong id="office-done-count">0</strong><small>ACCEPTED</small></div></div><button id="office-layout" class="button">List view</button><button id="office-refresh" class="button">Refresh</button></div>
+      <div class="office-layout"><section class="office-visual" aria-label="Three-dimensional office"><div id="office-stage" class="office-stage"><div id="office-world" class="office-world" aria-label="Department desks"></div><div id="office-empty-state" class="office-empty-overlay">The office is ready. Create a company task or start an AI project to see real work at these desks.</div></div>
+      <div class="office-camera"><button id="office-turn-left" class="button" aria-label="Rotate office left">↶</button><button id="office-turn-right" class="button" aria-label="Rotate office right">↷</button><button id="office-zoom-out" class="button" aria-label="Zoom office out">−</button><span id="office-camera-value" class="office-camera-value">100%</span><button id="office-zoom-in" class="button" aria-label="Zoom office in">+</button><button id="office-reset" class="button">Reset camera</button><span class="office-camera-hint">Drag the floor to rotate · Select a desk for details</span></div>
+      <div class="office-legend"><span class="working">Working / review / checks</span><span class="waiting">Waiting</span><span class="blocked">Blocked</span><span class="done">Accepted / finished</span><span>Queued / paused</span></div></section>
+      <aside class="office-side"><section id="office-detail" class="office-detail" aria-label="Selected task details"></section><div class="office-roster-heading"><h3 id="office-roster-title">All work</h3><button id="office-clear-filter" class="button small" hidden>All departments</button></div><div id="office-roster" class="office-roster" aria-label="All office tasks"></div></aside></div>
+      <footer class="office-footer"><p>One seat represents a recorded task, not an extra worker. Up to four priority tasks appear per department; the list contains all tasks. Movement requires recent run activity. The Company Driver currently shares one worker slot.</p><span id="office-sync" class="office-sync" role="status">Connecting…</span></footer>
+    </dialog>
     <dialog id="help-dialog">
       <div class="dialog-heading">
-        <h2>Začni třemi kroky</h2>
-        <button class="icon-btn close-dialog" aria-label="Zavřít">×</button>
+        <h2>Start with Three Steps</h2>
+        <button class="icon-btn close-dialog" aria-label="Close">×</button>
       </div>
       <ol class="help-steps">
         <li>
-          <strong>Otevři projekt.</strong> Vyber jeho složku přes tlačítko +
-          nahoře.
+          <strong>Open Project.</strong> Select its folder using the +
+          button at the top.
         </li>
         <li>
-          <strong>Vyber model a napiš úkol.</strong> Jeden agent pracuje přímo,
-          tým deleguje na pracovníky.
+          <strong>Select a model and write a task.</strong> One agent works directly,
+          a team delegates to workers.
         </li>
         <li>
-          <strong>Sleduj a schvaluj práci.</strong> Návrhy akcí, výsledky a
-          soubory najdeš v tomto okně.
+          <strong>Monitor and approve work.</strong> Action suggestions, results, and
+          files are found in this window.
         </li>
       </ol>
       <p class="small-note">
-        Nativní příkazy běží s tvými oprávněními. GUI dovoluje jednu úlohu
-        současně. Soubory se neukládají automaticky. Týmový režim na Qwenu ještě
-        nemá ověřené spolehlivé dokončení; vnořená oddělení zatím nejsou
-        implementovaná.
+        Native commands run with your permissions. The GUI allows only one task at a time.
+        Files are not saved automatically. Team mode on Qwen does not yet have verified reliable completion;
+        nested separations are not yet implemented.
       </p>
     </dialog>
     <div id="toast" role="status" class="toast hidden"></div>

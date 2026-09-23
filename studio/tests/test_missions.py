@@ -13,12 +13,12 @@ from studio.server import Studio, atomic_json, write_config
 
 
 def plan_task(key="one", deps=None):
-    return {"id": key, "title": key, "instructions": "Vytvoř deliverable.txt a zkontroluj obsah.",
-            "depends_on": deps or [], "criteria": ["Soubor obsahuje OK."]}
+    return {"id": key, "title": key, "instructions": "Create deliverable.txt and check its content.",
+            "depends_on": deps or [], "criteria": ["File contains OK."]}
 
 
-def report(status="done", criterion="Soubor obsahuje OK."):
-    return {"status": status, "summary": "Obsah ověřen.", "artifacts": ["deliverable.txt"],
+def report(status="done", criterion="File contains OK."):
+    return {"status": status, "summary": "Content verified.", "artifacts": ["deliverable.txt"],
             "checks": [{"criterion": criterion, "passed": True, "evidence": "read_file: OK"}]}
 
 
@@ -56,8 +56,8 @@ class MissionTests(unittest.TestCase):
         self.studio.runs[key]["status"] = "cancelled"
 
     def create(self, **kw):
-        return self.controller.create({"project": self.pid, "title": "Pilot", "goal": "Vytvoř ověřený soubor.",
-            "criteria": ["Produkt lze přečíst."], "profile": "coder", "review_profile": "reviewer", "isolated": False,
+        return self.controller.create({"project": self.pid, "title": "Pilot", "goal": "Create verified file.",
+            "criteria": ["Product is readable."], "profile": "coder", "review_profile": "reviewer", "isolated": False,
             "verification_checks": [{"argv": [sys.executable, "-c", "from pathlib import Path; assert Path('deliverable.txt').read_text().startswith('OK')"]}], **kw})
 
     def test_runtime_settings_require_stopped_worker_and_preserve_deadline(self):
@@ -74,7 +74,7 @@ class MissionTests(unittest.TestCase):
         self.assertEqual(m["attempts"], before["attempts"])
         self.assertEqual(m["review_profile"], "coder")
         self.assertEqual(m["attempt_minutes"], 10)
-        with self.assertRaisesRegex(ValueError, "dostupný model"):
+        with self.assertRaisesRegex(ValueError, "available model"):
             self.controller.action({"id": self.key, "action": "runtime_settings", "profile": "nonexistent"})
 
     def start(self, **kw):
@@ -112,7 +112,7 @@ class MissionTests(unittest.TestCase):
         self.begin_build()
         self.finish(report())
         self.finish(report("pass"))
-        return self.finish(report("pass", "Produkt lze přečíst."))
+        return self.finish(report("pass", "Product is readable."))
 
     def test_full_lifecycle_has_separate_review_and_survives_restart(self):
         m = self.deliver()
@@ -131,7 +131,7 @@ class MissionTests(unittest.TestCase):
     def test_late_edit_prevents_acceptance(self):
         self.deliver()
         (self.project / "deliverable.txt").write_text("changed")
-        with self.assertRaisesRegex(ValueError, "změnil"):
+        with self.assertRaisesRegex(ValueError, "changed"):
             self.controller.action({"id": self.key, "action": "accept"})
         self.controller.action({"id": self.key, "action": "recheck"})
         self.controller.tick()
@@ -144,7 +144,7 @@ class MissionTests(unittest.TestCase):
         m = self.finish({'status': 'plan', 'tasks': [task], 'questions': []})
         self.assertEqual(m['tasks'], [])
         self.assertNotEqual(m['status'], 'awaiting_plan')
-        self.assertIn('vlastní plánovací report', m['message'])
+        self.assertIn("own planning report", m['message'])
 
     def test_once_serialized_report_is_validated_without_losing_original_evidence(self):
         self.start()
@@ -212,13 +212,13 @@ class MissionTests(unittest.TestCase):
         self.assertEqual(revised["evidence"], m["evidence"])
         self.assertEqual(revised["plan_revisions"][0]["before"]["criteria"],m["tasks"][0]["criteria"])
         self.assertIsNotNone(revised["questions"][-1]["answer"])
-        with self.assertRaisesRegex(ValueError,"mezitím"):
+        with self.assertRaisesRegex(ValueError,"meanwhile"):
             self.controller.action({"id":self.key,"action":"revise_task","task":"one",
                 "expected_criteria":m["tasks"][0]["criteria"],"criteria":["changed again"],"reason":"stale"})
 
     def test_task_revision_cannot_edit_active_or_reviewed_work(self):
         self.begin_build()
-        body={"id":self.key,"action":"revise_task","task":"one","expected_criteria":["Soubor obsahuje OK."],"criteria":["New"],"reason":"Reason"}
+        body={"id":self.key,"action":"revise_task","task":"one","expected_criteria":["File contains OK."],"criteria":["New"],"reason":"Reason"}
         with self.assertRaises(ValueError):self.controller.action(body)
         self.finish(report())
         self.controller.action({"id":self.key,"action":"pause"})
@@ -228,29 +228,29 @@ class MissionTests(unittest.TestCase):
     def test_review_changes_return_to_builder(self):
         self.begin_build()
         self.finish(report())
-        m = self.finish({"status": "changes", "summary": "Oprav chybu formátu."})
+        m = self.finish({"status": "changes", "summary": "Fix formatting error."})
         self.assertEqual(m["attempts"][-1]["phase"], "build")
-        self.assertEqual(m["tasks"][0]["feedback"], "Oprav chybu formátu.")
+        self.assertEqual(m["tasks"][0]["feedback"], "Fix formatting error.")
         self.assertEqual(m["tasks"][0]["cycles"], 1)
 
     def test_unanswered_task_does_not_block_independent_work(self):
         self.begin_build([plan_task("one"), plan_task("two"), plan_task("three", ["one"])])
-        m = self.finish({"status": "blocked", "questions": [{"question": "Jaká barva?", "reason": "Značka není určená."}]})
+        m = self.finish({"status": "blocked", "questions": [{"question": "What color?", "reason": "Label is not specified."}]})
         self.assertEqual(m["attempts"][-1]["task"], "two")
         self.assertEqual(m["tasks"][0]["status"], "waiting")
         q = m["questions"][0]
         restored = Missions(self.studio, clock=lambda: self.now)
-        restored.action({"id": self.key, "action": "answer", "question": q["id"], "answer": "Zelená"})
+        restored.action({"id": self.key, "action": "answer", "question": q["id"], "answer": "Green"})
         self.assertEqual(self.current()["tasks"][0]["status"], "pending")
-        self.assertEqual(self.current()["questions"][0]["answer"], "Zelená")
+        self.assertEqual(self.current()["questions"][0]["answer"], "Green")
 
     def test_initial_questions_require_answers_and_plan_confirmation(self):
         self.start()
-        m = self.finish({"status": "plan", "tasks": [plan_task()], "questions": [{"question": "Cílový uživatel?", "reason": "Chybí zadání."}]})
+        m = self.finish({"status": "plan", "tasks": [plan_task()], "questions": [{"question": "Target user?", "reason": "Task brief is missing."}]})
         self.assertEqual(m["status"], "waiting")
         self.controller.tick()
         self.assertEqual(len(self.launched), 1)
-        self.controller.action({"id": self.key, "action": "answer", "question": m["questions"][0]["id"], "answer": "Správce"})
+        self.controller.action({"id": self.key, "action": "answer", "question": m["questions"][0]["id"], "answer": "Manager"})
         self.assertEqual(self.current()["status"], "awaiting_plan")
         self.controller.tick()
         self.assertEqual(len(self.launched), 1)
@@ -258,7 +258,7 @@ class MissionTests(unittest.TestCase):
     def test_blocked_planner_without_plan_replans_after_answer(self):
         self.start()
         m = self.finish({"status": "blocked", "questions": [{"question": "Co?", "reason": "Rozsah."}]})
-        self.controller.action({"id": self.key, "action": "answer", "question": m["questions"][0]["id"], "answer": "Soubor"})
+        self.controller.action({"id": self.key, "action": "answer", "question": m["questions"][0]["id"], "answer": "File"})
         self.controller.tick()
         self.assertEqual(self.current()["attempts"][-1]["phase"], "plan")
         self.assertEqual(len(self.launched), 2)
@@ -410,7 +410,7 @@ class MissionTests(unittest.TestCase):
         self.start()
         m = self.finish({"status": "blocked", "questions": [{"question": "Co?", "reason": "Rozsah."}]})
         self.controller.action({"id": self.key, "action": "pause"})
-        self.controller.action({"id": self.key, "action": "answer", "question": m["questions"][0]["id"], "answer": "Soubor"})
+        self.controller.action({"id": self.key, "action": "answer", "question": m["questions"][0]["id"], "answer": "File"})
         self.assertEqual(self.current()["status"], "paused")
         self.controller.action({"id": self.key, "action": "resume"})
         self.controller.tick()

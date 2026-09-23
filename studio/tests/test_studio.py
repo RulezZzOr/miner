@@ -39,7 +39,7 @@ class ModelHandler(BaseHTTPRequestHandler):
         messages = data.get("messages", [])
         has_result = any(m.get("role") == "tool" for m in messages)
         if has_result:
-            delta = {"role": "assistant", "content": "Soubor byl vytvořen. STUDIO_TEST_OK"}
+            delta = {"role": "assistant", "content": "File was created. STUDIO_TEST_OK"}
             finish = "stop"
         else:
             delta = {
@@ -203,6 +203,9 @@ class StudioTests(unittest.TestCase):
             with urllib.request.urlopen(base + "/") as response:
                 self.assertIn(b"Switch Studio", response.read())
                 self.assertIn("frame-ancestors 'none'", response.headers["Content-Security-Policy"])
+            for asset, marker in [("help.js", b"initStudioHelp"), ("office.js", b"officeModel"), ("office.css", b"office-world")]:
+                with urllib.request.urlopen(base + "/" + asset) as response:
+                    self.assertIn(marker, response.read())
             for headers in [{"Host": "attacker.test"}, {"Origin": "https://attacker.test"}]:
                 with self.assertRaises(urllib.error.HTTPError) as ctx:
                     urllib.request.urlopen(
@@ -401,7 +404,7 @@ class StudioTests(unittest.TestCase):
         self.assertNotEqual(original["sha256"], self.studio.project_notes(self.pid)["sha256"])
         self.assertIn("My project", original["context"])
         index.write_text("a" * 12001)
-        with self.assertRaisesRegex(Problem, "12 000"):
+        with self.assertRaisesRegex(Problem, "12,000"):
             self.studio.project_notes(self.pid)
         index.write_bytes(b"\xff")
         with self.assertRaisesRegex(Problem, "UTF-8"):

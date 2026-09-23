@@ -128,7 +128,7 @@ class DeploymentTests(unittest.TestCase):
     def test_unverified_release_cannot_be_deployed(self):
         p = self.configured()
         release = dict(p["releases"][0], verification_id=None)
-        with self.assertRaisesRegex(ValueError, "nezávislé kontroly"):
+        with self.assertRaisesRegex(ValueError, "independent checks"):
             self.studio.deployments.start(p, release)
 
     def test_service_signal_is_preserved_in_incident_diagnostics(self):
@@ -158,7 +158,7 @@ class DeploymentTests(unittest.TestCase):
         candidate["url"] = first["url"]
         result = manager.probe(candidate)
         self.assertFalse(result["passed"])
-        self.assertIn("vlastní proces", result["error"])
+        self.assertIn("own process", result["error"])
 
     def test_restart_failure_is_bounded_and_stop_cancels_pending_recovery(self):
         p = self.configured()
@@ -174,7 +174,7 @@ class DeploymentTests(unittest.TestCase):
             for _ in range(5):
                 restarted.tick()
             self.assertEqual(start.call_count, 3)
-        self.assertIn("Obnova služby selhala", restarted.get(first["id"])["error"])
+        self.assertIn("Service recovery failed", restarted.get(first["id"])["error"])
         restarted.pending_restart[p["id"]] = restarted.get(first["id"])
         restarted.stop(first["id"])
         with patch.object(restarted, "start") as start:

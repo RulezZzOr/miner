@@ -6,13 +6,13 @@ let missionLoading = false;
 let missionSnapshot = "";
 const missionAnswers = new Map();
 const missionLabels = {
-  draft: "Připravené zadání", running: "Pracuje", awaiting_plan: "Potvrď plán",
-  waiting: "Potřebuji odpověď", paused: "Pozastaveno", blocked: "Potřebuji rozhodnutí",
-  expired: "Vypršel limit", ready: "Produkt k převzetí", accepted: "Převzato", cancelled: "Zastaveno",
-  pending: "Čeká", review: "Nezávislé review", done: "Zkontrolováno",
-  verifying: "Probíhají nezávislé kontroly", awaiting_checks: "Chybí nezávislé kontroly",
+  draft: "Ready task brief", running: "Working", awaiting_plan: "Confirm plan",
+  waiting: "I need an answer", paused: "Paused", blocked: "I need a decision",
+  expired: "Time limit expired", ready: "Product ready for acceptance", accepted: "Accepted", cancelled: "Stopped",
+  pending: "Pending", review: "Independent review", done: "Verified",
+  verifying: "Independent verifications in progress", awaiting_checks: "Missing independent verifications",
 };
-const missionPhaseLabels = {plan:"Příprava", build:"Realizace", review:"Review", final:"Kontrola produktu"};
+const missionPhaseLabels = {plan:"Preparation", build:"Execution", review:"Review", final:"Product verification"};
 function missionButton(label, fn, primary = false) {
   const button = el("button", "button" + (primary ? " primary" : ""), label);
   button.type = "button";
@@ -30,29 +30,29 @@ async function missionAction(id, action, extra = {}) {
 function renderMission(m) {
   const panel = $("#mission-detail");
   panel.replaceChildren();
-  if (!m) { panel.append(el("p", "", "Založ projekt a popiš požadovaný výsledek.")); return; }
+  if (!m) { panel.append(el("p", "", "Create a project and describe the desired outcome.")); return; }
   panel.append(el("h3", "", m.title), el("span", "mission-state", missionLabels[m.status] || m.status));
   panel.append(el("p", "mission-message", m.message), el("p", "", m.goal));
-  if (m.work_project) panel.append(missionButton("Otevřít pracovní verzi v editoru", async () => {
+  if (m.work_project) panel.append(missionButton("Open working version in editor", async () => {
     $("#missions-dialog").close(); await refreshState(); await selectProject(m.work_project);
   }));
   const criteria = el("ul");
   criteria.append(...m.criteria.map(c => el("li", "", c)));
   panel.append(criteria);
-  panel.append(el("p", "missions-note", `${m.attempts.length}/${m.max_attempts} běhů · limit ${m.days} dní` +
-    (m.deadline ? ` · do ${new Date(m.deadline * 1000).toLocaleString("cs")}` : "") +
-    ` · práce: ${m.profile} · review: ${m.review_profile}`));
+  panel.append(el("p", "missions-note", `${m.attempts.length}/${m.max_attempts} runs · limit ${m.days} days` +
+    (m.deadline ? ` · do ${new Date(m.deadline * 1000).toLocaleString("en-GB")}` : "") +
+    ` · work: ${m.profile} · review: ${m.review_profile}`));
   const actions = el("div", "mission-actions");
-  actions.append(missionButton("Živá mapa průběhu", () => showFlow(m.id)));
+  actions.append(missionButton("Live progress map", () => showFlow(m.id)));
   const add = (label, action, primary) => actions.append(missionButton(label, () => missionAction(m.id, action), primary));
-  if (m.status === "draft") add("Spustit přípravu", "start", true);
-  if (m.status === "awaiting_plan") add("Potvrdit plán a zahájit práci", "approve_plan", true);
-  if (["running","waiting","awaiting_plan","verifying"].includes(m.status)) add("Pozastavit", "pause");
-  if (["paused","blocked"].includes(m.status)) add("Pokračovat", "resume", true);
-  if (m.status === "ready") { add("Převzít produkt", "accept", true); add("Znovu ověřit", "recheck"); }
-  if (m.status === "accepted" && !m.product_context) actions.append(missionButton("Dál spravovat jako produkt", () => adoptProduct(m), true));
-  if (!["accepted","cancelled","expired"].includes(m.status)) add("Ukončit projekt", "cancel");
-  if (m.active_attempt) actions.append(missionButton("Průběh / schválení nástrojů", async () => {
+  if (m.status === "draft") add("Start preparation", "start", true);
+  if (m.status === "awaiting_plan") add("Confirm plan and start work", "approve_plan", true);
+  if (["running","waiting","awaiting_plan","verifying"].includes(m.status)) add("Pause", "pause");
+  if (["paused","blocked"].includes(m.status)) add("Continue", "resume", true);
+  if (m.status === "ready") { add("Accept product", "accept", true); add("Re-verify", "recheck"); }
+  if (m.status === "accepted" && !m.product_context) actions.append(missionButton("Continue managing as product", () => adoptProduct(m), true));
+  if (!["accepted","cancelled","expired"].includes(m.status)) add("End project", "cancel");
+  if (m.active_attempt) actions.append(missionButton("Tool execution / approval", async () => {
     $("#missions-dialog").close();
     await refreshState();
     await selectRun(m.active_attempt);
@@ -60,22 +60,22 @@ function renderMission(m) {
   panel.append(actions);
   if (["draft", "paused", "blocked"].includes(m.status) && !m.active_attempt) {
     const details = el("details", "mission-task");
-    details.append(el("summary", "", "Změnit modely a limity pokračování"));
+    details.append(el("summary", "", "Change models and continuation limits"));
     const form = el("form");
-    for (const [name, title] of [["profile", "Model pro práci"], ["review_profile", "Model pro review"]]) {
+    for (const [name, title] of [["profile", "Model for work"], ["review_profile", "Review model"]]) {
       const label = el("label", "", title), select = el("select"); select.name = name;
       select.append(...state.data.profiles.map(p => { const option = el("option", "", `${p.model} · ${p.id}`); option.value = p.id; return option; }));
       select.value = m[name]; label.append(select); form.append(label);
     }
-    for (const [name, title, min, max] of [["attempt_minutes", "Minut na jeden běh", 1, 360],
-      ["max_turns", "Kroků na jeden běh", 1, 200], ["max_attempts", "Celkový počet běhů", Math.max(2, m.attempts.length + 1), 1000]]) {
+    for (const [name, title, min, max] of [["attempt_minutes", "Minutes per run", 1, 360],
+      ["max_turns", "Steps per run", 1, 200], ["max_attempts", "Total number of runs", Math.max(2, m.attempts.length + 1), 1000]]) {
       const label = el("label", "", title), input = el("input");
       input.type = "number"; input.name = name; input.min = min; input.max = max; input.value = m[name]; input.required = true;
       label.append(input); form.append(label);
     }
     form.oninput = () => form.dataset.dirty = "true";
-    form.append(el("p", "missions-note", "Platí až pro další běhy. Uložené výsledky a celkový termín zůstanou zachované. Model pro review může být stejný poskytovatel v nové relaci."));
-    const save = el("button", "button", "Uložit modely a limity"); save.type = "submit"; form.append(save);
+    form.append(el("p", "missions-note", "Applies only to future runs. Saved results and overall deadline remain unchanged. The review model may be the same provider in a new session."));
+    const save = el("button", "button", "Save models and limits"); save.type = "submit"; form.append(save);
     form.onsubmit = async event => {
       event.preventDefault(); save.disabled = true;
       try {
@@ -89,15 +89,15 @@ function renderMission(m) {
   if (["draft","paused","awaiting_plan","awaiting_checks","ready"].includes(m.status)) {
     const details = el("details", "mission-task");
     details.open = m.status === "awaiting_checks";
-    details.append(el("summary", "", "Nezávislé kontroly"));
+    details.append(el("summary", "", "Independent checks"));
     const form = el("form");
     const commands = el("textarea"); commands.rows = 3;
     commands.placeholder = "npm test\nnpm run build";
-    commands.setAttribute("aria-label", "Příkazy nezávislých kontrol");
+    commands.setAttribute("aria-label", "Commands for independent checks");
     commands.value = (m.verification_checks || []).map(c => c.argv.map(a => "'" + a.replaceAll("'", "'\\''") + "'").join(" ")).join("\n");
     commands.oninput = () => commands.dataset.dirty = "true";
-    form.append(el("p", "missions-note", "Každý řádek je samostatný příkaz. Běží v pracovní složce, bez shellových operátorů, s limitem 5 minut. Povol pouze příkazy, které chceš skutečně spustit."), commands);
-    const save = el("button", "button", "Schválit příkazy kontrol"); save.type = "submit"; form.append(save);
+    form.append(el("p", "missions-note", "Each line is a separate command. Runs in the working directory, without shell operators, with a 5-minute time limit. Only enable commands you truly intend to run."), commands);
+    const save = el("button", "button", "Approve check commands"); save.type = "submit"; form.append(save);
     form.onsubmit = async event => {
       event.preventDefault(); save.disabled = true;
       try { await missionAction(m.id, "set_checks", {verification_checks: commands.value}); }
@@ -107,8 +107,8 @@ function renderMission(m) {
     if (m.status === "awaiting_checks") {
       const manual = el("label", "mission-permission");
       const acknowledged = el("input"); acknowledged.type = "checkbox";
-      manual.append(acknowledged, document.createTextNode(" Výsledek jsem zkontroloval ručně a přebírám jej bez automatických kontrol."));
-      const accept = missionButton("Převzít ručně", () => missionAction(m.id, "manual_accept", {acknowledge_unverified: true}));
+      manual.append(acknowledged, document.createTextNode(" I have manually verified the result and am accepting it without automatic checks."));
+      const accept = missionButton("Accept manually", () => missionAction(m.id, "manual_accept", {acknowledge_unverified: true}));
       accept.disabled = true; acknowledged.onchange = () => accept.disabled = !acknowledged.checked;
       panel.append(manual, accept);
     }
@@ -116,8 +116,8 @@ function renderMission(m) {
   const verificationId = m.verification_id || m.verification_result?.id;
   if (verificationId) {
     const evidence = el("details", "mission-task");
-    evidence.append(el("summary", "", "Skutečně spuštěné kontroly a logy"));
-    evidence.append(missionButton("Načíst výsledek kontrol", async () => {
+    evidence.append(el("summary", "", "Actual checks performed and logs"));
+    evidence.append(missionButton("Load check results", async () => {
       const record = await api(`/api/verification?id=${encodeURIComponent(verificationId)}`);
       const output = el("pre");
       output.textContent = `${record.status}${record.error ? ": " + record.error : ""}\n` + record.checks.map(c => `${c.label} · exit ${c.exit_code}\n${c.log}`).join("\n\n");
@@ -126,35 +126,35 @@ function renderMission(m) {
     panel.append(evidence);
   }
   const timeline = el("details", "mission-task");
-  timeline.append(el("summary", "", "Proč se postup změnil · rozhodnutí a důkazy"));
-  timeline.append(missionButton("Načíst historii rozhodnutí", async () => {
+  timeline.append(el("summary", "", "Why the process changed · decisions and evidence"));
+  timeline.append(missionButton("Load decision history", async () => {
     const data = await api(`/api/mission-trace?id=${encodeURIComponent(m.id)}`);
     const history = el("div", "mission-timeline");
     for (const event of data.events) {
       const item = el("details");
-      item.append(el("summary", "", `${new Date(event.at * 1000).toLocaleString("cs")} · ${missionLabels[event.to] || event.to}`));
+      item.append(el("summary", "", `${new Date(event.at * 1000).toLocaleString("en-GB")} · ${missionLabels[event.to] || event.to}`));
       item.append(el("p", "", event.reason));
-      if (event.decision) item.append(el("p", "", `Výběr úkolu (${event.decision.status}): ${event.decision.reason}`));
-      if (event.runtime) item.append(el("p", "missions-note", `Práce: ${event.runtime.profile} · review: ${event.runtime.review_profile} · ${event.runtime.attempt_minutes} minut / běh`));
-      if (event.phase) item.append(el("p", "missions-note", `Fáze: ${missionPhaseLabels[event.phase] || event.phase} · běh ${event.attempt}`));
-      if (event.elapsed_seconds !== null && event.elapsed_seconds !== undefined) item.append(el("p", "", `Doba běhu: ${Math.round(event.elapsed_seconds)} s`));
+      if (event.decision) item.append(el("p", "", `Task selection (${event.decision.status}): ${event.decision.reason}`));
+      if (event.runtime) item.append(el("p", "missions-note", `Work: ${event.runtime.profile} · review: ${event.runtime.review_profile} · ${event.runtime.attempt_minutes} minutes / run`));
+      if (event.phase) item.append(el("p", "missions-note", `Phase: ${missionPhaseLabels[event.phase] || event.phase} · run ${event.attempt}`));
+      if (event.elapsed_seconds !== null && event.elapsed_seconds !== undefined) item.append(el("p", "", `Run duration: ${Math.round(event.elapsed_seconds)} s`));
       item.append(el("p", "missions-note", event.usage
-        ? `${event.usage.estimated ? "Odhad" : "Hlášeno poskytovatelem"}: ${event.usage.input} vstupních / ${event.usage.output} výstupních tokenů. Peněžní cena není určena.`
-        : "Spotřeba tokenů není dostupná."));
-      if (event.inputs.verification) item.append(el("p", "missions-note", `Nezávislá kontrola: ${event.inputs.verification}`));
-      if (event.inputs.report_sha256) item.append(el("p", "missions-note", `Otisk reportu: ${event.inputs.report_sha256.slice(0,16)}`));
-      for (const change of event.file_changes) item.append(el("p", "", `${change.before ? change.after ? "Změněno" : "Odstraněno" : "Přidáno"}: ${change.path}`));
+        ? `${event.usage.estimated ? "Estimate" : "Reported by provider"}: ${event.usage.input} input / ${event.usage.output} output tokens. Monetary cost is not specified.`
+        : "Token consumption is not available."));
+      if (event.inputs.verification) item.append(el("p", "missions-note", `Independent check: ${event.inputs.verification}`));
+      if (event.inputs.report_sha256) item.append(el("p", "missions-note", `Report hash: ${event.inputs.report_sha256.slice(0,16)}`));
+      for (const change of event.file_changes) item.append(el("p", "", `${change.before ? change.after ? "Changed" : "Removed" : "Added"}: ${change.path}`));
       history.append(item);
     }
     timeline.querySelector(".mission-timeline")?.remove(); timeline.append(history);
   }));
   panel.append(timeline);
   const open = m.questions.filter(q => q.answer === null);
-  if (open.length) panel.append(el("h3", "", "Potřebuji od tebe"));
+  if (open.length) panel.append(el("h3", "", "I need from you"));
   for (const q of open) {
     const card = el("form", "mission-question");
     card.append(el("strong", "", q.question), el("p", "", q.reason));
-    if (q.task) card.append(el("p", "missions-note", `Blokuje úkol: ${q.task}`));
+    if (q.task) card.append(el("p", "missions-note", `Blocks task: ${q.task}`));
     const answer = el("textarea");
     answer.required = true;
     answer.maxLength = 12000;
@@ -162,9 +162,9 @@ function renderMission(m) {
     const answerKey = `${m.id}/${q.id}`;
     answer.value = missionAnswers.get(answerKey) || "";
     answer.oninput = () => missionAnswers.set(answerKey, answer.value);
-    answer.setAttribute("aria-label", `Odpověď: ${q.question}`);
+    answer.setAttribute("aria-label", `Response: ${q.question}`);
     card.append(answer);
-    const submit = el("button", "button primary", "Uložit odpověď");
+    const submit = el("button", "button primary", "Save response");
     submit.type = "submit";
     card.append(submit);
     card.onsubmit = async event => {
@@ -181,34 +181,34 @@ function renderMission(m) {
   }
   if (m.questions.some(q => q.answer !== null)) {
     const answered = el("details", "mission-answered");
-    answered.append(el("summary", "", "Uložená rozhodnutí a odpovědi"));
+    answered.append(el("summary", "", "Saved decisions and responses"));
     for (const q of m.questions.filter(q => q.answer !== null)) answered.append(el("p", "", `${q.question}\n${q.answer}`));
     panel.append(answered);
   }
-  if (m.tasks.length) panel.append(el("h3", "", "Plán a výsledky"));
+  if (m.tasks.length) panel.append(el("h3", "", "Plan and results"));
   if (m.plan_revisions?.length) {
-    const revisions=el("details","mission-task");revisions.append(el("summary","","Historie úprav zadání"));
-    for(const change of m.plan_revisions){revisions.append(el("p","",`${new Date(change.at*1000).toLocaleString("cs")} · ${change.task} · ${change.reason}`),el("pre","",`Před: ${change.before.criteria.join("\n")}\n\nPo: ${change.after.criteria.join("\n")}`));}
+    const revisions=el("details","mission-task");revisions.append(el("summary","","Task brief edit history"));
+    for(const change of m.plan_revisions){revisions.append(el("p","",`${new Date(change.at*1000).toLocaleString("en-GB")} · ${change.task} · ${change.reason}`),el("pre","",`Before: ${change.before.criteria.join("\n")}\n\nPo: ${change.after.criteria.join("\n")}`));}
     panel.append(revisions);
   }
   for (const task of m.tasks) {
     const card = el("details", "mission-task");
     card.append(el("summary", "", `${task.title} · ${missionLabels[task.status] || task.status}`));
     card.append(el("p", "", task.instructions));
-    card.append(el("p", "missions-note", `Závislosti: ${task.depends_on.join(", ") || "žádné"}`));
+    card.append(el("p", "missions-note", `Dependencies: ${task.depends_on.join(", ") || "none"}`));
     const list = el("ul"); list.append(...task.criteria.map(c => el("li", "", c))); card.append(list);
     if (task.feedback) card.append(el("p", "mission-feedback", task.feedback));
     if (task.review_summary) card.append(el("p", "", task.review_summary));
     if (["paused", "blocked"].includes(m.status) && !m.active_attempt && ["pending", "waiting"].includes(task.status)) {
       const form = el("form", "mission-revision");
-      form.append(el("p", "missions-note", "Upravit zadání bez přepsání historie. U firemní realizace nejdřív pozastav Driver. Původní cíle produktu zůstanou zachované."));
+      form.append(el("p", "missions-note", "Edit the task brief without overwriting history. For corporate execution, first pause the Driver. Original product goals remain preserved."));
       const instructions = el("textarea"), criteria = el("textarea"), reason = el("textarea");
-      for (const [input, label, value] of [[instructions,"Instrukce úkolu",task.instructions], [criteria,"Kritéria úkolu, jedno na řádek",task.criteria.join("\n")], [reason,"Důvod změny",""]]) {
+      for (const [input, label, value] of [[instructions,"Task instructions",task.instructions], [criteria,"Task criteria, one per line",task.criteria.join("\n")], [reason,"Reason for change",""]]) {
         input.value=value; input.required=true; input.rows=3; input.setAttribute("aria-label",label);
         input.oninput=()=>form.dataset.dirty="true";
         const wrapper=el("label","",label);wrapper.append(input);form.append(wrapper);
       }
-      const save=el("button","button","Uložit opravené zadání");save.type="submit";form.append(save);
+      const save=el("button","button","Save corrected task brief");save.type="submit";form.append(save);
       form.onsubmit=async e=>{e.preventDefault();save.disabled=true;try{await missionAction(m.id,"revise_task",{task:task.id,expected_criteria:task.criteria,instructions:instructions.value,criteria:criteria.value.split("\n").map(x=>x.trim()).filter(Boolean),reason:reason.value});}catch(error){toast(error.message,true);save.disabled=false;}};
       card.append(form);
     }
@@ -219,17 +219,17 @@ function renderMission(m) {
     panel.append(card);
   }
   if (m.final_report) {
-    panel.append(el("h3", "", "Závěrečné review modelu"), el("p", "", m.final_report.summary));
+    panel.append(el("h3", "", "Final model review"), el("p", "", m.final_report.summary));
     for (const check of m.final_report.checks) panel.append(el("p", "", `${check.criterion}: ${check.evidence}`));
   }
   if (m.attempts.length) {
     const attempts = el("details", "mission-attempts");
-    attempts.append(el("summary", "", `Historie běhů a důkazů (${m.attempts.length})`));
+    attempts.append(el("summary", "", `Run and evidence history (${m.attempts.length})`));
     for (const a of [...m.attempts].reverse()) {
       const row = el("div", "mission-attempt");
-      row.append(el("p", "", `${missionPhaseLabels[a.phase]}${a.task ? " · " + a.task : ""} · ${new Date(a.started*1000).toLocaleString("cs")}`));
+      row.append(el("p", "", `${missionPhaseLabels[a.phase]}${a.task ? " · " + a.task : ""} · ${new Date(a.started*1000).toLocaleString("en-GB")}`));
       if (a.error) row.append(el("p", "mission-feedback", a.error));
-      if (a.report) row.append(missionButton("Otevřít report", async () => {
+      if (a.report) row.append(missionButton("Open report", async () => {
         $("#missions-dialog").close(); await refreshState();
         await selectProject(m.work_project || m.project); await openFile(a.report);
       }));
@@ -246,7 +246,7 @@ async function loadMissions(force = false) {
     const data = await api(`/api/missions?project=${encodeURIComponent(selected)}`);
     if (selected !== state.project || !$("#missions-dialog").open) return;
     $("#missions-health").textContent = data.controller_error
-      ? `Řadič vyžaduje pozornost: ${data.controller_error}`
+      ? `Controller requires attention: ${data.controller_error}`
       : `${data.capabilities.controller} ${data.capabilities.search_status}`;
     // Polling must never replace answers the user is currently writing.
     const hasDraft = $$(".mission-question textarea").some(input => input.value.length > 0) ||
@@ -258,7 +258,7 @@ async function loadMissions(force = false) {
     const list = $("#mission-list"); list.replaceChildren();
     for (const m of data.missions) {
       const button = missionButton(`${m.title} · ${missionLabels[m.status] || m.status}`, async () => {
-        if (hasDraft) { toast("Nejdřív ulož rozepsanou odpověď."); return; }
+        if (hasDraft) { toast("First, save the partially completed response."); return; }
         missionSelection = m.id; missionSnapshot = ""; await loadMissions(true);
       });
       button.classList.toggle("active", m.id === missionSelection);
@@ -288,7 +288,7 @@ function initMissions() {
   bind("#missions-button", "click", showMissions);
   bind("#mission-form", "submit", async event => {
     event.preventDefault();
-    if (state.dirty) throw new Error("Nejdřív ulož otevřený soubor v editoru.");
+    if (state.dirty) throw new Error("First, save the open file in the editor.");
     const selected = state.project;
     const m = await api("/api/missions", {
       project:selected, title:$("#mission-title").value, goal:$("#mission-goal").value,
@@ -306,16 +306,16 @@ function initMissions() {
     $("#mission-new").open = false;
     $("#mission-form").reset();
     await loadMissions(true);
-    toast("Zadání uloženo. Přípravu spustíš samostatným tlačítkem.");
+    toast("Task brief saved. You will start preparation using a separate button.");
   });
   setInterval(() => loadMissions().catch(error => toast(error.message, true)), 3000);
 }
 
 function fillDecisionModels(id) {
   const select = $(id), previous = select.value;
-  const none = el("option", "", "Pořadí plánu · bez dalšího modelu"); none.value = "";
+  const none = el("option", "", "Plan order · no further model"); none.value = "";
   select.replaceChildren(none, ...state.data.profiles.filter(p => p.protocol === "chat_completions" && !p.oauth_provider).map(p => {
-    const option = el("option", "", `${p.model} · pilot rozhodování`); option.value = p.id; return option;
+    const option = el("option", "", `${p.model} · decision pilot`); option.value = p.id; return option;
   }));
   select.value = previous;
 }

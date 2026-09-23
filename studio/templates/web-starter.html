@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="cs">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Můj první web · Miner</title>
+  <title>My First Web · Miner</title>
   <style>
     * { box-sizing: border-box; }
     body { margin: 0; background: #f6f5f0; color: #182b29; font: 16px/1.6 system-ui, sans-serif; }
@@ -37,18 +37,18 @@
 </head>
 <body>
 <main>
-  <nav><span class="brand">studio / tvůj projekt</span><span class="tag">První krok k vlastní aplikaci</span></nav>
-  <header><span class="eyebrow">Místo pro tvůj nápad</span><h1>Začni jednoduše.<br><span>Postav něco svého.</span></h1><p>Tohle je tvůj skutečný web. Změň text nebo barvy v editoru, ulož soubor a sleduj změnu v náhledu.</p></header>
-  <section class="cards" aria-label="Jak pokračovat">
-    <article><b>01 / UPRAV</b><h2>Dej mu svůj styl</h2><p>Otevři index.html. Text, vzhled i chování máš ve vlastních souborech.</p></article>
-    <article><b>02 / VYZKOUŠEJ</b><h2>Proklikej výsledek</h2><p>Zkus přidat úkol níže. Přepni náhled na mobil a ověř rozložení.</p></article>
-    <article><b>03 / ROZŠIŘ</b><h2>Zapoj svého agenta</h2><p>Popiš konkrétní změnu a předej agentovi cestu k tomuto webu.</p></article>
+  <nav><span class="brand">studio / your project</span><span class="tag">First Step Toward Your Own App</span></nav>
+  <header><span class="eyebrow">Space for Your Idea</span><h1>Start Simply.<br><span>Build Something of Your Own.</span></h1><p>This is your actual website. Change the text or colors in the editor, save the file, and watch the preview update.</p></header>
+  <section class="cards" aria-label="How to Proceed">
+    <article><b>01 / UPRAV</b><h2>Give It Your Style</h2><p>Open index.html. Text, appearance, and behavior are all in your own files.</p></article>
+    <article><b>02 / TRY IT OUT</b><h2>Explore the Result</h2><p>Try adding a task below. Switch the preview to mobile and verify the layout.</p></article>
+    <article><b>03 / EXPAND</b><h2>Involve Your Agent</h2><p>Describe a specific change and provide the agent with the path to this website.</p></article>
   </section>
-  <section class="demo" aria-labelledby="demo-title"><h2 id="demo-title">Co chceš postavit?</h2>
-    <form id="ideas-form"><input id="idea" aria-label="Nový nápad" placeholder="Například: přehled zákazníků" maxlength="160" required><button>Přidat nápad</button></form>
-    <ul id="ideas" aria-live="polite"></ul><p class="note">Ukázka interakce. Nápady jsou jen v této stránce; obnovením se vymažou.</p>
+  <section class="demo" aria-labelledby="demo-title"><h2 id="demo-title">What Do You Want to Build?</h2>
+    <form id="ideas-form"><input id="idea" aria-label="New Idea" placeholder="For example: customer overview" maxlength="160" required><button>Add idea</button></form>
+    <ul id="ideas" aria-live="polite"></ul><p class="note">Interaction demo. Ideas exist only on this page; refreshing clears them.</p>
   </section>
-  <footer>Vytvořeno v Mineru · HTML, CSS a JavaScript · Bez externích knihoven</footer>
+  <footer>Created in Miner · HTML, CSS, and JavaScript · No external libraries</footer>
 </main>
 <script>
   document.querySelector('#ideas-form').addEventListener('submit', event => {
@@ -59,8 +59,8 @@
     const text = document.createElement('span');
     text.textContent = input.value.trim();
     const button = document.createElement('button');
-    button.textContent = 'Hotovo';
-    button.setAttribute('aria-label', 'Dokončit: ' + input.value.trim());
+    button.textContent = 'Done';
+    button.setAttribute('aria-label', 'Complete: ' + input.value.trim());
     button.onclick = () => row.remove();
     row.append(text, button);
     document.querySelector('#ideas').append(row);

@@ -1,96 +1,64 @@
 # Company Builder & Driver
 
-Stav: 2026-09-23, lokální verze 0.4.0-alpha.1. Firma je trvalá vrstva nad existujícím
-řadičem realizací. Nejde o ověřenou náhradu celého vedení společnosti.
+Status: 2026-09-23, local version 0.4.0-alpha.2. The Company is a persistent layer built on top of the existing Execution Controller. It is not a verified replacement for the entire company management system.
 
-## Použití
+## Usage
 
-1. Otevři potřebné pracovní složky ve Studiu. Zvol **Firma · Builder & Driver**.
-2. **Založit společnost**: pojmenuj firmu, napiš cíle, vyber projekty, realizátora a
-   reviewera. Moje firma je upravitelný příklad, žádné skutečné projekty se samy nepřipojí.
-3. Přidej konkrétní práci: zadání, projekt, odpovědné oddělení, kritéria, kontrolní
-   příkazy, prioritu a případné závislosti. Předlohy zahrnují plán rozvoje, audit,
-   návrh nabídky a finanční přehled z dodaných dat.
-4. Pro pravidelnou práci nastav interval v hodinách a nejvyšší počet realizací.
-   Interval 0 znamená jednorázovou práci. Termín se počítá od převzetí výsledku.
-5. V limitech nastav horizont, rozpočet běhů, počet realizací, kroky a čas běhu.
-   Nová firma má vypnuté automatické schvalování nástrojů i přebírání výsledků.
-6. **Zapnout Driver** zahájí dohled. Plán se schválí automaticky pouze bez otevřených
-   otázek. Převzetí může být automatické jen po úspěchu skutečných nezávislých kontrol.
-7. V **Rozhodnutích a blokacích** otevři realizaci a odpověz na chybějící otázky.
-   Hotový výsledek bez kontrol vyžaduje doplnění kontrol nebo výslovné ruční převzetí.
-8. **Stáhnout report .md** exportuje aktuální portfolio, práci a rozhodnutí. Projektové
-   znalosti dál patří do `PROJECT.md` a souvisejících souborů.
+1. Open the required working folders in Studio. Select **Company · Builder & Driver**.
+2. **Create a company**: name the company, define its goals, select projects, workers, and reviewers. "My Company" is an editable example; no real projects connect automatically.
+3. Add specific work: task brief, project, responsible department, criteria, verification commands, priority, and dependencies. Templates include development plans, audits, proposal designs, and financial summaries derived from provided data.
+4. For recurring work, set the interval in hours and the maximum number of executions. An interval of 0 means one-time work. The deadline is calculated from the acceptance of the result.
+5. In limits, set the horizon, budget of runs, number of executions, steps, and runtime. A new company has automatic tool approval and result acceptance disabled.
+6. **Enable Driver** starts supervision. The plan is approved automatically only if there are no open questions. Acceptance can be automatic only after successful independent real-world verifications.
+7. In **Decisions and Blocks**, open an execution and answer missing questions. A completed result without verifications requires either adding verifications or explicit manual acceptance.
+8. **Download report (.md)** exports the current portfolio, work, and decisions. Project knowledge remains in `PROJECT.md` and related files.
 
-## Smyčka a uložení
+## Loop and Persistence
 
 ```mermaid
 flowchart TD
-    Owner[Vlastník: cíle, projekty, pravidla] --> Builder[Company Builder]
-    Builder --> DB[(SQLite: firma, úkoly, historie)]
+    Owner[Owner: goals, projects, rules] --> Builder[Company Builder]
+    Builder --> DB[(SQLite: company, tasks, history)]
     DB --> Driver[Company Driver]
-    Driver --> Observe[Stav realizací a termíny]
-    Observe --> Gate{Horizont, závislosti, kapacita a limity}
-    Gate -->|připraveno| Reserve[Atomická rezervace běhů a realizace]
-    Gate -->|čekání| Inbox[Otázky a externí kroky pro vlastníka]
-    Reserve --> Plan[Plánovač]
-    Plan --> Worker[Realizátor v pracovní kopii]
+    Driver --> Observe[Execution status and deadlines]
+    Observe --> Gate{Horizon, dependencies, capacity, and limits}
+    Gate -->|ready| Reserve[Atomic reservation of runs and execution]
+    Gate -->|waiting| Inbox[Questions and external steps for the owner]
+    Reserve --> Plan[Planner]
+    Plan --> Worker[Worker in working copy]
     Worker --> Review[Reviewer]
-    Review --> Checks[Skutečné kontrolní příkazy]
-    Checks -->|chyba| Worker
-    Checks -->|úspěch| Accept[Převzetí a ověřené sloučení]
+    Review --> Checks[Actual verification commands]
+    Checks -->|failure| Worker
+    Checks -->|success| Accept[Acceptance and verified merge]
     Accept --> Observe
     Inbox --> Owner
 ```
 
-Řadič sdílí se Studiem jeden pracovní slot. Při čekání na otázky v jednom projektu
-může naplánovat nezávislou práci v jiném. Dvě firemní realizace ve stejném projektu
-se nespouštějí současně. Produkty mají vlastní správu; přehled firmy je zobrazuje,
-ale jejich existující autopilot tím nepřebírá ani nepozastavuje.
+The controller shares one working slot with Studio. While waiting for answers in one project, it can schedule independent work in another. Two company executions in the same project do not run simultaneously. Products have their own management; the company overview displays them, but does not take over or pause their existing autopilot.
 
-Firma i rezervovaná realizace se zapisují v jedné SQLite transakci. Opakovaný tick
-ani znovunačtení řadiče nevytváří druhou realizaci stejné položky. Události Driveru
-jsou v `company_events`; GUI zobrazuje posledních 100. Přepisy uživatelských formulářů
-chrání revize. Automatické změny průběhu nezneplatňují rozepsané nastavení.
+Both the company and reserved executions are written in a single SQLite transaction. Repeated ticks or reloading the controller do not create a second execution for the same item. Driver events are stored in `company_events`; the GUI shows the last 100. Overwriting user forms protects revisions. Automatic progress changes do not invalidate pre-configured settings.
 
-Po uspání se nedohání každý zmeškaný interval. Po třech chybách řadiče se firma
-pozastaví. Chyby modelové realizace řeší její existující omezené opakování; blokovanou
-realizaci Driver sám neodblokuje. Po vypršení horizontu je nutné jeho výslovné obnovení.
-Služba musí běžet a hostitel nesmí spát. Dlouhodobá spolehlivost reálných modelů
-není prokázána samotnými testy řadiče.
+After sleep, missed intervals are not recovered. After three controller errors, the company pauses. Model execution errors are handled by the existing limited retry mechanism; the Driver does not unblock a blocked execution itself. After the horizon expires, explicit renewal is required. The service must be running, and the host must not sleep. Long-term reliability of real models is not proven by the controller’s own tests.
 
-## Limity a oprávnění
+## Limits and Permissions
 
-- Rozpočet se počítá jako použité běhy + rezervované zbývající běhy otevřených realizací.
-  Při dokončení se nevyužitá rezervace uvolní; použité běhy se nevracejí. Jeden běh
-  může obsahovat více modelových požadavků. Toto není peněžní, tokenový ani celofiremní
-  limit účtování poskytovatele. Produkty a ruční úlohy mají vlastní limity.
-- Přímá změna modelů a limitů firemní realizace je odmítnuta, aby neobešla rezervaci.
-  Nastavení firmy mění nové realizace; existující mají původní limity.
-- Pozastavení se uloží před zastavením podřízené práce. Přímé API realizace nesmí
-  obejít pozastavenou firmu ani její horizont. Při obnovení se obnovují jen realizace,
-  které pozastavila firma; dřívější samostatné blokace zůstávají.
-- Automatické převzetí volá stejnou kontrolu aktuálních artefaktů a výsledků testů
-  jako ruční ověřené převzetí. Modelový report sám úspěch nestačí prokázat.
-- Externí položka nemá spustitelnou realizaci. Vlastník zaznamená skutečné provedení
-  s dokladem nebo zamítnutí. Tlačítko nic neodesílá, neplatí ani nenasazuje.
-- Oddělení je pracovní kontext. Nativní agent má oprávnění uživatele a instrukce
-  „neodesílat“ nejsou systémový sandbox. Automatické nástroje zapínej jen v prostředí,
-  kterému chceš tato oprávnění dát; chybí izolované účty a síťové politiky po odděleních.
+- The budget is calculated as used runs + reserved remaining runs of open executions.
+  Unused reservations are released upon completion; used runs are not refunded. One run may include multiple model requests. This is not a monetary, token, or enterprise-wide provider billing limit. Products and manual tasks have their own limits.
+- Direct modification of models and limits of a company execution is rejected to prevent bypassing reservations. Company settings apply to new executions only; existing ones retain their original limits.
+- Pausing saves state before stopping subordinate work. Direct API access to an execution cannot bypass a paused company or its horizon. Upon resuming, only executions paused by the company are restored; earlier independent blocks remain.
+- Automatic acceptance uses the same verification of current artifacts and test results as manual verified acceptance. A model report alone is insufficient to prove success.
+- An external item has no executable execution. The owner records actual execution with proof or rejection. The button does not send, validate, or deploy anything.
+- A department is a working context. The native agent has user-level permissions, and instructions like "do not send" are not system sandboxed. Enable automatic tools only in environments where you grant such permissions; isolated accounts and network policies per department are not available.
 
-## Co tato verze nepřipojuje
+## What this version does not integrate
 
-CRM, firemní poštu, banku, účetnictví ani vzdálenou produkci. Nevybírá samostatně
-obchodní strategii z živých firemních dat, nemá týden ověřené autonomie a nemá 30
-současných pracovníků. Company Builder vytváří firmu a pracovní pravidla; modelový
-plánovač rozkládá jednotlivé realizace na úkoly. Firma sama nevymýšlí nové zakázky
-ani nezvyšuje rozpočty, když dojde schválená fronta.
+CRM, corporate email, banking, accounting, or remote production. It does not independently select business strategy from live company data, lacks one week of verified autonomy, and does not support 30 concurrent workers. Company Builder creates the company and work rules; the model planner decomposes individual executions into tasks. The company itself does not invent new orders nor increase budgets when the approved queue runs out.
 
-## Ověření
+## Verification
 
-`studio/tests/test_company_driver.py` ověřuje transakční rollback, rezervace,
-závislosti, intervaly, obnovu, rodičovskou pause, zabránění obejití limitů,
-externí frontu, konflikty formulářů, jistič chyb a HTTP autorizaci.
-Integrační scénář spouští čtyři skutečné Frontier procesy s lokálním deterministickým
-modelem: plán → soubor → review → kontroly → automatické převzetí. To ověřuje
-mechanismus a soubory, ne inteligenci živého LLM ani vedení reálné firmy.
+`studio/tests/test_company_driver.py` verifies transactional rollback, reservations,
+dependencies, intervals, recovery, parent pause, limit-bypass prevention,
+external queue, form conflicts, circuit breakers, and HTTP authorization.
+The integration scenario runs four actual Frontier processes with a local deterministic model:
+plan → file → review → checks → automatic acceptance. This verifies the mechanism and files,
+not the intelligence of a live LLM or real company management.

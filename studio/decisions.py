@@ -16,14 +16,14 @@ def load_policy(path):
     document = Path(path).read_text(encoding="utf-8")
     blocks = re.findall(r"```json\s*\n(.*?)\n```", document, re.S)
     if len(blocks) != 1:
-        raise ValueError("Rozhodovací politika musí obsahovat právě jeden JSON blok.")
+        raise ValueError("Decision policy must contain exactly one JSON block.")
     policy = json.loads(blocks[0])
     if set(policy) != {"version", "question", "confidence_threshold", "timeout_seconds", "max_output_tokens", "frame_chars"}:
-        raise ValueError("Neplatné položky rozhodovací politiky.")
+        raise ValueError("Invalid decision policy items.")
     if (policy["version"] != 1 or not isinstance(policy["question"], str) or not 1 <= len(policy["question"]) <= 2000
             or not 0 <= policy["confidence_threshold"] <= 1 or not 1 <= policy["timeout_seconds"] <= 10
             or not 64 <= policy["max_output_tokens"] <= 1000 or not 1000 <= policy["frame_chars"] <= 20000):
-        raise ValueError("Rozhodovací politika obsahuje hodnoty mimo povolený rozsah.")
+        raise ValueError("Decision policy contains values outside the allowed range.")
     policy["sha256"] = hashlib.sha256(document.encode()).hexdigest()
     return policy
 
@@ -33,9 +33,9 @@ def choose_action(answer, candidates, threshold):
         raise ValueError("Model zvolil nepovolenou akci.")
     confidence = answer.get("confidence")
     if isinstance(confidence, bool) or not isinstance(confidence, (int, float)) or not threshold <= confidence <= 1:
-        raise ValueError("Nízká nebo neplatná důvěra rozhodovacího modelu.")
+        raise ValueError("Low or invalid confidence of the decision model.")
     if not isinstance(answer.get("reason"), str) or not answer["reason"].strip():
-        raise ValueError("Model nedodal důvod výběru.")
+        raise ValueError("Model did not provide a reason for selection.")
     return answer["action"]
 
 
@@ -50,7 +50,7 @@ class Decisions:
             records = [json.loads(r[0]) for r in db.execute("SELECT data FROM decisions")]
         for record in records:
             if record["status"] == "running":
-                record.update(status="fallback", reason="Rozhodování bylo přerušeno restartem.", ended=time.time())
+                record.update(status="fallback", reason="Decision was interrupted by restart.", ended=time.time())
                 self.save(record)
 
     def save(self, record):
@@ -62,7 +62,7 @@ class Decisions:
         with self.missions.connect() as db:
             row = db.execute("SELECT data FROM decisions WHERE id=?", (key,)).fetchone()
         if not row:
-            raise ValueError("Rozhodnutí neexistuje.")
+            raise ValueError("Decision does not exist.")
         return json.loads(row[0])
 
     def select(self, m, candidates):
@@ -78,7 +78,7 @@ class Decisions:
         wire = json.dumps(frame, ensure_ascii=False)
         signature = hashlib.sha256((profile + self.policy["sha256"] + wire).encode()).hexdigest()
         if len(wire) > self.policy["frame_chars"]:
-            m["decision"] = {"status": "fallback", "reason": "Rozhodovací rámec překročil povolenou délku."}
+            m["decision"] = {"status": "fallback", "reason": "Decision framework exceeded allowed length."}
             return candidates[0]
         key = m.get("decision_request")
         record = self.get(key) if key else None
@@ -86,7 +86,7 @@ class Decisions:
             if record["status"] == "running":
                 if time.time() - record["started"] < self.policy["timeout_seconds"] + 2:
                     return None
-                record.update(status="fallback", reason="Vypršel limit rozhodování.", ended=time.time())
+                record.update(status="fallback", reason="Decision limit expired.", ended=time.time())
                 self.save(record)
             m["decision"] = {k: record.get(k) for k in ("id", "status", "reason", "usage", "elapsed_seconds", "choice", "policy_sha256")}
             # Revalidate against CURRENT eligibility; a cached reply grants no permissions.
@@ -96,7 +96,7 @@ class Decisions:
                   "started": time.time(), "status": "running", "choice": next(iter(actions))}
         self.save(record)
         m["decision_request"] = record["id"]
-        m["message"] = "Volitelný model vybírá další připravený úkol."
+        m["message"] = "Optional model selects the next ready task."
         self.missions.save(m)
         thread = threading.Thread(target=self.request, args=(record,), daemon=True, name="studio-decision")
         self.threads.append(thread)
@@ -110,7 +110,7 @@ class Decisions:
             profiles, _ = self.studio.profiles()
             profile = profiles[record["profile"]]
             if profile.get("protocol") != "chat_completions" or profile.get("oauth_provider"):
-                raise ValueError("Pilot rozhodování vyžaduje profil kompatibilního chat API bez OAuth.")
+                raise ValueError("Decision pilot requires a profile compatible with chat API without OAuth.")
             endpoint = profile["base_url"].rstrip("/") + "/chat/completions"
             env = {**dotenv_values(self.studio.config.parent / "frontier" / ".env"),
                    **dotenv_values(self.studio.config.parent / ".env"), **os.environ}
@@ -118,7 +118,7 @@ class Decisions:
             if profile.get("auth") == "env":
                 key = env.get(profile.get("api_key_env", ""))
                 if not key:
-                    raise ValueError("Chybí přihlašování rozhodovacího modelu.")
+                    raise ValueError("Missing decision model authentication.")
                 headers["Authorization"] = "Bearer " + key
             payload = {"model": profile["model"], "messages": [
                 {"role": "system", "content": self.policy["question"]},
@@ -128,7 +128,7 @@ class Decisions:
             with urllib.request.urlopen(request, timeout=self.policy["timeout_seconds"]) as response:
                 raw = response.read(65537)
             if len(raw) > 65536:
-                raise ValueError("Odpověď rozhodovacího modelu překročila limit.")
+                raise ValueError("Decision model response exceeded the limit.")
             result = json.loads(raw)
             record["usage"] = result.get("usage")
             answer = json.loads(result["choices"][0]["message"]["content"])

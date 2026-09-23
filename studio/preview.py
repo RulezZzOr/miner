@@ -40,16 +40,16 @@ class PreviewManager:
         root = self.studio.project(project)
         entry = str(body.get("entry", "index.html")).strip()
         if not public_path(entry) or Path(entry).suffix.lower() not in {".html", ".htm"}:
-            raise self.problem("Vyber HTML soubor uvnitř projektu.")
+            raise self.problem("Select an HTML file inside the project.")
         data = self.read_file(root, entry, MAX_ASSET)
         # Source files from Vite/React need a build before this static preview.
         if b"/@vite/client" in data or b".tsx" in data or b".jsx" in data:
-            raise self.problem("Tento vstup potřebuje build. Vyber vytvořený dist/index.html; náhled nespouští npm ani backend.")
+            raise self.problem("This input requires a build. Select the generated dist/index.html; the preview does not run npm or the backend.")
         with self.lock:
             if self.session and self.session.project == project and self.session.entry == entry:
                 return self.session.status()
             if self.session:
-                raise self.problem("Nejdřív zastav současný náhled. Může být otevřený v jiné záložce.", 409)
+                raise self.problem("First, stop the current preview. It may be open in another tab.", 409)
             session = PreviewSession(self, root, project, entry, studio_port, host)
             self.session = session
             return session.status()
@@ -61,7 +61,7 @@ class PreviewManager:
     def stop(self, expected=None):
         with self.lock:
             if self.session and expected is not None and self.session.id != expected:
-                raise self.problem("Náhled se mezitím změnil. Obnov jeho stav.", 409)
+                raise self.problem("The preview has changed meanwhile. Refresh its status.", 409)
             session, self.session = self.session, None
             if session:
                 session.close()
@@ -71,13 +71,13 @@ class PreviewManager:
         folder = str(body.get("folder", "web-preview")).strip()
         # One new folder only: no accidental overwrite of an existing website.
         if not folder or len(folder) > 80 or not all(c.isascii() and (c.isalnum() or c in "-_") for c in folder):
-            raise self.problem("Název složky: písmena bez diakritiky, čísla, pomlčka nebo podtržítko.")
+            raise self.problem("Folder name: letters without diacritics, numbers, hyphen, or underscore.")
         root = self.studio.project(body["project"])
         with self.file_parent(root, "", directory=True) as (parent, _):
             try:
                 os.mkdir(folder, dir_fd=parent)
             except FileExistsError:
-                raise self.problem("Složka už existuje. Zvol jiný název; nic se nepřepsalo.", 409) from None
+                raise self.problem("Folder already exists. Choose a different name; nothing was overwritten.", 409) from None
         entry = f"{folder}/index.html"
         self.studio.save_file({"project": body["project"], "path": entry,
                                "content": STARTER.read_text(encoding="utf-8"), "revision": None})
