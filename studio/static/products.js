@@ -70,7 +70,7 @@ function renderProduct(p) {
   panel.append(el("h3", "", "Fixes, new features, and maintenance"));
   for (const item of p.backlog) {
     const row = el("div", "product-work-item");
-    row.append(el("strong", "", item.title), el("p", "missions-note", `${productWork[item.kind]} · ${productStatus[item.status]} · priorita ${item.priority}`));
+    row.append(el("strong", "", item.title), el("p", "missions-note", `${productWork[item.kind]} · ${productStatus[item.status]} · priority ${item.priority}`));
     const detail = el("details"); detail.append(el("summary", "", "Task brief and criteria"), el("p", "", item.goal));
     const checks = el("ul"); checks.append(...item.criteria.map(c => el("li", "", c))); detail.append(checks); row.append(detail);
     if (item.status === "queued") {
