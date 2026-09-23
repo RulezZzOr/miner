@@ -1,0 +1,7 @@
+* text=auto
+*.sh text eol=lf
+*.py text eol=lf
+*.command text eol=lf
+switch-studio text eol=lf
+setup-studio text eol=lf
+*.cmd text eol=crlf

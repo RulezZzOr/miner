@@ -1,0 +1,8 @@
+Miner / Switch Studio
+
+Includes modified FrontierAgent source from ApodexAI:
+https://github.com/ApodexAI/FrontierAgent
+Upstream base: 9e533db6f6c34d16037ee5ec964c479d0eb51cde
+
+Original notices and license texts are retained in frontier/.
+See THIRD_PARTY.md and frontier/SWITCH.md for attribution and modifications.

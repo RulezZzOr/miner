@@ -1,0 +1,34 @@
+default_profile = "local"
+
+# Explicit placeholders: replace the model with one actually served at your URL.
+[profiles.local]
+protocol = "chat_completions"
+chat_dialect = "ollama"
+base_url = "http://127.0.0.1:11434/v1"
+model = "REPLACE_WITH_LOCAL_MODEL"
+auth = "none"
+context_window = 32768
+max_output_tokens = 4096
+
+[profiles.openai]
+protocol = "responses"
+model = "REPLACE_WITH_MODEL"
+api_key_env = "OPENAI_API_KEY"
+context_window = 32768
+max_output_tokens = 4096
+thinking_format = "content_block"
+thinking_in_history = true
+
+[profiles.anthropic]
+protocol = "anthropic"
+model = "REPLACE_WITH_MODEL"
+api_key_env = "ANTHROPIC_API_KEY"
+context_window = 32768
+max_output_tokens = 4096
+thinking_format = "content_block"
+thinking_in_history = true
+
+# Other OpenAI-compatible services: add another profile with its own base_url,
+# model, api_key_env and the real context limits. There is no implicit fallback.
+# Models without native tool calling can opt into tool_mode = "text".
+# Custom protocols: protocol = "custom", factory = "your_package:build_client".

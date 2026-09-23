@@ -1,0 +1,109 @@
+"""A small, run-scoped report tool: the model supplies facts, never a path."""
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class Record(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+
+class Question(Record):
+    question: str = Field(min_length=1, max_length=3000)
+    reason: str = Field(min_length=1, max_length=3000)
+
+
+class Task(Record):
+    id: str = Field(pattern=r"^[a-zA-Z0-9_-]{1,60}$")
+    title: str = Field(min_length=1, max_length=200)
+    instructions: str = Field(min_length=1, max_length=12000)
+    depends_on: list[str] = Field(default_factory=list)
+    criteria: list[str] = Field(min_length=1, max_length=20)
+
+
+class Plan(Record):
+    status: Literal["plan"]
+    tasks: list[Task] = Field(min_length=1, max_length=40)
+    questions: list[Question] = Field(default_factory=list, max_length=20)
+
+
+class Blocked(Record):
+    status: Literal["blocked"]
+    questions: list[Question] = Field(min_length=1, max_length=20)
+
+
+class Check(Record):
+    criterion: str = Field(min_length=1)
+    passed: bool
+    evidence: str = Field(min_length=1)
+
+
+class Source(Record):
+    url: str
+    finding: str
+
+
+class Result(Record):
+    status: Literal["done", "pass", "changes"]
+    summary: str = Field(min_length=1, max_length=12000)
+    artifacts: list[str] = Field(min_length=1, max_length=100)
+    checks: list[Check] = Field(min_length=1)
+    sources: list[Source] = Field(default_factory=list)
+
+
+class MissionReport:
+    def __init__(self, request, path):
+        self.phase = request["mission"]["phase"]
+        self.attempt = request["mission"]["attempt"]
+        self.path = path
+        self.saved = False
+
+    def validate(self, value):
+        if not isinstance(value, dict):
+            raise ValueError("Předej pojmenovaná pole nástroje, nikoli JSON řetězec.")
+        model = Blocked if value.get("status") == "blocked" else Plan if self.phase == "plan" else Result
+        report = model.model_validate(value).model_dump()
+        if report["status"] != "blocked":
+            allowed = {"plan"} if self.phase == "plan" else {"done"} if self.phase == "build" else {"pass", "changes"}
+            if report["status"] not in allowed:
+                raise ValueError(f"Pro fázi {self.phase} použij status z {sorted(allowed)}.")
+        if report["status"] == "plan":
+            try:
+                from .missions import parse_plan
+            except ImportError:
+                from missions import parse_plan
+            parse_plan(report)
+            if any(self.attempt + ".json" in str(t) for t in report["tasks"]):
+                raise ValueError("Interní report nepatří mezi realizační úkoly.")
+        return report
+
+    def tool(self):
+        from frontier_agent.core.tool import Tool
+        from plugins.tools.create_file import create_file
+        import json
+
+        model = Plan if self.phase == "plan" else Result
+        schema = model.model_json_schema()
+        statuses = ["plan", "blocked"] if self.phase == "plan" else ["done", "blocked"] if self.phase == "build" else ["pass", "changes", "blocked"]
+        schema["properties"]["status"] = {"type": "string", "enum": statuses}
+        schema["required"] = ["status"]  # Other fields depend on status; validate before approval.
+        schema.setdefault("$defs", {})["Question"] = Question.model_json_schema()
+        schema["properties"]["questions"] = {"type": "array", "items": {"$ref": "#/$defs/Question"}}
+
+        async def write(*, data, path):
+            # Only the observer can add these internal arguments, after validation
+            # and the normal create_file approval. No caller-selected destination.
+            if path != str(self.path):
+                raise ValueError("Nesprávná cílová cesta reportu.")
+            report = self.validate(data)
+            result = await create_file.ainvoke({"path": path, "data": report})
+            if self.path.is_file() and json.loads(self.path.read_text()) == report:
+                self.saved = True
+                return "Report ověřen a uložen. Tento běh je dokončen."
+            return result
+
+        return Tool(name="save_mission_report", description=(
+            "Odevzdej výsledek této fáze a ukonči běh. Pole předej přímo jako argumenty, "
+            "nikoli jako JSON text. Aplikace sama ověří obsah a uloží soubor na správnou cestu. "
+            "Pro plán použij status=plan, konkrétní realizační tasks a questions (obvykle []). "
+            "Status blocked použij pouze pro nezbytné rozhodnutí vlastníka."), parameters=schema, func=write)

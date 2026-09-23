@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+switch_root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+if [ ! -x "$switch_root/frontier/.venv/bin/python" ]; then
+  sh "$switch_root/setup-studio"
+fi
+exec "$switch_root/frontier/.venv/bin/python" "$switch_root/scripts/start_studio.py" "$@"
