@@ -34,7 +34,7 @@ def source_files(root: Path) -> list[Path]:
             parts = path.relative_to(root).parts
             if any(p.startswith(".") or p in BLOCKED for p in parts):
                 continue
-            if path.suffix in SUFFIXES or path.name == "VERSION":
+            if path.suffix in SUFFIXES or path.name in {"VERSION", "LICENSE", "NOTICE", "COPYING"}:
                 selected.add(path)
     result = []
     for path in sorted(selected):
