@@ -66,6 +66,26 @@ def run(directory: Path) -> int:
     threading.Thread(target=watch_parent, daemon=True).start()
     request = json.loads((directory / "request.json").read_text())
     guard = ProgressGuard((request.get("mission") or {}).get("phase"))
+    # Every Studio run edits the project shown in the IDE. Keep per-run
+    # logs and outputs, but bind file tools and shell work to that same root.
+    activate_scratch = session.TerminalSession._activate_session_workspace
+
+    def activate_project(session_id, project=None):
+        activate_scratch(session_id, project)
+        root = Path(request["cwd"]).resolve()
+        link = Path(os.environ["APODEX_WORKSPACE_LINK"])
+        if not link.is_symlink():
+            raise RuntimeError("Missing working link for the Studio project.")
+        link.unlink()
+        link.symlink_to(root, target_is_directory=True)
+        # Native file tools validate physical roots as well as /workspace.
+        # Publishing the session symlink here rejects the exact project
+        # path shown in the task, although it names the same directory.
+        os.environ["FRONTIER_AGENT_WORKSPACE_DIR"] = str(root)
+        os.environ["APODEX_HOST_WORKSPACE_DIR"] = str(root)
+
+    session.TerminalSession._activate_session_workspace = staticmethod(activate_project)
+
     reporter = None
     inventory = None
     if request.get("mission"):
@@ -79,25 +99,6 @@ def run(directory: Path) -> int:
         if request["mission"]["phase"] == "build" and request.get("ssh_targets"):
             inventory = SSHInventory(request)
             plugins.tools._BUILTIN_TOOLS.append(inventory.tool())
-        # A durable project deliberately shares product files across fresh
-        # workers. Ordinary single runs retain Frontier's private scratch tree.
-        activate_scratch = session.TerminalSession._activate_session_workspace
-
-        def activate_project(session_id, project=None):
-            activate_scratch(session_id, project)
-            root = Path(request["cwd"]).resolve()
-            link = Path(os.environ["APODEX_WORKSPACE_LINK"])
-            if not link.is_symlink():
-                raise RuntimeError("Missing working link for the long-term project.")
-            link.unlink()
-            link.symlink_to(root, target_is_directory=True)
-            # Native file tools validate physical roots as well as /workspace.
-            # Publishing the session symlink here rejects the exact project
-            # path shown in the task, although it names the same directory.
-            os.environ["FRONTIER_AGENT_WORKSPACE_DIR"] = str(root)
-            os.environ["APODEX_HOST_WORKSPACE_DIR"] = str(root)
-
-        session.TerminalSession._activate_session_workspace = staticmethod(activate_project)
         if request["mission"]["phase"] in {"plan", "review", "final"}:
             from apodex.observers import TerminalObserver
             from frontier_agent.core.loop_types import ToolCallIntervention

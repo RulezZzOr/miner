@@ -2,7 +2,7 @@
 
 A self-hosted web IDE and workflow manager for building and maintaining digital products with AI agents.
 
-**Status: `0.4.0-alpha.2` · experimental · macOS / Linux / Windows via WSL2**
+**Status: `0.4.0-alpha.3` · experimental · macOS / Linux / Windows via WSL2**
 
 Miner is the repository name; the application is called **Switch Studio**. It provides
 a browser interface, persistent project workflows and a Company Builder & Driver. The interface, built-in instructions and Studio documentation are in English.

@@ -17,3 +17,7 @@ Use the rotate and zoom controls or drag the floor. **Reset camera** restores th
 Question-mark controls explain the purpose, usage and an example. Click them or use Enter/Space; Escape closes help and returns keyboard focus. Opening help does not submit a form or approve a tool.
 
 The interface and built-in templates are in English. Existing user-authored names, instructions, saved messages and history retain their original language.
+
+## Files and server location
+
+Studio edits files on its host computer. When opened through a LAN address, project paths refer to that server. Both ordinary agent runs and long-running projects map `/workspace` to the project selected in the editor. Run logs and `/outputs` artifacts remain stored separately. Refresh Files after an agent writes a new file; open it to inspect the saved content.

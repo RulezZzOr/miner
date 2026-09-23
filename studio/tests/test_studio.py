@@ -333,6 +333,27 @@ class StudioTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
 
+    def test_standalone_file_tools_write_into_the_open_project(self):
+        server = self.model_server()
+        try:
+            for index, path in enumerate((str((self.project / "physical.txt").resolve()),
+                                           "/workspace/alias.txt")):
+                with self.subTest(path=path):
+                    content = f"PROJECT_FILE_{index}"
+                    server.tool_args = {"path": path, "content": content}
+                    run = self.studio.launch({"project": self.pid, "profile": "test",
+                        "task": "Write the requested project file.", "max_turns": 4,
+                        "auto_approve": True})
+                    self.wait_until(lambda: self.studio.runs[run["id"]]["status"]
+                                    not in {"running", "waiting", "stopping"})
+                    target = self.project / Path(path).name
+                    self.assertTrue(target.is_file(), self.studio.events(run["id"]))
+                    self.assertEqual(target.read_text(), content)
+                    self.assertEqual(self.studio.read_file(self.pid, target.name)["content"], content)
+        finally:
+            server.shutdown()
+            server.server_close()
+
     def test_real_runner_approval_artifact_and_completion(self):
         (self.project / "PROJECT.md").write_text("# PROJECT_NOTES_CONTEXT_OK\n[Decisions](notes/DECISIONS.md)\n")
         server = self.model_server()

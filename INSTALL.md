@@ -1,6 +1,6 @@
 # Switch Studio — macOS, Linux, and Windows
 
-Version `0.4.0-alpha.2`. A lightweight local web IDE with the same interface and backend.
+Version `0.4.0-alpha.3`. A lightweight local web IDE with the same interface and backend.
 
 Packages contain source code; on first installation, `uv` downloads Python 3.12 and pinned
 dependencies. They do not include models, personal settings, or history. Internet access is required
@@ -82,7 +82,7 @@ Background launchd setup remains a macOS-specific feature and is not a cross-OS 
 
 ```sh
 frontier/.venv/bin/python scripts/build_release.py
-frontier/.venv/bin/python scripts/smoke_release.py dist/switch-studio-0.4.0-alpha.2-macos.zip --suite
+frontier/.venv/bin/python scripts/smoke_release.py dist/switch-studio-0.4.0-alpha.3-macos.zip --suite
 ```
 
 Output is in `dist/`: three archives, file manifests, and `SHA256SUMS`.

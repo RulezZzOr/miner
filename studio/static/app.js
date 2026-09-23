@@ -1126,7 +1126,7 @@ async function init() {
       if (state.view === "runs") await renderSidebar();
       $("#connection").replaceChildren(
         el("i"),
-        document.createTextNode(" Connected locally"),
+        document.createTextNode(" Connected to Studio"),
       );
     } catch (e) {
       $("#connection").textContent = "Connection lost";

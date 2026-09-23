@@ -359,12 +359,12 @@ class Companies:
             lines.append("- " + self.studio.projects[key]["name"])
         lines.extend(["", "## Work and Evidence"])
         for t in c["tasks"]:
-            lines.append(f"- {t['title']}: {t['status']} · realizace {t['last_mission'] or "is not"}")
+            lines.append(f"- {t['title']}: {t['status']} · execution {t['last_mission'] or "none"}")
             if t["last_mission"]:
                 mission = self.missions.get(t["last_mission"])
                 final = mission.get("final_report") or {}
                 for artifact in final.get("verified_artifacts", []):
-                    lines.append(f"  - Artefakt: {artifact['path']} · SHA-256 {artifact['sha256']}")
+                    lines.append(f"  - Artifact: {artifact['path']} · SHA-256 {artifact['sha256']}")
                 if mission.get("verification_id"):
                     lines.append("  - Independent check: " + mission["verification_id"])
                 if mission.get("acceptance"):
