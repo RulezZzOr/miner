@@ -27,3 +27,15 @@ test('offline state explicitly invalidates the active-now count',async()=>{const
 test('late replies after closing or switching context cannot repaint the office',async()=>{const pending=[];const {c}=polling(()=>new Promise(resolve=>pending.push(resolve)));const request=c.loadOffice();vm.runInContext('officeState.epoch++',c);for(const resolve of pending)resolve({companies:[],missions:[],runs:[]});await request;assert.equal(c.renders,0);});
 test('office polling is read-only and does not overlap',async()=>{const pending=[],paths=[];const {c}=polling((...args)=>{assert.equal(args.length,1);paths.push(args[0]);return new Promise(resolve=>pending.push(resolve));});const one=c.loadOffice();await c.loadOffice();assert.equal(paths.length,3);for(const resolve of pending)resolve({companies:[],missions:[],runs:[]});await one;assert.equal(c.renders,1);});
 test('a blocked execution exposes its last reviewer rather than the worker profile',()=>{const m=ctx.officeModel({...data,missions:[{...mission,status:'blocked',active_attempt:null,profile:'worker',attempts:[{id:'r',phase:'review'}]}],runs:[{...run,status:'cancelled',profile:'reviewer',model:'review-model',mission:{id:'m'}}]},'',{},1000);assert.equal(m.items[0].model,'review-model');assert.equal(m.items[0].phase,'review');assert.equal(m.items[0].run,'r');assert.equal(m.items[0].status,'blocked');assert.equal(m.active,0);});
+
+test('active per-task review overrides the encompassing build phase',()=>{
+  for(const withRunPhase of [true,false]) {
+    const m=ctx.officeModel({...data,
+      missions:[{...mission,phase:'build',attempts:[{id:'r',phase:'review'}]}],
+      runs:[{...run,mission:{id:'m',...(withRunPhase?{phase:'review'}:{})}}]
+    },'',recent,1000);
+    assert.equal(m.items[0].phase,'review');
+    assert.equal(m.items[0].status,'review');
+    assert.equal(m.active,1);
+  }
+});

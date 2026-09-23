@@ -9,6 +9,9 @@ const officeDepartments = [
   {id:"studio",name:"Studio projects",color:"#bdc7d9",x:615,y:350},
 ];
 const officeStatusNames={working:"Working",review:"Reviewing",verifying:"Checking",waiting:"Needs attention",blocked:"Blocked",paused:"Paused",done:"Accepted",finished:"Run finished",queued:"Queued",idle:"Idle",stale:"Awaiting activity",cancelled:"Stopped"};
+function officeRunPhase(m,run) {
+  return run?.mission?.phase || m?.attempts?.find(a=>a.id===run?.id)?.phase || m?.phase || "queue";
+}
 function officeItemStatus(m,run,log,now) {
   if(m && ["accepted","cancelled","expired","paused","blocked"].includes(m.status))return {accepted:"done",cancelled:"cancelled",expired:"blocked",paused:"paused",blocked:"blocked"}[m.status];
   if(m && ["waiting","awaiting_plan","ready","awaiting_checks"].includes(m.status))return "waiting";
@@ -22,7 +25,7 @@ function officeItemStatus(m,run,log,now) {
     if(!recent || now-recent>180 || log?.loading)return "stale";
     const lastIssue=(log?.events||[]).filter(e=>e.type==="error" || e.type==="note"&&/blocked:|denied:/i.test(e.text||"")).at(-1);
     if(lastIssue && recent-Number(lastIssue.time)<30)return "blocked";
-    return m?.phase==="review"||m?.phase==="final" ? "review":"working";
+    return ["review","final"].includes(officeRunPhase(m,run)) ? "review":"working";
   }
   if(m?.status==="running")return "queued";
   return "queued";
@@ -39,7 +42,7 @@ function officeModel(data,companyId="",logs={},now=Date.now()/1000) {
     const department=officeDepartments.some(d=>d.id===task.department)?task.department:"studio";
     const status=m ? officeItemStatus(m,run,log,now) : ({blocked:"blocked",done:"done",cancelled:"cancelled",needs_owner:"waiting",rejected:"cancelled"}[task.status] || (company?.status==="paused"?"paused":"queued"));
     items.push({id:m ? "mission:"+m.id : "task:"+company.id+":"+task.id,title:task.title||m?.title||"Untitled task",department,status,
-      mission:m?.id,run:displayRun?.id,project:m?.project||task.project,company:company?.id,companyName:company?.name||"Studio",phase:run ? m.phase : lastAttempt?.phase||m?.phase||"queue",lastRun:!run&&Boolean(displayRun),
+      mission:m?.id,run:displayRun?.id,project:m?.project||task.project,company:company?.id,companyName:company?.name||"Studio",phase:run ? officeRunPhase(m,run) : lastAttempt?.phase||m?.phase||"queue",lastRun:!run&&Boolean(displayRun),
       model:displayRun?.model||null,profile:displayRun?.profile||m?.profile||company?.profile||null,reviewProfile:m?.review_profile||company?.review_profile||null,
       message:m?.message||task.goal||"No execution has started.",updated:m?.updated||task.created||null,
       attempts:m?.attempts?.length||0,completed:m?.tasks?.filter(t=>t.status==="done").length||0,total:m?.tasks?.length||0,
