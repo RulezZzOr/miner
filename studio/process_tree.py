@@ -1,4 +1,8 @@
-"Trvalé vlastnictví procesu nativním způsobem, zachovává identity při přepojování.\n\nJde o řízení životního cyklu, nikoli o uzavření úmyslně daemonizovaného kódu.\npsutil před signálem zkontroluje PID + čas vytvoření, čímž předejde zabíjení znovupoužitých PID.\n"
+"""Best-effort native process ownership, retaining identities across reparenting.
+
+This is lifecycle management, not containment of deliberately daemonising code.
+psutil checks PID + creation time before signalling, avoiding reused-PID kills.
+"""
 
 from __future__ import annotations
 

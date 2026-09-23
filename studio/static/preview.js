@@ -27,7 +27,7 @@ function renderPreview(session) {
   if (sameProject) {
     $("#preview-entry").value = session.entry;
     $("#preview-external").href = previewURL(session);
-    $("#preview-status").textContent = `Běží · ${session.entry}`;
+    $("#preview-status").textContent = `Running · ${session.entry}`;
     if (previous?.id !== session.id || !$("#preview-frame").hasAttribute("src")) {
       previewRevision = session.revision;
       $("#preview-frame").src = previewURL(session);
@@ -37,8 +37,8 @@ function renderPreview(session) {
     $("#preview-external").removeAttribute("href");
     previewRevision = null;
     $("#preview-status").textContent = session.running
-      ? "Náhled běží pro jiný projekt. Nejdřív ho zastav, nebo přepni projekt."
-      : "Náhled je zastavený. Vyber HTML soubor nebo vytvoř startovací web.";
+      ? "Preview is running for another project. Stop it first, or switch projects."
+      : "Preview is stopped. Select an HTML file or create a starter website.";
   }
 }
 async function showPreview() {
@@ -90,7 +90,7 @@ async function pollPreview() {
       refreshPreviewFrame();
     }
   } catch (error) {
-    if (epoch === previewEpoch) $("#preview-status").textContent = "Spojení s náhledem přerušeno: " + error.message;
+    if (epoch === previewEpoch) $("#preview-status").textContent = "Preview connection interrupted: " + error.message;
   } finally { previewPolling = false; }
 }
 function initPreview() {
@@ -98,7 +98,7 @@ function initPreview() {
   bind("#preview-form", "submit", async event => {
     event.preventDefault();
     const entry = $("#preview-entry").value.trim();
-    if (state.dirty) throw new Error("Nejdřív ulož rozpracovaný soubor. Náhled čte soubory z disku.");
+    if (state.dirty) throw new Error("First, save the unsaved file. Preview reads files from disk.");
     await previewMutation(projectId => api("/api/preview/start", {project: projectId, entry}));
   });
   bind("#preview-stop", "click", () => previewMutation(() => api("/api/preview/stop", {id: previewCurrent?.id})));
@@ -122,7 +122,7 @@ function initPreview() {
       if (projectId !== state.project) return {running: false};
       $("#preview-entry").value = starter.entry;
       await loadTree();
-      toast(`Web uložen do ${starter.entry}.`);
+      toast(`Website saved to ${starter.entry}.`);
       return api("/api/preview/start", {project: projectId, entry: starter.entry});
     }).catch(error => toast(error.message, true));
   });

@@ -1,4 +1,4 @@
-"Backend účtu Codex pomocí podporovaného app-serveru, nikoli extrahovaných tokenů."
+"""Codex account backend using the supported app-server, not extracted tokens."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ except ImportError:
 
 def run(directory, rpc_factory=CodexRPC):
     request = json.loads((directory / "request.json").read_text())
-    outcome = {"status": "failed", "reason": "Codex skončil bez výsledku."}
+    outcome = {"status": "failed", "reason": "Codex ended without a result."}
     rpc = None
     thread_id = turn_id = None
     cancelled = threading.Event()
@@ -51,25 +51,25 @@ def run(directory, rpc_factory=CodexRPC):
                     "id": message["id"],
                     "error": {
                         "code": -32601,
-                        "message": "Tento požadavek vyžaduje nepodporované UI; zamítnuto.",
+                        "message": "This request requires an unsupported UI; denied.",
                     },
                 }
             )
-            emit("note", text="Codex požadoval nepodporovanou interakci; akce byla odmítnuta.")
+            emit("note", text="Codex requested an unsupported interaction; the action was rejected.")
             return
         item = items.get(params.get("itemId"), {})
         changes = item.get("changes", [])
         preview = "\n".join(str(c.get("path", "")) + "\n" + str(c.get("diff", "")) for c in changes)
         payload = {
             "id": uuid.uuid4().hex,
-            "name": "Codex · příkaz" if "commandExecution" in method else "Codex · změny souborů",
+            "name": "Codex · command" if "commandExecution" in method else "Codex · file changes",
             "target": params.get("command") or params.get("grantRoot") or request["cwd"],
-            "reason": params.get("reason") or "Codex žádá o schválení této akce.",
+            "reason": params.get("reason") or "Codex requests approval for this action.",
             "dangerous": "",
             "preview": preview
             or (
                 str(params.get("command") or params.get("grantRoot") or "")
-                + "\n\nPracovní složka: "
+                + "\n\nWorking directory: "
                 + str(params.get("cwd") or request["cwd"])
             ),
             "preview_kind": "diff" if preview else "text",
@@ -94,7 +94,7 @@ def run(directory, rpc_factory=CodexRPC):
         rpc = rpc_factory()
         account = rpc.request("account/read", {"refreshToken": False}).get("account") or {}
         if account.get("type") != "chatgpt":
-            raise RuntimeError("Přihlas ChatGPT v okně Modely. API klíč tento profil nenahrazuje.")
+            raise RuntimeError("Log in to ChatGPT in the Models window. The API key does not replace this profile.")
         emit("started", model=request["model"], mode="codex")
         started = rpc.request(
             "thread/start",
@@ -106,7 +106,7 @@ def run(directory, rpc_factory=CodexRPC):
                 "approvalsReviewer": "user",
                 "sandbox": "workspace-write",
                 "ephemeral": True,
-                "developerInstructions": "Pracujete v Switch Studio. Dokončete úkol uživatele v poskytnutém projektu. Nevytvářejte podagenty; toto UI spouští jediného agenta Codex.",
+                "developerInstructions": "You are working in Switch Studio. Complete the user's task in the provided project. Do not spawn sub-agents; this UI runs a single Codex agent.",
             },
         )
         thread_id = started["thread"]["id"]
@@ -131,7 +131,7 @@ def run(directory, rpc_factory=CodexRPC):
                 approval(event)
                 continue
             if method == "studio/disconnected":
-                raise RuntimeError("Spojení s Codex bylo přerušeno.")
+                raise RuntimeError("Connection to Codex was interrupted.")
             if params.get("threadId") not in {None, thread_id}:
                 continue
             if method == "item/agentMessage/delta":
@@ -171,8 +171,8 @@ def run(directory, rpc_factory=CodexRPC):
             elif method == "error":
                 emit(
                     "error",
-                    text="Codex hlásí chybu poskytovatele. "
-                    + ("Opakuje požadavek." if params.get("willRetry") else ""),
+                    text="Codex reports a provider error. "
+                    + ("Retrying the request." if params.get("willRetry") else ""),
                 )
             elif method == "turn/completed" and params.get("turn", {}).get("id") == turn_id:
                 status = params["turn"].get("status")
@@ -186,11 +186,11 @@ def run(directory, rpc_factory=CodexRPC):
                     "final" if status == "completed" else "error",
                     text=final_text
                     if status == "completed"
-                    else "Codex úlohu nedokončil: " + str(status),
+                    else "Codex did not complete the task: " + str(status),
                 )
                 break
     except KeyboardInterrupt:
-        outcome.update(status="cancelled", reason="Zastaveno uživatelem nebo ukončením Studia.")
+        outcome.update(status="cancelled", reason="Stopped by user or by Studio termination.")
         if rpc and thread_id and turn_id:
             try:
                 rpc.request("turn/interrupt", {"threadId": thread_id, "turnId": turn_id}, timeout=2)

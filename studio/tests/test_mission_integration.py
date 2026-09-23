@@ -23,13 +23,13 @@ class ProjectModel(BaseHTTPRequestHandler):
         data = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         messages = data["messages"]
         prompt = "\n".join(str(m.get("content", "")) for m in messages if m.get("role") == "user")
-        report_path = re.search("JSON soubor (company/projects/[a-f0-9]+/reports/[a-f0-9]+\\.json)", prompt).group(1)
-        planning = "FÁZE TOHOTO BĚHU: plan." in prompt
-        building = "FÁZE TOHOTO BĚHU: build." in prompt
+        report_path = re.search("JSON file (company/projects/[a-f0-9]+/reports/[a-f0-9]+\\.json)", prompt).group(1)
+        planning = "You are the planner." in prompt
+        building = "PHASE OF THIS RUN: build." in prompt
         self.server.frames.append({"planning": planning, "building": building,
             "system": "\n".join(str(m.get("content", "")) for m in messages if m.get("role") == "system"),
             "tools": [t.get("function", {}).get("name") for t in data.get("tools", [])]})
-        final = "FÁZE TOHOTO BĚHU: final." in prompt
+        final = "PHASE OF THIS RUN: final." in prompt
         # Count only tool results from this fresh worker context.
         count = sum(m.get("role") == "tool" for m in messages)
         if planning:
@@ -46,7 +46,7 @@ class ProjectModel(BaseHTTPRequestHandler):
             content = "OK-v2" if '"work_kind": "feature"' in prompt else "OK"
             # A real model may use the exact physical root supplied in its
             # instructions. Both that root and /workspace must work.
-            physical = re.search("Kořen projektu je (.+?)\\. Souborové", prompt).group(1)
+            physical = re.search("The project root is (.+?)\\. File", prompt).group(1)
             file_path = physical + "/product.txt" if content == "OK" else "/workspace/product.txt"
             operations.append(("create_file", {"path": file_path, "content": content, "overwrite": content != "OK"}))
         if not planning and not building:

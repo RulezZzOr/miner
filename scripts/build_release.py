@@ -57,10 +57,10 @@ def build(root: Path, output: Path) -> list[Path]:
     base = {str(p.relative_to(root)): p.read_bytes() for p in sources}
     base["README.md"] = (
         f"# Switch Studio {version}\n\n"
-        "Místní webové vývojové prostředí. Instalaci a omezení platforem popisuje [INSTALL.md](INSTALL.md).\n\n"
-        "Tato distribuce zdrojového kódu instaluje Python a pevně určené závislosti pomocí uv. "
-        "Neobsahuje váhy modelů, přihlašovací údaje ani historii uživatele. "
-        "Windows používá WSL2. Jde o alfa verzi; podepsaný nativní instalátor zatím není k dispozici.\n"
+        "Local web IDE. See [INSTALL.md](INSTALL.md) for setup and platform limits.\n\n"
+        "This source distribution installs Python and locked dependencies with uv. "
+        "It contains no model weights, account credentials or user history. "
+        "Windows runs through WSL2. This is an alpha, not a signed native installer.\n"
     ).encode()
     built = []
     for target, launchers in {

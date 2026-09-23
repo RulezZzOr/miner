@@ -42,7 +42,7 @@ class ProductTests(unittest.TestCase):
 
     def create(self):
         return self.products.create({"project": self.pid, "kind": "web", "title": "Demo",
-            "goal": "Vytvoř produkt.", "criteria": ["Produkt lze přečíst."],
+            "goal": "Create product.", "criteria": ["Product is readable."],
             "profile": "coder", "review_profile": "reviewer", "isolated": False,
             "verification_checks": [{"argv": [sys.executable, "-c", "from pathlib import Path; assert Path('deliverable.txt').read_text().startswith('OK')"]}]})
 
@@ -57,7 +57,7 @@ class ProductTests(unittest.TestCase):
         (self.project / "deliverable.txt").write_text(content)
         self.finish(report())
         self.finish(report("pass"))
-        final = report("pass", "Produkt lze přečíst.")
+        final = report("pass", "Product is readable.")
         final["checks"] = [{"criterion": c, "passed": True, "evidence": "read_file: OK"}
                            for c in self.current()["criteria"]]
         self.finish(final)
@@ -77,9 +77,9 @@ class ProductTests(unittest.TestCase):
         p = self.accept(p)
         original = p["releases"][0]
         p = self.products.action({"id": p["id"], "action": "add", "kind": "feature",
-            "title": "Další funkce", "goal": "Doplň funkci.", "criteria": ["Nová funkce funguje."]})
+            "title": "Additional features", "goal": "Add feature.", "criteria": ["New feature works."]})
         m = self.ready(p, p["backlog"][-1]["id"], "OK changed")
-        self.assertEqual(m["criteria"], ["Produkt lze přečíst.", "Nová funkce funguje."])
+        self.assertEqual(m["criteria"], ["Product is readable.", "New feature works."])
         self.assertEqual(m["product_context"]["previous_release"], original["mission"])
         p = self.accept(p)
         self.assertEqual(p["releases"][0], original)
@@ -96,7 +96,7 @@ class ProductTests(unittest.TestCase):
         self.controller.tick()
         self.products.action({"id": p["id"], "action": "pause"})
         self.controller.tick()
-        with self.assertRaisesRegex(ValueError, "nadřazený produkt"):
+        with self.assertRaisesRegex(ValueError, "parent product"):
             self.controller.action({"id": self.key, "action": "resume"})
         # Reconcile legacy inconsistent state too, not only API transitions.
         m = self.current()
@@ -124,10 +124,10 @@ class ProductTests(unittest.TestCase):
         self.products = Products(self.studio, clock=lambda: self.now)
         preview = self.products.action({**request, "action": "undo_restore_preview"})
         path.write_text("newer edit")
-        with self.assertRaisesRegex(ValueError, "náhledu"):
+        with self.assertRaisesRegex(ValueError, "preview"):
             self.products.action({**request, "action": "undo_restore", "revision": preview["revision"]})
         self.assertEqual(path.read_text(), "newer edit")
-        with self.assertRaisesRegex(ValueError, "Poslední obnova"):
+        with self.assertRaisesRegex(ValueError, "last restore"):
             self.products.action({**request, "operation": "wrong", "action": "undo_restore_preview"})
         preview = self.products.action({**request, "action": "undo_restore_preview"})
         p = self.products.action({**request, "action": "undo_restore", "revision": preview["revision"]})
@@ -137,7 +137,7 @@ class ProductTests(unittest.TestCase):
         self.assertEqual(p["restorations"][-1]["undoes"], request["operation"])
         backup = self.controller.versions.get(p["restorations"][-1]["backup"])
         self.assertEqual(self.controller.versions.object_path(backup["files"]["deliverable.txt"]).read_text(), "newer edit")
-        with self.assertRaisesRegex(ValueError, "Není dostupná záloha"):
+        with self.assertRaisesRegex(ValueError, "No backup"):
             self.products.action({**request, "action": "undo_restore_preview"})
 
     def test_restore_metadata_commit_failure_rolls_back_files_and_product(self):
@@ -160,7 +160,7 @@ class ProductTests(unittest.TestCase):
         p = self.create()
         self.ready(p)
         (self.project / "deliverable.txt").write_text("changed")
-        with self.assertRaisesRegex(ValueError, "změnil"):
+        with self.assertRaisesRegex(ValueError, "changed"):
             self.accept(p)
         self.products.tick()
         self.assertEqual(self.products.get(p["id"])["releases"], [])
@@ -196,17 +196,17 @@ class ProductTests(unittest.TestCase):
         self.key = self.products.get(p["id"])["cycles"][0]["mission"]
         self.controller.tick()
         m = self.finish({"status": "plan", "tasks": [plan_task()],
-                         "questions": [{"question": "Jaká barva?", "reason": "Potřebuji rozhodnutí."}]})
+                         "questions": [{"question": "What color?", "reason": "I need a decision."}]})
         self.products.tick()
         self.assertEqual(self.current()["status"], "waiting")
-        self.controller.action({"id": self.key, "action": "answer", "question": m["questions"][0]["id"], "answer": "Modrá"})
+        self.controller.action({"id": self.key, "action": "answer", "question": m["questions"][0]["id"], "answer": "Blue"})
         self.products.tick()
         self.assertEqual(self.current()["phase"], "build")
         # Simulate a finished delivery here; evidence acceptance is covered by the real phases above.
         m = self.current()
         m.update(status="ready", active_attempt=None)
         self.controller.save(m)
-        self.products.action({"id": p["id"], "action": "add", "title": "Další", "goal": "Další práce", "criteria": ["Nové"]})
+        self.products.action({"id": p["id"], "action": "add", "title": "Next", "goal": "More work", "criteria": ["New"]})
         self.products.tick()
         self.assertEqual(self.current()["status"], "ready")
         self.assertEqual(len(self.controller.list()), 1)

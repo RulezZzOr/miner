@@ -1,160 +1,98 @@
-# Smyčka Switch Studia: od zadání k ověřené verzi
+# Switch Studio Loop: From Task Brief to Verified Version
 
-Stav 2026-09-23. Řadič, zdroje i GUI běží lokálně. Modely mohou běžet na jiném
-počítači. Zavření záložky práci nezastaví, ukončení Studia nebo uspání hostitele ano.
-Tento dokument popisuje implementaci; není potvrzením týdenního provozu.
+Status: 2026-09-23. The controller, resources, and GUI run locally. Models may run on a different machine. Closing a tab does not stop the current work; terminating Studio or putting the host to sleep does.
+This document describes the implementation; it is not confirmation of a week-long operational run.
 
-Základní limit nástrojů má nejvýše třetinu časového limitu pracovního pokusu
-(nebo kratší limit profilu). Některé specializované nástroje mají vlastní
-pevné minimum. Celkový limit pokusu dál hlídá řadič; opakovaná
-volání jej neprodlužují. Jednorázový nativní shell není správce služeb:
-testovací proces musí kontrolní skript ukončit ve stejném volání. Trvale
-běžící službu spouští nasazovací řadič. Delší kompilace vyžaduje odpovídající
-limit pokusu, nikoli obcházení timeoutu procesem na pozadí.
+Tool timeouts are capped at no more than one-third of the task attempt’s time limit (or the profile’s stricter limit). Some specialized tools have their own fixed minimum. The overall attempt limit is still enforced by the controller; repeated calls do not extend it. A one-time native shell is not a service manager: the test process must be terminated by the control script in the same call. A permanently running service is started by the deployment controller. Longer compilations require a corresponding attempt limit—not circumvention of the timeout via a background process.
 
 ```mermaid
 flowchart TD
-  UI[GUI: zadání, otázky, schválené kontroly] --> M[Řadič realizace]
-  Notes[PROJECT.md a související zápisky] --> M
-  M <--> DB[(SQLite: plán, pokusy, historie, důkazy)]
-  M --> Plan[Plánovač: soubory a otázky]
-  Plan --> Gate[Potvrzení plánu / odpovědi vlastníka]
-  Gate --> Select[Výběr připraveného úkolu]
-  Select -. volitelně .-> Decision[Omezený rozhodovací model]
-  Decision -. platná akce nebo návrat k pořadí .-> Select
-  Select --> Work[Realizátor v pracovní kopii]
-  Work --> Review[Nová relace modelového review]
-  Review -->|konkrétní oprava| Work
-  Review --> Check[Nezávislý vykonavatel schválených příkazů]
-  Check -->|exit, log, změna zdrojů| Work
-  Check -->|úspěch| Ready[Verze k převzetí]
-  Ready --> Accept[Převzetí a kontrola novějších změn]
-  Accept --> Objects[(Obsahy souborů a práva)]
-  Accept --> Original[Původní projekt]
-  Accept --> Service[Volitelná místní služba]
-  Service --> Health[Skutečné HTTP kontroly]
-  Health -->|incident| Queue[Fronta oprav produktu]
+  UI[GUI: task brief, questions, approved checks] --> M[Execution Controller]
+  Notes[PROJECT.md and related notes] --> M
+  M <--> DB[(SQLite: plan, attempts, history, evidence)]
+  M --> Plan[Planner: files and questions]
+  Plan --> Gate[Plan / owner’s answer confirmation]
+  Gate --> Select[Selection of ready task]
+  Select -. optional .-> Decision[Restricted decision model]
+  Decision -. valid action or fallback to ordering .-> Select
+  Select --> Work[Worker in working copy]
+  Work --> Review[New model review session]
+  Review -->|specific fix| Work
+  Review --> Check[Independent executor of approved commands]
+  Check -->|exit, log, resource change| Work
+  Check -->|success| Ready[Version ready for acceptance]
+  Ready --> Accept[Acceptance and check for newer changes]
+  Accept --> Objects[(File contents and permissions)]
+  Accept --> Original[Original project]
+  Accept --> Service[Optional local service]
+  Service --> Health[Actual HTTP checks]
+  Health -->|incident| Queue[Product fix queue]
   Queue --> M
-  Objects --> Restore[Obnova zdrojů / nasazení starší verze]
+  Objects --> Restore[Resource restoration / deployment of older version]
 ```
 
-## Co znamená dokončení
+## What Completion Means
 
-Model ukládá JSON report a produktové soubory. Řadič ověřuje strukturu, existenci,
-kontrolní součty a pokrytí kritérií. Tvrzení modelu „test prošel“ se samo nepovažuje
-za úspěšnou nezávislou kontrolu.
+The model saves a JSON report and product files. The controller verifies structure, existence, checksums, and coverage of criteria. The model’s assertion “test passed” alone does not count as a successful independent check.
 
-Vlastník v GUI zadá příkazy kontrol. Každý řádek je seznam argumentů rozdělený
-podle shellového quoting; operátory `&&`, přesměrování nebo `$()` se automaticky
-nevyhodnocují. Příkaz může výslovně spouštět interpreter, proto schvaluj jeho obsah.
-GUI používá timeout 5 minut; API přijímá `argv`, `label` a `timeout` 1–3600 sekund.
+The owner specifies check commands in the GUI. Each line is a list of arguments separated by shell quoting; operators like `&&`, redirections, or `$()` are not automatically evaluated. A command may explicitly invoke an interpreter, so approve its content. The GUI uses a 5-minute timeout; the API accepts `argv`, `label`, and `timeout` between 1–3600 seconds.
 
-Vykonavatel uloží příkaz, začátek a konec, exit code a omezený log. Před kontrolami,
-po nich a při převzetí musí odpovídat zdroje včetně práv souborů. Změna zdrojů během
-testů vyžaduje nové ověření. Výstupy buildů uvnitř sledovaného rozsahu jsou také
-změnou; pro takový projekt nastav kontrolní postup tak, aby ověřoval stabilní výsledek.
+The executor stores the command, start/end timestamps, exit code, and a limited log. Before checks, after checks, and at acceptance, resources—including file permissions—must match. Changing resources during tests requires re-verification. Build outputs within the tracked scope also constitute a change; for such projects, configure the check procedure to verify a stable result.
 
-Bez schválených kontrol se čeká. Ruční převzetí má zvláštní potvrzení a označení
-`manual`; neposkytuje důkaz spuštění testů a nelze je tímto backendem automaticky nasadit.
+Without approved checks, the process waits. Manual acceptance has special confirmation and is marked `manual`; it provides no evidence of test execution and cannot be automatically deployed by this backend.
 
-## Izolace a verze
+## Isolation and Versions
 
-Nová realizace má kopii zdrojů pod `.switch-agent/studio/workspaces/<id>`.
-Při převzetí se změny porovnají s výchozí verzí a původním projektem. Nesouvisející
-úpravy vlastníka zůstanou; konflikt se odmítne. To je ochrana běžného pracovního
-postupu, nikoli OS izolované prostředí. Nativní příkazy mají stále oprávnění uživatele.
+A new execution gets a copy of the resources under `.switch-agent/studio/workspaces/<id>`. At acceptance, changes are compared against the baseline version and the original project. Unrelated owner edits remain; conflicts are rejected. This protects the standard workflow—not an OS sandbox. Native commands still retain user-level permissions.
 
-Obsahové objekty jsou pod `.switch-agent/studio/objects/`; metadata verzí a žurnál
-obnovy jsou v SQLite. Před obnovou vznikne záloha současného sledovaného obsahu.
-Selhání zápisu nebo přerušení vede k návratu předchozího stavu; novější konflikt
-při obnově vyžaduje zásah vlastníka. Jednotlivé soubory se zapisují atomicky,
-celá sada souborů není jednou filesystemovou transakcí.
+Content objects reside under `.switch-agent/studio/objects/`; version metadata and restore journal are stored in SQLite. Before restoration, a backup of the current tracked content is created. A write failure or interruption reverts to the previous state; a newer conflict during restoration requires owner intervention. Individual files are written atomically; the entire file set is not a single filesystem transaction.
 
-V **Záloha před poslední obnovou** lze zobrazit náhled a vrátit obsah před touto
-obnovou, včetně vlastních úprav souborů. Novější změna po náhledu akci odmítne;
-obnov náhled a zkontroluj rozdíl. Návrat mění zdroje, nikoli běžící službu.
+In **Backup before last restore**, you can preview and revert to the content before that restore—including your own file edits. A newer change after previewing rejects the action; re-preview and inspect the diff. Reversion changes resources—not the running service.
 
-Rozsah: nejvýše 50 MB/soubor, 500 MB a 20 000 souborů. Symlinky se odmítají.
-Vynechávají se `.env*`, `.git`, `.venv`, `node_modules`, cache, provozní metadata
-Studia a reporty pod `company/projects/`. Záměna souboru a složky se odmítá před
-zápisem; přesuň ji ručně a obnov náhled. Databáze produktu, přístupy a instalované
-závislosti vyžadují vlastní zálohu a správu.
+Limits: max 50 MB/file, 500 MB total, 20,000 files. Symlinks are rejected. `.env*`, `.git`, `.venv`, `node_modules`, caches, Studio operational metadata, and reports under `company/projects/` are excluded. File/folder name swaps are rejected before writing; move manually and re-preview. Product database, access credentials, and installed dependencies require separate backup and management.
 
-## Rozhodování a historie
+## Decision-Making and History
 
-Výchozí výběr úkolu používá pořadí a závislosti v Pythonu. Volitelný kompatibilní
-chat profil dostává malý rámec pouze s připravenými akcemi. Politika je v
-`studio/templates/decision-policy.md`. Neplatná odpověď, timeout nebo nízká
-modelová důvěra vrátí výběr k pořadí. Důvěra je tvrzení modelu, nikoli kalibrovaná
-pravděpodobnost. Model nemůže tímto výběrem přeskočit potvrzení, pause nebo testy.
+Default task selection uses ordering and dependencies defined in Python. An optional compatible chat profile receives a narrow frame with only ready actions. Policy is in `studio/templates/decision-policy.md`. Invalid responses, timeouts, or low model confidence revert to ordering. Confidence is the model’s assertion—not a calibrated probability. This selection mechanism cannot bypass confirmation, pause, or tests.
 
-Inspirace: [JevLoop](https://github.com/zjunlp/JevLoop). Jev samotný není připojen;
-jde o volitelný výběr úkolů, ne přestavbu každého volání nástroje. Syntetický pilot
-je ve vývojové kopii v `analysis/audit/DECISION_PILOT.md`.
+Inspiration: [JevLoop](https://github.com/zjunlp/JevLoop). The phenomenon itself is not connected; this is an optional task selection—not a restructuring of every tool call. A synthetic pilot is in development at `analysis/audit/DECISION_PILOT.md`.
 
-Historie **Proč se postup změnil** ukazuje důvod, fázi, report a jeho otisk,
-změny souborů, délku běhu, modely a dostupné tokeny. Odhad tokenů se odlišuje
-od údajů poskytovatele. Peněžní cena bez ověřeného ceníku není dopočítaná.
-Historie změn vzniká ve stejné databázové transakci jako stav realizace.
+History **Why the process changed** shows the reason, phase, report and its hash, file changes, run duration, models used, and available tokens. Token estimates differ from provider data. Monetary cost is not computed without verified pricing.
 
-Webové nástroje Switch vracejí omezený text stránky přímo zvolenému pracovnímu
-modelu. Samostatná modelová extrakce stránky je vypnutá, aby se bez výběru
-vlastníka nepoužil výchozí cloudový model. Případné Serper/Jina služby pro
-vyhledání nebo stažení stránky jsou oddělenou konfigurací.
+Change history is created in the same database transaction as the execution state.
 
-## Místní nasazení a opravy
+Switch web tools return a limited page text directly to the chosen worker model. Standalone model-based page extraction is disabled to prevent use of the default cloud model without owner selection. Any Serper/Jina services for page search or download are separate configurations.
 
-V **Produkty → Místní nasazení, dostupnost a opravy** nastav příkaz, například:
+## Local Deployment and Fixes
+
+In **Products → Local deployment, availability, and fixes**, set a command, e.g.:
 
 ```text
 python3 -m http.server {port} --bind {host}
 ```
 
-Studio dosadí loopback a volný port. Služba dostane zvláštní kopii ověřené verze.
-Trvalá data ukládej do `{data_dir}` nebo cesty z `SWITCH_DATA_DIR`; identifikátor
-verze je v `SWITCH_RELEASE_ID`. Příkaz musí dostupné prostředí umět spustit;
-Studio samo neinstaluje závislosti ani nemigruje databáze.
+Studio substitutes loopback and an available port. The service receives a dedicated copy of the verified version. Persistent data should go to `{data_dir}` or a path from `SWITCH_DATA_DIR`; the version identifier is in `SWITCH_RELEASE_ID`. The command must be executable with the provided environment; Studio does not install dependencies or migrate databases.
 
-**Zastavit místní službu** také zruší čekající automatické nasazení a vypne
-automatické převzetí a nasazení. Pro nové automatické verze tuto volbu znovu zapni.
+**Stop local service** also cancels pending automatic deployments and disables automatic acceptance and deployment. Re-enable this option for new automatic versions.
 
-Nová služba musí na daném portu patřit vlastnímu stromu procesů a dvakrát po sobě
-projít HTTP kontrolou 200, případně očekávaným textem. Teprve pak se předchozí
-proces zastaví. Selhání kandidáta zachová předchozí běžící službu. Kontroly běží
-přibližně po dvou sekundách; start má 30 sekund, běžící služba toleruje dvě chyby.
-Třetí chyba nebo konec procesu vytvoří incident. Selhání několika služeb může
-interval prodloužit; nejde o externí nezávislý monitoring.
+A new service must own its own process tree on the given port and pass HTTP checks twice (200 OK, optionally with expected text) before the previous process is stopped. Failure of the candidate preserves the currently running service. Checks run roughly every two seconds; startup has 30 seconds; a running service tolerates two errors. A third error or process termination creates an incident. Multiple failing services may extend the interval; this is not external independent monitoring.
 
-Při zaznamenaném konci podprocesu se zachová jeho skutečný exit kód a název
-signálu (například SIGTERM), odděleně od výsledku dohlížecího procesu. Starší
-nebo přerušený dohled může mít pouze obecný výsledek. Ani signál sám neurčuje,
-kdo jej odeslal nebo proč; diagnostika nesmí z posledního HTTP požadavku
-automaticky odvodit příčinu výpadku.
+Upon a recorded subprocess termination, its actual exit code and signal name (e.g., SIGTERM) are preserved separately from the supervisor process’s result. Older or interrupted supervision may only have a generic result. A signal alone does not indicate who sent it or why; diagnostics must not automatically infer the outage cause from the last HTTP request.
 
-Volby jsou samostatné a výchozí vypnuté:
+Options are independent and disabled by default:
 
-- Předat incident do fronty oprav aktivního produktu, právě jednou pro daný incident.
-- Při zapnutém automatickém navazování převzít a nasadit úspěšně ověřenou verzi.
-- Obnovit službu po restartu Studia, nejvýše tři pokusy v dané obnovovací řadě.
+- Forward incident to the active product’s fix queue—once per incident.
+- On enabled automatic resumption, accept and deploy a successfully verified version.
+- Restore service after Studio restart—up to three attempts per restore sequence.
 
-Minuta úspěšného stabilního provozu obnovovací řadu ukončí; další pozdější restart
-má nový limit. Selhávající starty samotné tento limit nenulují.
+One minute of successful stable operation ends the restore sequence; a later restart starts a new limit. Failing startups alone do not reset this limit.
 
-Každé nasazení má vlastní místní URL. Není zde stabilní reverse proxy, veřejný
-hosting, HTTPS doména ani vzdálený produkční adaptér. **Nasadit místně verzi N**
-umožňuje návrat služby na starší ověřený obsah; **Obnovit verzi N** mění zdroje
-projektu. Ani jedna akce nevrací provozní databázi. Starší kód musí být s daty kompatibilní.
+Each deployment has its own local URL. There is no stable reverse proxy, public hosting, HTTPS domain, or remote production adapter. **Deploy local version N** allows reverting the service to older verified content; **Restore version N** modifies project resources. Neither action restores operational databases. Older code must be data-compatible.
 
-## Výpadky a provozní hranice
+## Outages and Operational Boundaries
 
-Checkpoint relace se zapisuje atomicky s `fsync`; jeho chyba zastaví práci a je
-vidět v logu. Pause nadřazeného produktu brání obnovení jeho realizace. Identita
-procesů se ukládá před jejich aktivací a ověřuje podle PID i času vzniku.
+Session checkpoints are written atomically with `fsync`; failure halts work and appears in logs. Pausing the parent product prevents restoration of its execution. Process identity is stored before activation and verified by PID and creation time.
 
-Modely a limity dalších běhů lze změnit po zastavení realizace. Změna sama
-neobnoví práci ani neprodlouží celkový termín. Opakování po výpadku není zárukou
-přesně jednoho provedení libovolné externí akce. Platby a odesílání komunikace
-nepatří do automatického režimu tohoto řadiče.
+Models and limits for subsequent runs can be changed after stopping execution. Changing them alone does not resume work or extend the overall deadline. Repetition after an outage does not guarantee exactly one execution of any external action. Payments and communication sending are outside the automatic mode of this controller.
 
-Dlouhý provoz vyžaduje trvale dostupného hostitele a samostatné měření. Test
-se simulovaným časem nebo lokální fixture modelu nenahrazuje skutečný den či týden.
+Long-term operation requires a permanently available host and independent measurement. A test with simulated time or a local model fixture does not substitute for a real day or week.

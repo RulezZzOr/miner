@@ -1,20 +1,32 @@
-# Uvedení třetích stran
+# Third-party attribution
 
 ## FrontierAgent
 
-Repozitář obsahuje upravenou kopii projektu [ApodexAI/FrontierAgent](https://github.com/ApodexAI/FrontierAgent) ve složce `frontier/`, založenou na commitu `9e533db6f6c34d16037ee5ec964c479d0eb51cde`.
-Původní zdrojový kód, oznámení o autorských právech, licence, testy a dokumentace jsou zachovány. Viz [frontier/LICENSE](frontier/LICENSE) a [poznámky ke změnám](frontier/SWITCH.md). Původní názvy projektu zůstávají kvůli uvedení autorů a kompatibilitě API.
+This repository includes a modified copy of [ApodexAI/FrontierAgent](https://github.com/ApodexAI/FrontierAgent)
+under `frontier/`, based on commit `9e533db6f6c34d16037ee5ec964c479d0eb51cde`.
+The original source, copyright notices, licenses, tests and documentation are retained.
+See [frontier/LICENSE](frontier/LICENSE) and [modification notes](frontier/SWITCH.md).
+Upstream project names are retained for attribution and API compatibility.
 
-FrontierAgent dodává běhové prostředí agentů, pracovní postupy ReAct a Agent Team, nástroje, terminálové rozhraní a vyhodnocovací rámec. Switch Studio dodává webové vývojové prostředí a řadiče projektů, firem a produktů; zahrnuje úpravy pro poskytovatele modelů a předávání zpráv o práci.
+FrontierAgent supplies the agent runtime, ReAct and Agent Team workflows, tools, TUI and
+evaluation framework. Switch Studio supplies the browser IDE and project/company/product
+controllers and includes adaptations for model providers and workflow reporting.
 
-## Závislosti a další součásti
+## Dependencies and assets
 
-Pevné verze závislostí Pythonu uvádí `frontier/uv.lock`; platí pro ně příslušné licence. Vnořené součásti, materiály a balíky testovacích úloh si zachovávají vlastní oznámení a licence, včetně `frontier/benchmarks/frontierchallenge/LICENSE`.
-
-Váhy modelů ani soukromé testovací datové sady nejsou součástí distribuce. Názvy modelů a poskytovatelů popisují kompatibilitu. Tento projekt není oficiálně spojený s Apodexem ani jím schválený.
+Pinned Python dependencies are listed in `frontier/uv.lock`; their respective licenses apply.
+Nested components, assets and benchmark packages retain their own notices and licenses,
+including `frontier/benchmarks/frontierchallenge/LICENSE`.
+Model weights and private benchmark datasets are not included. Model and provider names are
+used only to describe compatibility. This project is not affiliated with or endorsed by Apodex.
 
 ## FrontierChallenge — CC BY 4.0
 
-Přibalená součást `frontier/benchmarks/frontierchallenge/` uvádí jako autory Apodex Team a jmenované autory FrontierChallenge zachované v [původním README a citaci](frontier/benchmarks/frontierchallenge/README.md#citation). [Původní zdroj](https://github.com/ApodexAI/FrontierAgent/tree/9e533db6f6c34d16037ee5ec964c479d0eb51cde/benchmarks/frontierchallenge).
-
-Její licence je [Creative Commons Attribution 4.0 International](https://creativecommons.org/licenses/by/4.0/); úplné znění je zachováno v [jejím LICENSE](frontier/benchmarks/frontierchallenge/LICENSE). Miner nezměnil zdrojový obsah této součásti oproti uvedené původní verzi. Kořenová licence Apache-2.0 nenahrazuje podmínky CC BY 4.0 ani licence dalšího softwaru.
+The bundled `frontier/benchmarks/frontierchallenge/` component is attributed to the
+Apodex Team and the named FrontierChallenge authors preserved in its
+[original README and citation](frontier/benchmarks/frontierchallenge/README.md#citation).
+[Upstream source](https://github.com/ApodexAI/FrontierAgent/tree/9e533db6f6c34d16037ee5ec964c479d0eb51cde/benchmarks/frontierchallenge).
+Its license is [Creative Commons Attribution 4.0 International](https://creativecommons.org/licenses/by/4.0/),
+with the full text retained in [its LICENSE](frontier/benchmarks/frontierchallenge/LICENSE).
+Miner has not modified this component's source content from the cited upstream snapshot.
+The root Apache-2.0 license does not replace its CC BY 4.0 terms or third-party software licenses.

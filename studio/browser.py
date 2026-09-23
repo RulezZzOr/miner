@@ -1,4 +1,4 @@
-"Otevřít lokální URL Studio v prohlížeči hostitele, včetně Windows z WSL2."
+"""Open a local Studio URL in the host browser, including Windows from WSL2."""
 from __future__ import annotations
 
 import re

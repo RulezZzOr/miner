@@ -1,4 +1,4 @@
-"Výslovně vyhrazený, omezený na misi, seznam SSH zařízení; žádné libovolné příkazy."
+"""Explicitly provisioned, mission-scoped SSH inventory; no arbitrary commands."""
 from __future__ import annotations
 
 import asyncio
@@ -24,22 +24,22 @@ def targets_for(config_dir, mission):
         if mission['id'] not in t.get('missions', []):
             continue
         if not re.fullmatch(r'[a-zA-Z0-9_-]{1,60}', t.get('id', '')):
-            raise ValueError("Neplatné ID cíle SSH")
+            raise ValueError('Invalid SSH target id')
         ipaddress.ip_address(t['host'])
         if not re.fullmatch(r'[a-z_][a-z0-9_-]{0,63}', t['user']):
-            raise ValueError("Neplatný uživatel SSH")
+            raise ValueError('Invalid SSH user')
         if type(t['port']) is not int or not 1 <= t['port'] <= 65535:
-            raise ValueError("Neplatný port SSH")
+            raise ValueError('Invalid SSH port')
         identity = Path(t['identity_file']).expanduser()
         if not identity.is_absolute():
-            raise ValueError("Identita SSH musí mít absolutní cestu")
+            raise ValueError('SSH identity must have an absolute path')
         result.append({k: t[k] for k in ('id', 'host', 'user', 'port')} | {'identity_file': str(identity)})
     return result
 
 
 def ssh_argv(target, section):
     if section not in SECTIONS:
-        raise ValueError("Nepodporovaná sekce seznamu")
+        raise ValueError('Unsupported inventory section')
     return ['ssh', '-F', '/dev/null', '-T', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes',
             '-o', 'IdentitiesOnly=yes', '-o', 'PasswordAuthentication=no', '-o', 'KbdInteractiveAuthentication=no',
             '-o', 'PreferredAuthentications=publickey', '-o', 'ForwardAgent=no', '-o', 'ClearAllForwardings=yes',
@@ -58,7 +58,7 @@ async def execute(target, section):
         while chunk := await stream.read(8192):
             size += len(chunk)
             if size > 256000:
-                raise ValueError("Výstup SSH překročil limit seznamu")
+                raise ValueError('SSH output exceeded the inventory limit')
             chunks.append(chunk)
         return b''.join(chunks)
 
@@ -75,15 +75,15 @@ async def execute(target, section):
         code = await process.wait()
         if code:
             # Never send uncontrolled login banners or remote stderr to the model.
-            message = "Seznam SSH selhal"
-            for marker in ("Přístup odepřen", "Ověření klíče hostitele selhalo", "Připojení odmítnuto", 'No route to host', "Čas pro připojení vypršel"):
+            message = 'SSH inventory failed'
+            for marker in ('Permission denied', 'Host key verification failed', 'Connection refused', 'No route to host', 'Connection timed out'):
                 if marker.encode() in stderr:
                     message = marker
                     break
-            raise RuntimeError(f'{message} (návratový kód {code}); ověřování přístupu ani kontrola klíče serveru nebyly vypnuty.')
+            raise RuntimeError(f'{message} (exit {code}); no authentication or host-key checks were disabled.')
         result = json.loads(stdout)
         if not isinstance(result, dict) or result.get('version') != 1 or result.get('section') != section or not isinstance(result.get('data'), dict):
-            raise ValueError("Neplatná odpověď ze seznamu SSH")
+            raise ValueError('Invalid SSH inventory response')
         return result
 
     try:
@@ -104,12 +104,12 @@ class SSHInventory:
 
     async def invoke(self, *, target, section):
         if target not in self.targets or section not in SECTIONS:
-            raise ValueError("Použijte jeden nakonfigurovaný cíl a podporovanou sekci jen pro čtení")
+            raise ValueError('Use one configured target and a supported read-only section')
         t = self.targets[target]
         # Validate the evidence directory before any remote action, including symlinks.
         folder = self.workspace / 'company' / 'ssh-evidence'
         if not folder.resolve().is_relative_to(self.workspace):
-            raise ValueError("Adresář s důkazy uniká mimo pracovní prostor")
+            raise ValueError('Evidence directory escapes the workspace')
         folder.mkdir(parents=True, exist_ok=True)
         result = await execute(t, section)
         result.update(target=target, host=t['host'], port=t['port'], user=t['user'],
@@ -123,12 +123,12 @@ class SSHInventory:
         from frontier_agent.core.tool import Tool
         destinations = ', '.join(f"{t['id']} = {t['user']}@{t['host']}:{t['port']}" for t in self.targets.values())
         return Tool(name='ssh_inventory', description=(
-            "Seznam SSH jen pro čtení nakonfigurovaných serverů pomocí existujících klíčů. Dostupné cíle: " + destinations +
-            ". Vyberte systém (OS/hardware), služby (stavy služeb/názvy procesů/porty/kontejnery), "
-            "projekty (cesty k projektům/routy nginx) nebo integrace (názvy závislostí a názvy proměnných integrace pouze). "
-            "Žádný příkaz ani libovolný parametr souboru. Uloží časově označený JSON důkaz do složky company/ssh-evidence. "
-            "Tento nástroj použijte pro inventarizaci serverů; obecný bash SSH a web_fetch nejsou SSH konektorem. "
-            "Přítomnost konfigurace neprokazuje, že integrace funguje."),
+            'Read-only SSH inventory of configured servers using existing keys. Available targets: ' + destinations +
+            '. Select system (OS/hardware), services (service states/process names/ports/containers), '
+            'projects (project paths/nginx routes), or integrations (dependency names and integration variable NAMES only). '
+            'No command or arbitrary file parameter. Saves timestamped JSON evidence in company/ssh-evidence. '
+            'Use this tool for the server inventory; generic bash SSH and web_fetch are not the SSH connector. '
+            'Configuration presence does not prove an integration works.'),
             parameters={'type': 'object', 'properties': {'target': {'type': 'string', 'enum': list(self.targets)},
                 'section': {'type': 'string', 'enum': list(SECTIONS)}},
                 'required': ['target', 'section'], 'additionalProperties': False}, func=self.invoke)

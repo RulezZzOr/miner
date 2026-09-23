@@ -39,7 +39,7 @@ class ModelHandler(BaseHTTPRequestHandler):
         messages = data.get("messages", [])
         has_result = any(m.get("role") == "tool" for m in messages)
         if has_result:
-            delta = {"role": "assistant", "content": "Soubor byl vytvořen. STUDIO_TEST_OK"}
+            delta = {"role": "assistant", "content": "File was created. STUDIO_TEST_OK"}
             finish = "stop"
         else:
             delta = {
@@ -425,7 +425,7 @@ class StudioTests(unittest.TestCase):
         self.assertNotEqual(original["sha256"], self.studio.project_notes(self.pid)["sha256"])
         self.assertIn("My project", original["context"])
         index.write_text("a" * 12001)
-        with self.assertRaisesRegex(Problem, "12 000"):
+        with self.assertRaisesRegex(Problem, "12,000"):
             self.studio.project_notes(self.pid)
         index.write_bytes(b"\xff")
         with self.assertRaisesRegex(Problem, "UTF-8"):

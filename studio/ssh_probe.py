@@ -1,4 +1,8 @@
-"Pevně daný skript jen pro čtení odeslaný výslovně nakonfigurovanému SSH hostu.\n\nŽádné příkazy, obsahy souborů, argumenty procesů ani hodnoty prostředí dodané volajícím\nnejsou vraceny. Tento modul běží také na vzdáleném hostu pomocí standardní knihovny Pythonu.\n"
+"""Fixed read-only inventory script sent to an explicitly configured SSH host.
+
+No caller-supplied command, file content, process arguments or environment values
+are returned. This module also runs on the remote host using Python's stdlib.
+"""
 import json
 import os
 import platform
@@ -20,7 +24,7 @@ def command(argv):
         r = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True,
                            text=True, timeout=7, env={**os.environ, 'LC_ALL': 'C', 'SYSTEMD_PAGER': ''})
         return {'argv': argv, 'exit_code': r.returncode, 'output': r.stdout[:18000],
-                'error': "Příkaz selhal nebo přístup odepřen" if r.returncode else None}
+                'error': 'Command failed or access denied' if r.returncode else None}
     except (OSError, subprocess.TimeoutExpired) as exc:
         return {'argv': argv, 'exit_code': None, 'output': '', 'error': type(exc).__name__}
 
@@ -53,12 +57,12 @@ def project_files():
 
 
 def integration_names(path):
-    "Vraťte pouze názvy závislostí/klíčů, nikoli konfigurační hodnoty."
+    """Return dependency/key NAMES only, never configuration values."""
     raw = small(path)
     if path.name.startswith('.env'):
         return {'variable_names': sorted(set(m.group(1) for m in re.finditer(
             r'^\s*(?:export\s+)?([A-Z][A-Z0-9_]{1,80})\s*=', raw, re.M)
-            if re.search("VAPI|BUFFER|CRM", m.group(1))))}
+            if re.search(r'VAPI|BUFFER|CRM', m.group(1))))}
     if path.name == 'package.json':
         data = json.loads(raw)
         names = sorted(set(data.get('dependencies', {})) | set(data.get('devDependencies', {})))
@@ -88,7 +92,7 @@ def nginx_routes():
                         routes.append({name: value})
                 rows.append({'source': str(p), 'routes': routes})
             except (OSError, ValueError):
-                rows.append({'source': str(p), 'error': "Nelze prozkoumat"})
+                rows.append({'source': str(p), 'error': 'Cannot inspect'})
     return rows
 
 
@@ -125,12 +129,12 @@ def collect(section):
                 try:
                     row.update(integration_names(p))
                 except (OSError, ValueError, TypeError):
-                    row['error'] = "Nelze prozkoumat manifest"
+                    row['error'] = 'Cannot inspect manifest'
             rows.append(row)
         return {'roots': ROOTS, 'max_depth': 4, 'truncated': truncated, 'files': rows,
                 'nginx_routes': nginx_routes() if section == 'projects' else [],
-                'note': "Přítomnost souboru, názvu klíče nebo závislosti není důkazem funkční integrace."}
-    raise ValueError("Nepodporovaná sekce seznamu")
+                'note': 'Presence of a file, key name or dependency is not proof of a working integration.'}
+    raise ValueError('Unsupported inventory section')
 
 
 if __name__ == '__main__':

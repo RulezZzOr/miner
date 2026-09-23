@@ -1,10 +1,10 @@
-"Oddělte opakovaný výzkum a samostatnou přípravu od provádění."
+"""Bound repeated research and separate preparation from execution."""
 from collections import Counter
 from urllib.parse import urlsplit
 
 
 def phase_limits(phase, seconds, turns):
-    "Plánování vytváří malou zprávu; její rozpočet není rozpočtem produktu."
+    """Planning produces a small report; its budget is not the product budget."""
     return (min(seconds, 300), min(turns, 8)) if phase == 'plan' else (seconds, turns)
 
 
@@ -23,7 +23,7 @@ class ProgressGuard:
         if self.turn_refusal:
             self.refusals += 1
             if self.refusals >= 3:
-                self.stop_reason = "progress_guard: Opakování bez pokroku. " + self.turn_refusal
+                self.stop_reason = "progress_guard: Repetition without progress. " + self.turn_refusal
         self.turn_refusal = ''
 
     def inspect(self, name, args):
@@ -31,11 +31,11 @@ class ProgressGuard:
             return self.stop_reason
         reason = ''
         if self.phase == 'plan' and name in {'web_fetch', 'web_search'}:
-            reason = "Plánování nesmí provádět webovou rešerši. Zařaď ji do plánu jako pozdější úkol."
+            reason = "Planning must not perform web research. Add it to the plan as a later task."
         elif self.phase == 'plan' and name in {'read_file', 'glob_search', 'grep_search', 'recover_result'}:
             self.discovery_calls += 1
             if self.discovery_calls > 3:
-                reason = "Lokální průzkum plánovače je dokončen. Nyní ulož plán; další zjišťování a ověření přístupů zařaď do realizačních úkolů."
+                reason = "Local planner survey is complete. Now save the plan; further investigation and access verification should be scheduled as execution tasks."
         elif name == 'web_fetch':
             urls = args.get('url', [])
             if isinstance(urls, str):
@@ -51,10 +51,10 @@ class ProgressGuard:
                 except ValueError:
                     keys.add((url,))
             if any(self.calls[key] >= 2 for key in keys):
-                reason = "Stejná webová stránka už byla požadována dvakrát. Použij získaný obsah nebo zaznamenej nedostupnost; neopakuj požadavek s jinak formulovanou otázkou."
+                reason = "The same web page has already been requested twice. Use the obtained content or record unavailability; do not repeat the request with a differently worded question."
             else:
                 self.calls.update(keys)
         if reason:
             self.turn_refusal = reason
-            return reason + " Odevzdej report z dostupných podkladů nástrojem save_mission_report."
+            return reason + " Submit the report using save_mission_report from available materials."
         return None

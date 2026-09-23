@@ -74,7 +74,7 @@ class CompanyDriverTests(unittest.TestCase):
     def test_conflicting_form_cannot_overwrite_state(self):
         stale = self.current()
         self.task()
-        with self.assertRaisesRegex(ValueError, "mezitím"):
+        with self.assertRaisesRegex(ValueError, "meanwhile"):
             self.driver.action({"id": stale["id"], "revision": stale["revision"], "action": "start"})
 
     def test_atomic_dispatch_rolls_back_mission_and_reservation(self):
@@ -106,7 +106,7 @@ class CompanyDriverTests(unittest.TestCase):
         self.assertEqual(len(self.current()["cycles"]), 1)
         self.assertEqual(self.driver.usage(self.current())["remaining_runs"], 0)
         self.action("pause")
-        with self.assertRaisesRegex(ValueError, "rezervace"):
+        with self.assertRaisesRegex(ValueError, "reservations"):
             self.action("settings", run_budget=9)
 
     def test_parent_pause_and_expiry_block_direct_resume_and_accept(self):
@@ -115,7 +115,7 @@ class CompanyDriverTests(unittest.TestCase):
         self.action("pause")
         self.assertEqual(self.studio.missions.get(m["id"])["status"], "paused")
         for action in ["resume", "approve_plan", "accept", "manual_accept"]:
-            with self.assertRaisesRegex(ValueError, "nadřazenou firmu"):
+            with self.assertRaisesRegex(ValueError, "parent company"):
                 self.studio.missions.action({"id": m["id"], "action": action})
         self.action("start")
         self.driver.tick()
@@ -123,14 +123,14 @@ class CompanyDriverTests(unittest.TestCase):
         self.now += 8 * 86400
         self.driver.tick()
         self.assertEqual(self.current()["status"], "paused")
-        with self.assertRaisesRegex(ValueError, "horizont"):
+        with self.assertRaisesRegex(ValueError, "Horizon"):
             self.action("start")
 
     def test_direct_runtime_change_cannot_bypass_reserved_budget(self):
         self.task()
         m = self.begin()
         self.action("pause")
-        with self.assertRaisesRegex(ValueError, "rezervované"):
+        with self.assertRaisesRegex(ValueError, "reserved"):
             self.studio.missions.action({"id": m["id"], "action": "runtime_settings", "max_attempts": 1000})
         self.assertEqual(self.studio.missions.get(m["id"])["max_attempts"], 10)
 
@@ -194,7 +194,7 @@ class CompanyDriverTests(unittest.TestCase):
         self.assertEqual(self.studio.missions.get(m["id"])["max_attempts"],20)
         self.assertEqual(self.current()["policy"]["run_budget"],original)
         self.assertEqual(self.driver.usage(self.current())["remaining_runs"],80)
-        with self.assertRaisesRegex(ValueError,"rozpočet"):
+        with self.assertRaisesRegex(ValueError,"budget"):
             self.action("reserve_runs",mission=m["id"],max_attempts=101)
         with patch.object(self.driver,"store",side_effect=RuntimeError("disk")):
             with self.assertRaises(RuntimeError):self.action("reserve_runs",mission=m["id"],max_attempts=25)

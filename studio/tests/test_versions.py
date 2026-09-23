@@ -42,7 +42,7 @@ class VersionTests(unittest.TestCase):
         target = versions.snapshot(work, label="result")
         (self.project / "mine.txt").write_text("owner")
         (self.project / "a.txt").write_text("owner edit")
-        with self.assertRaisesRegex(ValueError, "Konflikt"):
+        with self.assertRaisesRegex(ValueError, "Conflict"):
             versions.apply(self.project, target, base=base)
         (self.project / "a.txt").write_text("old")
         versions.apply(self.project, target, base=base)
@@ -89,10 +89,10 @@ class VersionTests(unittest.TestCase):
         versions = self.controller.versions
         preview = versions.preview(self.project, first)
         (self.project / "a.txt").write_text("two")
-        with self.assertRaisesRegex(ValueError, "náhledu"):
+        with self.assertRaisesRegex(ValueError, "preview"):
             versions.apply(self.project, first, revision=preview["revision"])
         versions.object_path(first["files"]["a.txt"]).write_text("corrupted")
-        with self.assertRaisesRegex(ValueError, "poškozená"):
+        with self.assertRaisesRegex(ValueError, "corrupted"):
             versions.apply(self.project, first)
         self.assertEqual((self.project / "a.txt").read_text(), "two")
 
@@ -109,9 +109,9 @@ class VersionTests(unittest.TestCase):
         self.assertEqual(path.stat().st_mode & 0o777, 0o644)
         preview = versions.preview(self.project, target)
         path.chmod(0o600)
-        with self.assertRaisesRegex(ValueError, "náhledu"):
+        with self.assertRaisesRegex(ValueError, "preview"):
             versions.apply(self.project, target, revision=preview["revision"])
-        with self.assertRaisesRegex(ValueError, "Konflikt"):
+        with self.assertRaisesRegex(ValueError, "Conflict"):
             versions.apply(self.project, target, base=base)
         path.chmod(0o644)
         versions.apply(self.project, target, base=base)
@@ -125,12 +125,12 @@ class VersionTests(unittest.TestCase):
         path.mkdir()
         (path / "child").write_text("child")
         second = self.snapshot()
-        with self.assertRaisesRegex(ValueError, "Záměna souboru a složky"):
+        with self.assertRaisesRegex(ValueError, "File/folder swap"):
             self.controller.versions.apply(self.project, first)
         self.assertEqual((path / "child").read_text(), "child")
         (path / "child").unlink()
         path.rmdir()
         path.write_text("file")
-        with self.assertRaisesRegex(ValueError, "Záměna souboru a složky"):
+        with self.assertRaisesRegex(ValueError, "File/folder swap"):
             self.controller.versions.apply(self.project, second)
         self.assertEqual(path.read_text(), "file")

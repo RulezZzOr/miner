@@ -21,7 +21,7 @@ def configure(root: Path) -> bool:
 
 def main() -> None:
     if sys.platform not in {"darwin", "linux"}:
-        raise SystemExit("Windows vyžaduje WSL2. Použijte Switch Studio Windows.cmd.")
+        raise SystemExit("Windows requires WSL2. Use Switch Studio Windows.cmd.")
     sys.path.insert(0, str(ROOT))
     try:
         # Check real runtime imports before creating any configuration.
@@ -29,11 +29,11 @@ def main() -> None:
 
         import studio.server  # noqa: F401
     except ImportError as exc:
-        raise SystemExit(f"Běhové prostředí není úplné: {exc}. Spusťte ./setup-studio.") from exc
+        raise SystemExit(f"Runtime is incomplete: {exc}. Run ./setup-studio.") from exc
     if configure(ROOT):
-        print("Vytvořen agent.toml. V části Modely zadejte adresu serveru a název modelu.", flush=True)
+        print("Created agent.toml. In Models, enter your server URL and model name.", flush=True)
     if sys.argv[1:] == ["--check"]:
-        print(f"Běhové prostředí je připraveno: {sys.platform}, Python {sys.version.split()[0]}")
+        print(f"Runtime OK: {sys.platform}, Python {sys.version.split()[0]}")
         return
     os.execv(sys.executable, [sys.executable, str(ROOT / "studio/server.py"), *sys.argv[1:]])
 

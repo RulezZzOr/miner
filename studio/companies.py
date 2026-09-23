@@ -1,4 +1,8 @@
-"Portfolia firmy a vázaný trvalý řadič sdílející transakci/uzamčení mise.\n\nOddělení je kontext, nikoli bezpečnostní hranice.Externí akce jsou doručenou schránkou, nikoli spustitelnými úkoly. Vlastní nástroje zachovávají oprávnění hostitelského uživatele.\n"
+"""Company portfolio and bounded durable driver, sharing the mission transaction/lock.
+
+A department is context, not a security boundary. External actions are an inbox,
+never executable jobs. Native tools retain the host user's permissions.
+"""
 from __future__ import annotations
 
 import json
@@ -10,8 +14,8 @@ try:
 except ImportError:
     from missions import TERMINAL, number, strings, text
 
-DEPARTMENTS = {"operations": "Vedení a provoz", "delivery": "Vývoj a dodávka",
-               "growth": "Obchod a marketing", "finance": "Finance a administrativa",
+DEPARTMENTS = {"operations": "Management and Operations", "delivery": "Development and Delivery",
+               "growth": "Sales and marketing", "finance": "Finance a administrativa",
                "platform": "Infrastruktura a data"}
 
 
@@ -47,7 +51,7 @@ class Companies:
         with self.missions.connect() as db:
             row = db.execute("SELECT data FROM companies WHERE id=?", (key,)).fetchone()
         if not row:
-            raise ValueError("Firma neexistuje.")
+            raise ValueError("Company does not exist.")
         return json.loads(row[0])
 
     def list(self):
@@ -59,22 +63,22 @@ class Companies:
             profiles, default = self.studio.profiles()
             profile, review = body.get("profile", default), body.get("review_profile", default)
             if profile not in profiles or review not in profiles:
-                raise ValueError("Vyber dostupné modely.")
-            projects = list(dict.fromkeys(strings(body.get("projects"), "projekty firmy", 100)))
+                raise ValueError("Select available models.")
+            projects = list(dict.fromkeys(strings(body.get("projects"), "company projects", 100)))
             for key in projects:
                 self.studio.project(key)
             now = self.clock()
             c = {"id": uuid.uuid4().hex[:16], "revision": 0, "created": now, "updated": now,
-                 "name": text(body.get("name"), "název firmy", 160),
-                 "purpose": text(body.get("purpose"), "cíle firmy", 6000),
+                 "name": text(body.get("name"), "company name", 160),
+                 "purpose": text(body.get("purpose"), "company goals", 6000),
                  "projects": projects, "profile": profile, "review_profile": review,
                  "status": "paused", "deadline": None, "tasks": [], "cycles": [],
                  "resume_missions": [], "errors": 0, "last_dispatch": 0,
                  "policy": {"days": 7, "run_budget": 100, "cycle_limit": 20,
                             "attempts_per_cycle": 10, "attempt_minutes": 20, "max_turns": 40,
                             "auto_tools": False, "auto_accept": False},
-                 "message": "Firma založena. Přidej úkoly, zkontroluj limity a zapni Řadič."}
-            self.save(c, {"action": "created", "message": "Firma založena; Řadič je vypnutý."})
+                 "message": "Company created. Add tasks, check limits, and enable Driver."}
+            self.save(c, {"action": "created", "message": "Company created; Driver is disabled."})
             return c
 
     def usage(self, c):
@@ -90,32 +94,32 @@ class Companies:
 
     def add_task(self, c, body):
         if len(c["tasks"]) >= 200:
-            raise ValueError("Firma má limit 200 pracovních pravidel.")
+            raise ValueError("Company has a limit of 200 work rules.")
         project = body.get("project")
         if project not in c["projects"]:
-            raise ValueError("Projekt není přiřazený firmě.")
+            raise ValueError("Project is not assigned to a company.")
         department = body.get("department", "operations")
         if department not in DEPARTMENTS:
-            raise ValueError("Neznámé oddělení.")
+            raise ValueError("Unknown department.")
         deps = body.get("depends_on", [])
         if not isinstance(deps, list) or any(not isinstance(d, str) for d in deps):
-            raise ValueError("Závislosti musí být seznam ID.")
+            raise ValueError("Dependencies must be a list of IDs.")
         known = {t["id"] for t in c["tasks"]}
         if not set(deps) <= known:
-            raise ValueError("Závislost musí odkazovat na existující firemní úkol.")
+            raise ValueError("Dependency must reference an existing company task.")
         # Only earlier tasks can be dependencies: cycles cannot be introduced.
         kind = body.get("kind", "work")
         if kind not in {"work", "external"}:
-            raise ValueError("Neznámý druh úkolu.")
+            raise ValueError("Unknown task type.")
         draft = self.missions.prepare({**body, "profile": c["profile"], "review_profile": c["review_profile"]})
         t = {"id": uuid.uuid4().hex[:12], "project": project, "department": department,
              "title": draft["title"], "goal": draft["goal"], "criteria": draft["criteria"],
              "verification_checks": draft["verification_checks"], "sources": draft["sources"],
              "constraints": draft["constraints"], "kind": kind,
-             "priority": number(body.get("priority", 2), 1, 3, "Priorita"),
+             "priority": number(body.get("priority", 2), 1, 3, "Priority"),
              "depends_on": list(dict.fromkeys(deps)), "enabled": True,
-             "interval_hours": number(body.get("interval_hours", 0), 0, 8760, "Interval v hodinách"),
-             "max_cycles": number(body.get("max_cycles", 1), 1, 100, "Počet opakování"),
+             "interval_hours": number(body.get("interval_hours", 0), 0, 8760, "Interval in hours"),
+             "max_cycles": number(body.get("max_cycles", 1), 1, 100, "Number of repetitions"),
              "created": self.clock(), "due": self.clock(), "last_mission": None,
              "status": "needs_owner" if kind == "external" else "queued", "outcome": None}
         c["tasks"].append(t)
@@ -139,75 +143,75 @@ class Companies:
         with self.lock:
             c = self.get(body["id"])
             if body.get("revision") != c["revision"]:
-                raise ValueError("Firma se mezitím změnila. Obnov přehled a zkus akci znovu.")
+                raise ValueError("The company has changed meanwhile. Refresh the overview and try the action again.")
             action = body.get("action")
             revised_mission = None
             sync_permissions = action == "settings" or (action == "start" and c["status"] == "paused")
             if action == "pause":
-                self.pause(c, "Řadič pozastaven. Nasazené služby tím nejsou zastaveny.")
+                self.pause(c, "Driver paused. Deployed services are not stopped.")
                 return c
             if action == "start":
                 if c["deadline"] and c["deadline"] <= self.clock():
-                    raise ValueError("Vypršel horizont. Obnov jej v nastavení pozastavené firmy.")
-                c.update(status="active", errors=0, message="Řadič zapnutý.")
+                    raise ValueError("Horizon expired. Renew it in the settings of the paused company.")
+                c.update(status="active", errors=0, message="Driver enabled.")
                 c["deadline"] = c["deadline"] or self.clock() + c["policy"]["days"] * 86400
             elif action == "settings":
                 if c["status"] != "paused":
-                    raise ValueError("Před změnou oprávnění a limitů pozastav Řadič.")
+                    raise ValueError("Pause the Driver before changing permissions and limits.")
                 limits = {"days": (1, 365), "run_budget": (2, 100000), "cycle_limit": (1, 1000),
                           "attempts_per_cycle": (2, 1000), "attempt_minutes": (1, 360), "max_turns": (1, 200)}
                 policy = {k: number(body.get(k, c["policy"][k]), *bounds, k) for k, bounds in limits.items()}
                 policy.update(auto_tools=body.get("auto_tools") is True, auto_accept=body.get("auto_accept") is True)
                 usage = self.usage(c)
                 if policy["run_budget"] < usage["used_runs"] + usage["reserved_runs"] or policy["cycle_limit"] < len(c["cycles"]):
-                    raise ValueError("Limit nesmí být nižší než spotřeba a rezervace existujících realizací.")
+                    raise ValueError("The limit must not be lower than the consumption and reservations of existing executions.")
                 if policy["attempts_per_cycle"] > policy["run_budget"]:
-                    raise ValueError("Rozpočet firmy musí pokrýt alespoň jednu realizaci.")
+                    raise ValueError("The company budget must cover at least one execution.")
                 c["policy"] = policy
                 if body.get("renew_horizon") is True:
                     c["deadline"] = None
-                c["message"] = "Nastavení uloženo. Schvalování nástrojů platí i pro rozpracované realizace po pokračování řadiče."
+                c["message"] = "Settings saved. Tool approval also applies to ongoing executions after resuming the Driver."
             elif action == "reserve_runs":
                 if c["status"] != "paused":
-                    raise ValueError("Před změnou rezervace pozastav Řadič.")
+                    raise ValueError("Pause the Driver before changing reservations.")
                 key = body.get("mission")
                 if not any(x["mission"] == key for x in c["cycles"]):
-                    raise ValueError("Realizace nepatří této firmě.")
+                    raise ValueError("Execution does not belong to this company.")
                 revised_mission = self.missions.get(key)
                 if revised_mission["status"] in TERMINAL or revised_mission.get("active_attempt"):
-                    raise ValueError("Rezervaci měň jen u nedokončené realizace bez aktivního běhu.")
-                maximum = number(body.get("max_attempts"), revised_mission["max_attempts"] + 1, 1000, "Celkový počet běhů realizace")
+                    raise ValueError("Change reservations only for incomplete executions without an active run.")
+                maximum = number(body.get("max_attempts"), revised_mission["max_attempts"] + 1, 1000, "Total number of execution runs")
                 delta = maximum - revised_mission["max_attempts"]
                 if delta > self.usage(c)["remaining_runs"]:
-                    raise ValueError("Nová rezervace překračuje zbývající rozpočet firmy.")
+                    raise ValueError("New reservation exceeds the remaining company budget.")
                 revised_mission["max_attempts"] = maximum
                 revised_mission["company_context"]["max_attempts"] = maximum
-                c["message"] = f"Spuštění {key}: rezervace zvýšena o {delta}, celkem {maximum} běhů. Rozpočet firmy se nemění."
+                c["message"] = f"Execution {key}: reservation increased by {delta}, total {maximum} runs. The company budget is unchanged."
             elif action == "add_task":
                 self.add_task(c, body)
             elif action == "add_project":
                 self.studio.project(body["project"])
                 if body["project"] not in c["projects"]:
                     if len(c["projects"]) >= 100:
-                        raise ValueError("Limit 100 projektů.")
+                        raise ValueError("Limit of 100 projects.")
                     c["projects"].append(body["project"])
             elif action in {"disable_task", "enable_task", "resolve_external"}:
                 task = next((t for t in c["tasks"] if t["id"] == body.get("task")), None)
                 if not task:
-                    raise ValueError("Úkol neexistuje.")
+                    raise ValueError("Task does not exist.")
                 if action == "resolve_external":
                     if task["kind"] != "external" or task["status"] != "needs_owner":
-                        raise ValueError("Toto není otevřená externí akce.")
+                        raise ValueError("This is not an open external action.")
                     outcome = body.get("outcome")
                     if outcome not in {"done", "rejected"}:
-                        raise ValueError("Vyber provedeno vlastníkem nebo zamítnuto.")
-                    task.update(status=outcome, outcome=text(body.get("note"), "doklad rozhodnutí", 3000))
+                        raise ValueError("Select completed by owner or rejected.")
+                    task.update(status=outcome, outcome=text(body.get("note"), "decision documentation", 3000))
                 else:
                     if task["last_mission"] and self.missions.get(task["last_mission"])["status"] not in TERMINAL:
-                        raise ValueError("Nejdřív dokonči nebo zruš otevřenou realizaci v Projektech AI.")
+                        raise ValueError("First complete or cancel the open execution in AI Projects.")
                     task["enabled"] = action == "enable_task"
             else:
-                raise ValueError("Neznámá akce firmy.")
+                raise ValueError("Unknown company action.")
             # Persist the parent's policy and its children's permission snapshots
             # together. Pausing has stopped the old workers; resumed workers read
             # the updated mission. Budgets and completed history stay unchanged.
@@ -248,7 +252,7 @@ class Companies:
         now = self.clock()
         m = self.missions.prepare({"project": t["project"], "title": t["title"], "goal": t["goal"],
             "criteria": t["criteria"], "verification_checks": t["verification_checks"], "sources": t["sources"],
-            "constraints": t["constraints"] + "\nFiremní úkol. Externí komunikaci, platby a produkční změny pouze připrav jako podklady; neprováděj je.",
+            "constraints": t["constraints"] + "\nCompany task. Prepare external communications, payments, and production changes only as background material; do not execute them.",
             "profile": c["profile"], "review_profile": c["review_profile"], "auto_approve": c["policy"]["auto_tools"],
             "max_attempts": allowance, "attempt_minutes": c["policy"]["attempt_minutes"],
             "max_turns": c["policy"]["max_turns"], "days": min(30, c["policy"]["days"]), "isolated": True})
@@ -259,7 +263,7 @@ class Companies:
         m.update(status="running", deadline=min(c["deadline"], now + m["days"] * 86400))
         t.update(last_mission=m["id"], status="running")
         c["cycles"].append({"task": t["id"], "mission": m["id"], "status": "running", "created": now})
-        c.update(last_dispatch=now, message="Probíhá: " + t["title"])
+        c.update(last_dispatch=now, message="In progress: " + t["title"])
         # Mission and reservation are inseparable across crash/retry.
         with self.missions.connect() as db:
             self.missions.save(m, db)
@@ -272,7 +276,7 @@ class Companies:
         if c["status"] != "active":
             return
         if self.clock() >= c["deadline"]:
-            self.pause(c, "Vypršel časový horizont firmy. Pro pokračování obnov horizont.")
+            self.pause(c, "Company time horizon expired. Renew the horizon to continue.")
             return
         for key in c["resume_missions"][:]:
             m = self.missions.get(key)
@@ -297,9 +301,9 @@ class Companies:
                        key=lambda t: (t["priority"], t["due"], t["created"], t["id"]))
         if ready:
             if not self.dispatch(c, ready[0]):
-                c["message"] = "Limit realizací nebo rezervací běhů vyčerpán. Otevřená práce může doběhnout."
+                c["message"] = "Execution or run reservation limit exhausted. Open work may finish."
         else:
-            c["message"] = "Řadič sleduje práci a čeká na termín, dokončení nebo rozhodnutí."
+            c["message"] = "Driver monitors work and waits for deadline, completion, or decision."
 
     def tick(self):
         errors = []
@@ -313,10 +317,10 @@ class Companies:
                     # Reload after a failed transaction; never persist a phantom reservation.
                     c = self.get(c["id"])
                     c["errors"] += 1
-                    c["message"] = "Řadič vyžaduje pozornost: " + str(exc)[:500]
+                    c["message"] = "Driver requires attention: " + str(exc)[:500]
                     errors.append(c["message"])
                     if c["errors"] >= 3:
-                        self.pause(c, c["message"] + " Tři chyby: Řadič pozastaven.")
+                        self.pause(c, c["message"] + " Three errors: Driver paused.")
                 if json.dumps(c, sort_keys=True) != before:
                     self.save(c, bump=False)
         self.last_error = "\n".join(errors)[:2000]
@@ -347,30 +351,30 @@ class Companies:
     def report(self, key):
         c = next((c for c in self.snapshot()["companies"] if c["id"] == key), None)
         if not c:
-            raise ValueError("Firma neexistuje.")
-        lines = [f"# {c['name']}", "", c["purpose"], "", f"Řadič: {c['status']}",
-                 f"Běhy: {c['usage']['used_runs']} použito, {c['usage']['reserved_runs']} rezervováno / {c['policy']['run_budget']}",
+            raise ValueError("Company does not exist.")
+        lines = [f"# {c['name']}", "", c["purpose"], "", f"Driver: {c['status']}",
+                 f"Runs: {c['usage']['used_runs']} used, {c['usage']['reserved_runs']} reserved / {c['policy']['run_budget']}",
                  "", "## Portfolio"]
         for key in c["projects"]:
             lines.append("- " + self.studio.projects[key]["name"])
-        lines.extend(["", "## Práce a důkazy"])
+        lines.extend(["", "## Work and Evidence"])
         for t in c["tasks"]:
-            lines.append(f"- {t['title']}: {t['status']} · provedení {t['last_mission'] or "none"}")
+            lines.append(f"- {t['title']}: {t['status']} · execution {t['last_mission'] or "none"}")
             if t["last_mission"]:
                 mission = self.missions.get(t["last_mission"])
                 final = mission.get("final_report") or {}
                 for artifact in final.get("verified_artifacts", []):
-                    lines.append(f"  - Artefakt: {artifact['path']} · SHA-256 {artifact['sha256']}")
+                    lines.append(f"  - Artifact: {artifact['path']} · SHA-256 {artifact['sha256']}")
                 if mission.get("verification_id"):
-                    lines.append("  - Nezávislá kontrola: " + mission["verification_id"])
+                    lines.append("  - Independent check: " + mission["verification_id"])
                 if mission.get("acceptance"):
-                    lines.append("  - Převzetí: " + mission["acceptance"]["kind"])
+                    lines.append("  - Acceptance: " + mission["acceptance"]["kind"])
             if t["kind"] == "external":
-                lines.append("  - Externí krok: " + (t["outcome"] or "Čeká na vlastníka; nebyl proveden řadičem."))
-        lines.extend(["", "## Rozhodnutí vlastníka"])
+                lines.append("  - External step: " + (t["outcome"] or "Waiting for owner; not performed by Driver."))
+        lines.extend(["", "## Owner Decision"])
         for item in c["inbox"]:
             lines.append(f"- {item['title']}: {item['status']} — {item['message']}")
             lines.extend("  - " + q["question"] for q in item["questions"])
-        lines.extend(["", "Externí systémy nejsou připojené. Limity běhů nejsou peněžní strop.",
-                      "Oddělení jsou pracovní kontext, ne izolované účty. Nativní nástroje mají oprávnění uživatele."])
+        lines.extend(["", "External systems are not connected. Run limits are not monetary caps.",
+                      "Departments are work contexts, not isolated accounts. Native tools have user permissions."])
         return {"text": "\n".join(lines) + "\n"}

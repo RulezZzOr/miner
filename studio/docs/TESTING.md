@@ -1,16 +1,16 @@
-# Kontrola instalace Studia
+# Testing a Studio installation
 
-Otevřete URL Studio na hostiteli nebo v síti LAN. Cesty v **Otevřít projekt** odkazují na počítač, kde běží Studio. Začněte v nové složce projektu, aby bylo snadné kontrolovat výstupy testů.
+Open the Studio URL on the host or LAN. Paths in **Open project** refer to the computer running Studio. Start in a new project folder so test output is easy to inspect.
 
-1. **Trvalé ukládání v editoru:** použijte **Nový soubor**, zadejte `notes.md`, napište krátkou poznámku a uložte. Znovu načtěte stránku, znovu otevřete soubor a zkontrolujte jeho obsah.
-2. **Skutečné spuštění modelu:** vyberte dostupný model a požádejte ho o vytvoření malého zdrojového souboru a spuštění testu. Zkontrolujte jak uložený soubor v **Souborech**, tak skutečný výstup testu v **Aktivitě** nebo **Konzoli**. Samotné tvrzení modelu není důkazem existence souboru ani úspěšného testu.
-3. **Schválení:** pro první běh ponechte **Povolit automatické akce** vypnuté. Zápis souboru se objeví v **Schváleních a odpovědích** a v horní liště. Zkontrolujte akci, poté zvolte **Ano**, **Ne** nebo odešlete zpětnou vazbu. Zpětná vazba neschvaluje akci.
-4. **Kancelář a živá mapa:** otevřete **3D kancelář** během aktivního běhu. Vyberte jeho pracoviště, zkontrolujte model a poslední aktivitu, poté otevřete běh nebo živou mapu. Pozastavený nebo blokovaný úkol by se neměl zobrazovat jako aktivně prováděný.
-5. **Dlouhodobý projekt:** v **AI projektech** zadejte konkrétní akceptační kritéria a spustitelné kontroly. Zkontrolujte plán, sestavení, výsledky kontroly a ověření. Přijměte práci až po kontrole výsledku. Běžný dokončený běh se liší od převzetí produktu.
-6. **Řadič firmy:** vytvořte nebo vyberte firmu, připojte zamýšlené projekty a zkontrolujte její limity. Začněte s jedním omezeným úkolem před přidáním opakování. Potvrďte, jak jsou nakonfigurovány schvalování nástrojů a automatické přijetí.
+1. **Editor persistence:** use **New file**, enter `notes.md`, type a short note and save. Reload the page, reopen the file and check its contents.
+2. **Real model execution:** select an available model and ask it to create a small source file and run a test. Inspect both the saved file in **Files** and the actual test output in **Activity** or **Console**. A model's written assertion is not proof that a file exists or a test passed.
+3. **Approval:** leave **Enable automatic actions** off for the first run. A file write should appear in **Approvals and responses** and the top bar. Inspect the action, then choose **Yes**, **No**, or send feedback. Feedback does not approve the action.
+4. **Office and live map:** open **3D Office** while a run is active. Select its desk, inspect the model and latest activity, then open the run or live map. A paused or blocked task should not appear as actively working.
+5. **Long-running project:** in **AI Projects**, supply concrete acceptance criteria and executable checks. Inspect the plan, build, review and verification results. Accept the work only after checking the result. An ordinary run finishing is different from a product being accepted.
+6. **Company Driver:** create or select a company, attach the intended projects and inspect its limits. Start with one bounded task before adding repetition. Confirm how tool approval and automatic acceptance are configured.
 
-Pracovní prostor zůstává na hostiteli Studio i po zavření prohlížeče. Pro pokračování práce musí zůstat spuštěný hostitel i služba Studio. Zavření prohlížeče nezastaví úlohu na serveru. Použijte **Zastavit** nebo **Pozastavit řadič**, chcete-li spuštění zastavit.
+The workspace stays on the Studio host when the browser closes. The host and Studio service must remain running for work to continue. Closing a browser does not stop a server job. Use **Stop** or **Pause Driver** when you want execution to stop.
 
-Úkol, který dosáhne časového limitu nebo limitu kroků či běhů, je nedokončený. Před opakováním zkontrolujte zaznamenaný důvod a poslední skutečnou aktivitu. Dostupnost modelu, rychlost generování a kvalita kontroly závisí na vybraném serveru; samotná odpověď HTTP na stav zdraví tyto parametry neověřuje.
+A task that reaches its time, turn or run limit is incomplete. Inspect the recorded reason and last real activity before retrying. Model availability, generation speed and review quality depend on the selected server; an HTTP health response alone does not test these.
 
-Jedná se o alfa verzi. Windows používají WSL2. Volitelné přihlášení poskytovatele vyžaduje účet vlastníka; není ověřeno lokálním testem modelu. Oddělení firmy popisují organizační rozdělení práce a aktuální řadič sdílí jeden slot realizátora.
+This is an alpha release. Windows uses WSL2. Optional provider login requires the owner's account; it is not verified by a local model test. Company departments describe work organization, and the current Driver shares one worker slot.

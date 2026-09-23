@@ -1,4 +1,4 @@
-"Zdrojové verze adresovány obsahem a konflikty kontrolované, obnovitelné aktualizace souborů."
+"""Content-addressed source versions and conflict-checked, recoverable file updates."""
 from __future__ import annotations
 
 import hashlib
@@ -42,7 +42,7 @@ class Versions:
 
     def save(self, table, item):
         if table not in {"versions", "file_operations"}:
-            raise ValueError("Neznámá tabulka verzí")
+            raise ValueError("Unknown version table")
         with self.missions.connect() as db:
             db.execute(f"INSERT INTO {table} VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data=excluded.data",
                        (item["id"], json.dumps(item, ensure_ascii=False)))
@@ -51,18 +51,18 @@ class Versions:
         with self.missions.connect() as db:
             row = db.execute("SELECT data FROM versions WHERE id=?", (key,)).fetchone()
         if not row:
-            raise ValueError("Verze souborů neexistuje.")
+            raise ValueError("File version does not exist.")
         return json.loads(row[0])
 
     def object_path(self, digest):
         if len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
-            raise ValueError("Neplatný identifikátor obsahu.")
+            raise ValueError("Invalid content identifier.")
         return self.objects / digest
 
     def read_object(self, digest):
         data = self.object_path(digest).read_bytes()
         if hashlib.sha256(data).hexdigest() != digest:
-            raise ValueError("Uložená verze je poškozená; obnova byla zastavena.")
+            raise ValueError("Saved version is corrupted; recovery has been stopped.")
         return data
 
     def snapshot(self, root, *, label, expected=None, expected_modes=None):
@@ -73,14 +73,14 @@ class Versions:
         root = Path(root)
         manifest = source_manifest(root)
         if expected is not None and manifest != expected:
-            raise ValueError("Soubory se před vytvořením verze změnily.")
+            raise ValueError("Files changed before version creation.")
         modes = source_modes(root, manifest)
         if expected_modes is not None and modes != expected_modes:
-            raise ValueError("Práva souborů se před vytvořením verze změnila.")
+            raise ValueError("File permissions changed before version creation.")
         for relative, digest in manifest.items():
             data = read_project_file(root, relative, 50_000_000)
             if hashlib.sha256(data).hexdigest() != digest:
-                raise ValueError(f"Soubor se během ukládání verze změnil: {relative}")
+                raise ValueError(f"File changed while saving the version: {relative}")
             target = self.object_path(digest)
             if not target.exists():
                 temporary = target.with_name(target.name + "." + uuid.uuid4().hex)
@@ -95,7 +95,7 @@ class Versions:
             else:
                 self.read_object(digest)
         if source_manifest(root) != manifest or source_modes(root, manifest) != modes:
-            raise ValueError("Soubory se během ukládání verze změnily.")
+            raise ValueError("Files changed during version saving.")
         fd = os.open(self.objects, os.O_RDONLY)
         try:
             os.fsync(fd)
@@ -137,7 +137,7 @@ class Versions:
         root = Path(root)
         root.mkdir(parents=True, exist_ok=True)
         if any(root.iterdir()):
-            raise ValueError("Pracovní složka pro izolovanou realizaci už není prázdná.")
+            raise ValueError("Working folder for isolated execution is no longer empty.")
         for relative, digest in version["files"].items():
             self.write_file(root, relative, digest, version["modes"].get(relative, 0o644))
 
@@ -170,13 +170,13 @@ class Versions:
         self.recover(root)
         preview = self.preview(root, target, base)
         if preview["conflicts"]:
-            raise ValueError("Konflikt s novějšími úpravami: " + ", ".join(preview["conflicts"][:20]))
+            raise ValueError("Conflict with newer changes: " + ", ".join(preview["conflicts"][:20]))
         if preview["shape_conflicts"]:
-            raise ValueError("Záměna souboru a složky vyžaduje ruční přesun před převzetím: " + ", ".join(preview["shape_conflicts"][:20]))
+            raise ValueError("File/folder swap requires manual move before acceptance: " + ", ".join(preview["shape_conflicts"][:20]))
         if revision is not None and revision != preview["revision"]:
-            raise ValueError("Soubory se od náhledu obnovy změnily. Načti nový náhled.")
+            raise ValueError("Files have changed since the recovery preview. Load a new preview.")
         # Keep the complete pre-operation version, including unrelated owner edits.
-        before = self.snapshot(root, label="Před převzetím / obnovou", expected=preview["current"], expected_modes=preview["modes"])
+        before = self.snapshot(root, label="Before acceptance / recovery", expected=preview["current"], expected_modes=preview["modes"])
         for path in preview["changed"]:
             if path in target["files"]:
                 self.read_object(target["files"][path])
@@ -194,7 +194,7 @@ class Versions:
                         raise
                     current = None
                 if current not in {file_state(before, path), file_state(target, path)}:
-                    raise ValueError(f"Soubor se během převzetí změnil: {path}")
+                    raise ValueError(f"File changed during acceptance: {path}")
                 desired = target["files"].get(path)
                 if current != file_state(target, path):
                     self.write_file(root, path, desired, target["modes"].get(path, 0o644))
@@ -227,7 +227,7 @@ class Versions:
             if conflicts:
                 operation.update(status="conflict", conflicts=conflicts)
                 self.save("file_operations", operation)
-                raise ValueError("Přerušená obnova obsahuje novější změny; automatické přepsání odmítnuto: " + ", ".join(conflicts[:20]))
+                raise ValueError("Interrupted recovery contains newer changes; automatic overwrite rejected: " + ", ".join(conflicts[:20]))
             for path in reversed(operation["changed"]):
                 desired = before["files"].get(path)
                 if file_state(state, path) != file_state(before, path):

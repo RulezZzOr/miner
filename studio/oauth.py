@@ -1,4 +1,4 @@
-"Volitelné přihlášení k poskytovateli prostřednictvím oficiálních CLI. Tokeny nikdy neprocházejí UI."
+"""Optional provider login via official CLIs. Tokens never pass through the UI."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ def login_url(value):
         or parsed.username
         or parsed.password
     ):
-        raise RuntimeError("Poskytovatel vrátil neočekávanou přihlašovací adresu.")
+        raise RuntimeError("The provider returned an unexpected login address.")
     return value
 
 
@@ -39,12 +39,12 @@ def anthropic_env(directory):
 
 
 class CodexRPC:
-    "Multiplexované JSONL připojení app-serveru, včetně požadavků na server."
+    """Multiplexed JSONL app-server connection, including server requests."""
 
     def __init__(self, command=None):
         binary = shutil.which("codex")
         if command is None and not binary:
-            raise RuntimeError("Chybí Codex CLI. Nainstaluj jej a znovu spusť Studio.")
+            raise RuntimeError("Codex CLI is missing. Install it and restart Studio.")
         self.lock = threading.RLock()
         self.pending = {}
         self.events = queue.Queue()
@@ -79,7 +79,7 @@ class CodexRPC:
     def send(self, message):
         with self.lock:
             if self.closed or self.process.poll() is not None:
-                raise RuntimeError("Spojení s Codex se ukončilo.")
+                raise RuntimeError("Connection to Codex was terminated.")
             self.process.stdin.write(json.dumps(message) + "\n")
             self.process.stdin.flush()
 
@@ -102,7 +102,7 @@ class CodexRPC:
             with self.lock:
                 self.closed = True
                 for pending in self.pending.values():
-                    pending.put({"error": {"message": "Codex App Server skončil."}})
+                    pending.put({"error": {"message": "Codex App Server exited."}})
             self.events.put({"method": "studio/disconnected"})
 
     def request(self, method, params, timeout=30):
@@ -116,11 +116,11 @@ class CodexRPC:
             if "error" in response:
                 # Avoid forwarding provider error payloads that might contain credentials.
                 raise RuntimeError(
-                    f"Codex odmítl požadavek {method}. Zkontroluj přihlášení a verzi CLI."
+                    f"Codex rejected request {method}. Check your sign-in and CLI version."
                 )
             return response.get("result", {})
         except queue.Empty:
-            raise RuntimeError(f"Codex neodpověděl na {method} včas.") from None
+            raise RuntimeError(f"Codex did not respond to {method} in time.") from None
         finally:
             with self.lock:
                 self.pending.pop(key, None)
@@ -158,13 +158,13 @@ class OAuthConnections:
         found = str(binary) if binary.is_file() else shutil.which("ant")
         if not found:
             raise RuntimeError(
-                "Chybí Anthropic CLI (ant). Instalace je popsaná ve studio/README.md."
+                "Anthropic CLI (ant) is missing. Installation is described in studio/README.md."
             )
         return [found, "--profile", "switch-studio"]
 
     def status(self, provider):
         if provider not in PROVIDERS:
-            raise ValueError("Neznámý poskytovatel OAuth.")
+            raise ValueError("Unknown OAuth provider.")
         with self.lock:
             job = self.jobs.get(provider)
             pending = bool(job and job["status"] == "waiting")
@@ -173,7 +173,7 @@ class OAuthConnections:
             )
         models = []
         connected = False
-        message = "Nepřipojeno"
+        message = "Not connected"
         if provider == "chatgpt":
             rpc = self.rpc()
             account = rpc.request("account/read", {"refreshToken": False}).get("account") or {}
@@ -189,7 +189,7 @@ class OAuthConnections:
                     cursor = page.get("nextCursor")
                     if not cursor:
                         break
-                message = "Přihlášeno přes Codex · " + str(account.get("planType") or "ChatGPT")
+                message = "Logged in via Codex · " + str(account.get("planType") or "ChatGPT")
         elif not pending:
             config = self.directory / "anthropic"
             if (config / "configs" / "switch-studio.json").exists():
@@ -208,11 +208,11 @@ class OAuthConnections:
                             {"id": m["id"], "name": m.get("display_name", m["id"])} for m in rows
                         ]
                         connected = True
-                        message = "Přihlášeno · Claude Console · účtování API"
+                        message = "Logged in · Claude Console · API billing"
                     else:
-                        message = "Přihlášení nebo ověření modelů selhalo. Zkus přihlášení znovu."
+                        message = "Login or model verification failed. Try logging in again."
                 except (subprocess.TimeoutExpired, ValueError):
-                    message = "Claude Console nyní neodpovídá. Zkus obnovit stav."
+                    message = "Claude Console is currently unresponsive. Try refreshing the status."
         return {
             "provider": provider,
             "connected": connected,
@@ -223,7 +223,7 @@ class OAuthConnections:
 
     def start(self, provider):
         if provider not in PROVIDERS:
-            raise ValueError("Neznámý poskytovatel OAuth.")
+            raise ValueError("Unknown OAuth provider.")
         with self.lock:
             old = self.jobs.get(provider)
             if old and old["status"] == "waiting":
@@ -285,12 +285,12 @@ class OAuthConnections:
                 rpc.send(
                     {
                         "id": event["id"],
-                        "error": {"code": -32601, "message": "Nepodporováno během přihlášení"},
+                        "error": {"code": -32601, "message": "Unsupported during login"},
                     }
                 )
         if job["status"] == "waiting":
             self.cancel("chatgpt")
-            job["message"] = "Přihlášení vypršelo. Spusť jej znovu."
+            job["message"] = "Login expired. Start it again."
 
     def _claude_login(self, job):
         process = job["process"]
