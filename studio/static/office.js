@@ -1,14 +1,14 @@
 "use strict";
 // Original Studio office view. No code or assets from Agents Office are used.
 const officeDepartments = [
-  {id:"operations",name:"Operations",color:"#90e2bc",x:35,y:30},
-  {id:"delivery",name:"Delivery",color:"#91bfff",x:325,y:30},
-  {id:"growth",name:"Growth",color:"#d7a0ed",x:615,y:30},
+  {id:"operations",name:"Provoz",color:"#90e2bc",x:35,y:30},
+  {id:"delivery",name:"Vývoj a dodávka",color:"#91bfff",x:325,y:30},
+  {id:"growth",name:"Obchod a marketing",color:"#d7a0ed",x:615,y:30},
   {id:"finance",name:"Finance",color:"#edcc83",x:35,y:350},
-  {id:"platform",name:"Platform",color:"#79d8df",x:325,y:350},
-  {id:"studio",name:"Studio projects",color:"#bdc7d9",x:615,y:350},
+  {id:"platform",name:"Platforma",color:"#79d8df",x:325,y:350},
+  {id:"studio",name:"Projekty Studia",color:"#bdc7d9",x:615,y:350},
 ];
-const officeStatusNames={working:"Working",review:"Reviewing",verifying:"Checking",waiting:"Needs attention",blocked:"Blocked",paused:"Paused",done:"Accepted",finished:"Run finished",queued:"Queued",idle:"Idle",stale:"Awaiting activity",cancelled:"Stopped"};
+const officeStatusNames={working:"Pracuje",review:"Probíhá kontrola",verifying:"Probíhá ověřování",waiting:"Vyžaduje pozornost",blocked:"Blokováno",paused:"Pozastaveno",done:"Převzato",finished:"Běh dokončen",queued:"Ve frontě",idle:"Nečinný",stale:"Čeká na aktivitu",cancelled:"Zastaveno"};
 function officeRunPhase(m,run) {
   return run?.mission?.phase || m?.attempts?.find(a=>a.id===run?.id)?.phase || m?.phase || "queue";
 }
@@ -41,17 +41,17 @@ function officeModel(data,companyId="",logs={},now=Date.now()/1000) {
     const log=run ? logs[run.id] : null;
     const department=officeDepartments.some(d=>d.id===task.department)?task.department:"studio";
     const status=m ? officeItemStatus(m,run,log,now) : ({blocked:"blocked",done:"done",cancelled:"cancelled",needs_owner:"waiting",rejected:"cancelled"}[task.status] || (company?.status==="paused"?"paused":"queued"));
-    items.push({id:m ? "mission:"+m.id : "task:"+company.id+":"+task.id,title:task.title||m?.title||"Untitled task",department,status,
+    items.push({id:m ? "mission:"+m.id : "task:"+company.id+":"+task.id,title:task.title||m?.title||"Úkol bez názvu",department,status,
       mission:m?.id,run:displayRun?.id,project:m?.project||task.project,company:company?.id,companyName:company?.name||"Studio",phase:run ? officeRunPhase(m,run) : lastAttempt?.phase||m?.phase||"queue",lastRun:!run&&Boolean(displayRun),
       model:displayRun?.model||null,profile:displayRun?.profile||m?.profile||company?.profile||null,reviewProfile:m?.review_profile||company?.review_profile||null,
-      message:m?.message||task.goal||"No execution has started.",updated:m?.updated||task.created||null,
+      message:m?.message||task.goal||"Dosud nebylo spuštěno žádné provedení.",updated:m?.updated||task.created||null,
       attempts:m?.attempts?.length||0,completed:m?.tasks?.filter(t=>t.status==="done").length||0,total:m?.tasks?.length||0,
-      approvals:log?.approvals?.length||0,summary:company?.purpose||"",source:run ? "Active run" : displayRun ? "Last recorded run" : m ? "Saved execution" : "Saved company task"});
+      approvals:log?.approvals?.length||0,summary:company?.purpose||"",source:run ? "Aktivní běh" : displayRun ? "Poslední zaznamenaný běh" : m ? "Uložené provedení" : "Uložený úkol firmy"});
   };
   for(const c of companies.filter(c=>!companyId||c.id===companyId))for(const t of c.tasks||[])append(t,c,byMission.get(t.last_mission));
   if(!companyId) {
     for(const m of missions)if(!covered.has(m.id))append({title:m.title,department:"studio"},null,m);
-    for(const r of runs.filter(r=>!r.mission))items.push({id:"run:"+r.id,title:r.task?.split("\n")[0]?.slice(0,120)||"Agent run",department:"studio",status:officeItemStatus(null,r,logs[r.id],now),run:r.id,project:r.project,companyName:"Studio",phase:r.mode||"agent",model:r.model,profile:r.profile,message:r.reason||"Open the run to inspect its recorded activity.",updated:r.ended||r.created,source:"Recorded run",completed:0,total:0,attempts:1,approvals:logs[r.id]?.approvals?.length||0});
+    for(const r of runs.filter(r=>!r.mission))items.push({id:"run:"+r.id,title:r.task?.split("\n")[0]?.slice(0,120)||"Běh agenta",department:"studio",status:officeItemStatus(null,r,logs[r.id],now),run:r.id,project:r.project,companyName:"Studio",phase:r.mode||"agent",model:r.model,profile:r.profile,message:r.reason||"Otevřete běh pro prozkoumání jeho zaznamenané aktivity.",updated:r.ended||r.created,source:"Zaznamenaný běh",completed:0,total:0,attempts:1,approvals:logs[r.id]?.approvals?.length||0});
   }
   const priority={blocked:0,waiting:1,working:2,review:2,verifying:2,stale:3,queued:4,paused:5,done:6,finished:6,cancelled:7};
   items.sort((a,b)=>(priority[a.status]??8)-(priority[b.status]??8)||(b.updated||0)-(a.updated||0)||a.id.localeCompare(b.id));
@@ -81,7 +81,7 @@ function officeSeat(parent,item,x,y,color) {
     officeBox(person,32,44,33,6,22,6,color,"office-arm");officeBox(person,54,44,33,6,22,6,color,"office-arm");
     seat.append(person);
     const button=el("button","office-agent",item.title);button.type="button";button.dataset.noContextHelp="true";
-    button.setAttribute("aria-label",`${item.title} — ${officeStatusNames[item.status]}. Open details`);button.dataset.officeItem=item.id;button.onclick=()=>selectOfficeItem(item.id);seat.append(button);
+    button.setAttribute("aria-label",`${item.title} — ${officeStatusNames[item.status]}. Otevřít podrobnosti`);button.dataset.officeItem=item.id;button.onclick=()=>selectOfficeItem(item.id);seat.append(button);
     const badge=el("span","office-seat-signal",item.status==="blocked"?"!":item.status==="waiting"?"?":"");badge.setAttribute("aria-hidden","true");seat.append(badge);
   }
   parent.append(seat);
@@ -94,8 +94,8 @@ function renderOfficeScene(model) {
   const walkway=el("div","office-walkway");walkway.textContent="S W I T C H   /   S T U D I O";world.append(walkway);
   for(const d of model.departments){
     const pod=el("div","office-pod");pod.style.cssText=`--px:${d.x}px;--py:${d.y}px;--accent:${d.color}`;pod.dataset.department=d.id;
-    const label=el("button","office-department-label",d.name);label.type="button";label.dataset.noContextHelp="true";label.setAttribute("aria-label",`Show ${d.name} tasks`);label.onclick=()=>{officeState.department=officeState.department===d.id?null:d.id;renderOfficeList();};pod.append(label);
-    const cap=el("span","office-pod-count",`${d.items.length} ${d.items.length===1?"task":"tasks"}`);pod.append(cap);
+    const label=el("button","office-department-label",d.name);label.type="button";label.dataset.noContextHelp="true";label.setAttribute("aria-label",`Zobrazit úkoly: ${d.name}`);label.onclick=()=>{officeState.department=officeState.department===d.id?null:d.id;renderOfficeList();};pod.append(label);
+    const cap=el("span","office-pod-count",`${d.items.length} ${d.items.length===1?"úkol":d.items.length>=2&&d.items.length<=4?"úkoly":"úkolů"}`);pod.append(cap);
     for(let n=0;n<4;n++)officeSeat(pod,d.items[n],(n%2)*122,40+Math.floor(n/2)*100,d.color);
     // Plant and low department partition, built from original geometry.
     officeBox(pod,232,140,0,12,12,15,"#705e52");officeBox(pod,230,138,15,16,16,20,"#52876d");
@@ -118,8 +118,8 @@ function renderOfficeList(){
   const signature=JSON.stringify([officeState.department,officeState.selected,items.map(i=>[i.id,i.title,i.companyName,i.status])]);
   if(list.dataset.signature===signature)return;
   const scroll=list.scrollTop,hadFocus=list.contains(document.activeElement);list.dataset.signature=signature;list.replaceChildren();
-  $("#office-roster-title").textContent=officeState.department ? officeDepartments.find(d=>d.id===officeState.department).name+" · all tasks" : "All work";
-  if(!items.length)list.append(el("p","office-empty","No work assigned here. Add a task in Company or AI Projects."));
+  $("#office-roster-title").textContent=officeState.department ? officeDepartments.find(d=>d.id===officeState.department).name+" · všechny úkoly" : "Veškerá práce";
+  if(!items.length)list.append(el("p","office-empty","Zde není přiřazena žádná práce. Přidejte úkol v oddílech Firma nebo AI projekty."));
   for(const item of items){const row=el("button","office-roster-item "+item.status);row.type="button";row.dataset.noContextHelp="true";row.setAttribute("aria-pressed",String(item.id===officeState.selected));
     row.append(el("span","office-state-dot"),el("strong","",item.title),el("small","",`${officeStatusNames[item.status]} · ${item.companyName}`));row.onclick=()=>selectOfficeItem(item.id);list.append(row);}
   list.scrollTop=scroll;if(hadFocus)list.querySelector('[aria-pressed="true"]')?.focus({preventScroll:true});
@@ -129,14 +129,14 @@ function renderOfficeList(){
 function renderOfficeDetail(){
   const panel=$("#office-detail"),item=officeState.model?.items.find(i=>i.id===officeState.selected);
   const signature=JSON.stringify([item||null,officeState.offline]);if(panel.dataset.signature===signature)return;panel.dataset.signature=signature;panel.replaceChildren();
-  if(!item){panel.append(el("span","eyebrow","SELECT A DESK"),el("h3","","See what is actually happening"),el("p","","Choose an occupied desk or a task in the list. Empty desks show capacity in the illustration; they are not running agents."));return;}
-  panel.append(el("span","office-detail-status "+item.status,officeState.offline?"Offline · saved snapshot":officeStatusNames[item.status]),el("h3","",item.title),el("p","office-detail-message",item.message));
-  const facts=el("dl","office-facts");for(const [k,v] of [["Company",item.companyName],[item.lastRun?"Last run phase":"Phase",item.phase],["Model",item.model||item.profile||"Not assigned"],["Review profile",item.reviewProfile||"Not assigned"],["Evidence",item.source],["Verified steps",`${item.completed||0} / ${item.total||0}`],["Attempts",String(item.attempts||0)]])facts.append(el("dt","",k),el("dd","",v));panel.append(facts);
-  if(item.status==="stale")panel.append(el("p","office-warning","The process has no recent confirmed activity. Check its log; it may be waiting for a model or tool."));
+  if(!item){panel.append(el("span","eyebrow","VYBERTE STŮL"),el("h3","","Podívejte se, co se skutečně děje"),el("p","","Vyberte obsazený stůl nebo úkol ze seznamu. Prázdné stoly ukazují kapacitu na ilustraci; nejsou to běžící agenti."));return;}
+  panel.append(el("span","office-detail-status "+item.status,officeState.offline?"Offline · uložený snímek":officeStatusNames[item.status]),el("h3","",item.title),el("p","office-detail-message",item.message));
+  const facts=el("dl","office-facts");for(const [k,v] of [["Firma",item.companyName],[item.lastRun?"Poslední fáze běhu":"Fáze",({plan:"Příprava",build:"Realizace",review:"Kontrola",final:"Kontrola produktu",queue:"Fronta",react:"Samostatný agent",team:"Tým agentů",agent:"Agent"})[item.phase]||item.phase],["Model",item.model||item.profile||"Nepřiřazeno"],["Profil kontrolora",item.reviewProfile||"Nepřiřazeno"],["Důkazy",item.source],["Ověřené kroky",`${item.completed||0} / ${item.total||0}`],["Pokusy",String(item.attempts||0)]])facts.append(el("dt","",k),el("dd","",v));panel.append(facts);
+  if(item.status==="stale")panel.append(el("p","office-warning","Proces nemá žádnou nedávnou potvrzenou aktivitu. Zkontrolujte jeho protokol; může čekat na model nebo nástroj."));
   const actions=el("div","office-detail-actions");
-  if(item.mission)actions.append(missionButton("Open live map",async()=>{$("#office-dialog").close();await showFlow(item.mission);}));
-  if(item.run)actions.append(missionButton("Open run and approvals",async()=>{$("#office-dialog").close();await refreshState();await selectRun(item.run);focusApprovalInbox();}));
-  if(item.company)actions.append(missionButton("Open company",async()=>{$("#office-dialog").close();companySelection=item.company;await showCompanies();}));
+  if(item.mission)actions.append(missionButton("Otevřít živou mapu",async()=>{$("#office-dialog").close();await showFlow(item.mission);}));
+  if(item.run)actions.append(missionButton("Otevřít běh a schválení",async()=>{$("#office-dialog").close();await refreshState();await selectRun(item.run);focusApprovalInbox();}));
+  if(item.company)actions.append(missionButton("Otevřít firmu",async()=>{$("#office-dialog").close();companySelection=item.company;await showCompanies();}));
   panel.append(actions);
 }
 function renderOffice(data){
@@ -146,7 +146,7 @@ function renderOffice(data){
   if(signature!==officeState.signature){officeState.signature=signature;renderOfficeScene(model);}
   renderOfficeList();renderOfficeDetail();
   $("#office-empty-state").hidden=model.items.length>0;
-  $("#office-sync").textContent=officeState.offline?"Offline — last snapshot may be outdated.":`Live · updated ${new Date(officeState.lastSuccess*1000).toLocaleTimeString("en-GB")}`;
+  $("#office-sync").textContent=officeState.offline?"Offline — poslední snímek může být zastaralý.":`Aktuální · obnoveno ${new Date(officeState.lastSuccess*1000).toLocaleTimeString("cs-CZ")}`;
 }
 async function loadOffice(){
   if(!$("#office-dialog").open||officeState.loading)return;
@@ -169,11 +169,11 @@ async function loadOffice(){
     }));
     if(epoch!==officeState.epoch||!$("#office-dialog").open)return;
     const select=$("#office-company"),key=JSON.stringify(data.companies.map(c=>[c.id,c.name]));
-    if(select.dataset.key!==key){select.replaceChildren();const all=el("option","","All workspaces");all.value="";select.append(all);for(const c of data.companies){const option=el("option","",c.name);option.value=c.id;select.append(option);}select.dataset.key=key;}
+    if(select.dataset.key!==key){select.replaceChildren();const all=el("option","","Všechny pracovní prostory");all.value="";select.append(all);for(const c of data.companies){const option=el("option","",c.name);option.value=c.id;select.append(option);}select.dataset.key=key;}
     if(officeState.company&&!data.companies.some(c=>c.id===officeState.company))officeState.company="";
     select.value=officeState.company;officeState.data=data;officeState.lastSuccess=Date.now()/1000;officeState.offline=false;
     $("#office-dialog").classList.remove("office-offline");renderOffice(data);
-  }catch(error){if(epoch===officeState.epoch){officeState.offline=true;$("#office-active-count").textContent="—";$("#office-dialog").classList.add("office-offline");$("#office-sync").textContent="Offline — last snapshot may be outdated. "+error.message;renderOfficeDetail();}}
+  }catch(error){if(epoch===officeState.epoch){officeState.offline=true;$("#office-active-count").textContent="—";$("#office-dialog").classList.add("office-offline");$("#office-sync").textContent="Offline — poslední snímek může být zastaralý. "+error.message;renderOfficeDetail();}}
   finally{officeState.loading=false;}
 }
 async function showOffice(){if(!$("#office-dialog").open)$("#office-dialog").showModal();officeState.epoch++;positionOfficeCamera();await loadOffice();}
@@ -184,7 +184,7 @@ function initOffice(){
   bind("#office-reset","click",()=>{officeState.angle=-28;officeState.tilt=55;officeState.zoom=1;positionOfficeCamera();});
   bind("#office-turn-left","click",()=>{officeState.angle-=15;positionOfficeCamera();});bind("#office-turn-right","click",()=>{officeState.angle+=15;positionOfficeCamera();});
   bind("#office-zoom-in","click",()=>{officeState.zoom=Math.min(1.6,officeState.zoom+.15);positionOfficeCamera();});bind("#office-zoom-out","click",()=>{officeState.zoom=Math.max(.6,officeState.zoom-.15);positionOfficeCamera();});
-  bind("#office-layout","click",()=>{officeState.layout=officeState.layout==="3d"?"list":"3d";$("#office-dialog").classList.toggle("office-list-mode",officeState.layout==="list");$("#office-layout").textContent=officeState.layout==="list"?"Show 3D office":"List view";positionOfficeCamera();});
+  bind("#office-layout","click",()=>{officeState.layout=officeState.layout==="3d"?"list":"3d";$("#office-dialog").classList.toggle("office-list-mode",officeState.layout==="list");$("#office-layout").textContent=officeState.layout==="list"?"Zobrazit 3D kancelář":"Zobrazit seznam";positionOfficeCamera();});
   $("#office-dialog").addEventListener("close",()=>{officeState.epoch++;});
   let drag=null;const stage=$("#office-stage");stage.addEventListener("pointerdown",e=>{if(e.target.closest("button,[role=button]"))return;drag={x:e.clientX,y:e.clientY,angle:officeState.angle,tilt:officeState.tilt,id:e.pointerId};stage.setPointerCapture(e.pointerId);});
   stage.addEventListener("pointermove",e=>{if(!drag)return;officeState.angle=drag.angle+(e.clientX-drag.x)*.25;officeState.tilt=Math.max(30,Math.min(75,drag.tilt-(e.clientY-drag.y)*.15));positionOfficeCamera();});

@@ -1,23 +1,23 @@
-# 3D Office
+# 3D kancelář
 
-Open **3D Office** in the top bar. Select a company or keep **All workspaces**, then select an occupied desk to inspect the task. The detail panel links to the existing live map, run and approvals, and company.
+Otevřete **3D kancelář** v horní liště. Vyberte firmu nebo ponechte **Všechny pracovní prostory**, poté vyberte obsazené pracoviště pro prozkoumání úkolu. Detailní panel odkazuje na stávající živou mapu, běh a schválení, dále na firmu.
 
-The scene is original CSS 3D geometry, with no external assets, renderer, CDN or additional service. It reads the existing Studio APIs. It is an overview; it does not add a scheduler or increase worker capacity.
+Scéna je původní geometrií v CSS 3D bez externích zdrojů, vykreslovače, CDN ani dalších služeb. Čte stávající API Studio. Jde o přehled; nepřidává plánovač ani nezvyšuje kapacitu realizátorů.
 
-- Each occupied seat represents a recorded task or standalone run. Empty desks are illustrative, not active agents.
-- A department shows up to four priority tasks. The list includes every task in the selected company or workspace scope.
-- Working and review movement requires recent recorded activity. A running process without fresh events is marked **Awaiting activity**. Independent verification has its own checking state.
-- Blocked, paused and cancelled controller states take precedence over leftover process flags. A completed standalone run is **Run finished**, not an accepted product.
-- After a connection failure, animation stops, the active count becomes unknown and the view labels the retained snapshot as potentially outdated.
-- A stopped execution shows its latest recorded run and model, so a failed reviewer is not confused with the worker profile.
-- Department assignment is organizational context, not a permission boundary. The Company Driver still shares one worker slot.
+- Každé obsazené pracoviště představuje zaznamenaný úkol nebo samostatný běh. Prázdná pracoviště jsou ilustrativní, nejsou aktivními agenty.
+- Oddělení zobrazuje až čtyři úkoly podle priority. Seznam zahrnuje všechny úkoly ve vybraném rozsahu firmy nebo pracovního prostoru.
+- Pohyb při práci a kontrole vyžaduje nedávnou zaznamenanou aktivitu. Běžící proces bez nových událostí je označen jako **Čeká na aktivitu**. Samostatná ověření mají vlastní stav kontroly.
+- Stavy řadiče: blokovaný, pozastavený a zrušený mají přednost před zbytkovými příznaky procesu. Dokončený samostatný běh je označen jako **Běh dokončen**, nikoli jako převzatý produkt.
+- Po selhání spojení se animace zastaví, počet aktivních se stává neznámým a zobrazení označí zachovaný snímek jako potenciálně zastaralý.
+- Zastavený běh zobrazuje svůj poslední zaznamenaný běh a model, aby nedošlo k záměně selhání kontrolora s profilem realizátora.
+- Přiřazení do oddělení je organizační kontext, nikoli hranice oprávnění. Řadič firmy stále sdílí jeden pracovní slot.
 
-Use the rotate and zoom controls or drag the floor. **Reset camera** restores the initial view. **List view** gives an accessible alternative, including on smaller screens. Reduced-motion preferences disable the scene animations.
+Použijte ovládací prvky pro rotaci a přiblížení nebo přetáhněte podlahu. **Resetovat kameru** obnoví výchozí pohled. **Zobrazení seznamem** poskytuje přístupnou alternativu, včetně na menších obrazovkách. Volby sníženého pohybu vypnou animace scény.
 
-Question-mark controls explain the purpose, usage and an example. Click them or use Enter/Space; Escape closes help and returns keyboard focus. Opening help does not submit a form or approve a tool.
+Ovládací prvky s otazníkem vysvětlují účel, použití a příklad. Klikněte na ně nebo použijte Enter/Mezerník; Esc ukončí nápovědu a vrátí klávesové zaměření. Otevření nápovědy nepředává formulář ani neschvaluje nástroj.
 
-The interface and built-in templates are in English. Existing user-authored names, instructions, saved messages and history retain their original language.
+Rozhraní i vestavěné šablony jsou v češtině. Stávající uživatelské názvy, pokyny, uložené zprávy a historie si zachovávají původní jazyk.
 
-## Files and server location
+## Soubory a umístění serveru
 
-Studio edits files on its host computer. When opened through a LAN address, project paths refer to that server. Both ordinary agent runs and long-running projects map `/workspace` to the project selected in the editor. Run logs and `/outputs` artifacts remain stored separately. Refresh Files after an agent writes a new file; open it to inspect the saved content.
+Studio upravuje soubory na svém hostitelském počítači. Při otevření přes adresu LAN odkazují cesty na tento server. Běžné běhy agentů i dlouhodobé projekty mapují `/workspace` na projekt vybraný v editoru. Protokoly běhu a artefakty v `/outputs` zůstávají uloženy odděleně. Po zapsání nového souboru agentem obnovte soubory a otevřete je pro kontrolu uloženého obsahu.

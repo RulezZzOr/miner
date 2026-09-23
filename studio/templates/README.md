@@ -1,49 +1,49 @@
-# AI Build Company
+# AI firma
 
-A reusable organizational template for Switch Studio. It includes 30 AI roles, their instructions, responsibilities, outputs, managers, and reviewers. The human owner is not counted among the AI roles.
+Opakovaně použitelná šablona organizace pro Switch Studio. Obsahuje 30 AI rolí, jejich instrukce, odpovědnosti, výstupy, nadřízené a reviewery. Člověk je vlastníkem a není započítaný mezi AI role.
 
-## Usage in Studio
+## Použití ve Studiu
 
-1. Select a project and open **Templates** in the top bar.
-2. Expand individual roles and use **Save to Project**. This creates `company/ai-build-company.json` in the selected project. Existing files are not overwritten.
-3. Use **Open File** to edit `project_brief`: goal, scope, target files, acceptance criteria, and constraints. Save changes using Cmd/Ctrl+S. You can also edit roles and their instructions in the same copy.
-4. Use **Add to Task Brief** to add specific work. Existing task brief text is preserved. Add the template again for each new task that should use it.
-5. Select a model and mode, then start the task. Saving the template or adding instructions alone does not trigger anything.
+1. Vyber projekt a otevři **Šablony** v horní liště.
+2. Rozklikni jednotlivé role a použij **Uložit do projektu**. Vznikne `company/ai-build-company.json` ve vybraném projektu. Existující soubor se nepřepisuje.
+3. Přes **Otevřít soubor** uprav `project_brief`: cíl, rozsah, cílové soubory, akceptační kritéria a omezení. Změny ulož pomocí Cmd/Ctrl+S. Role i jejich instrukce můžeš upravit ve stejné kopii.
+4. Použij **Přidat k zadání** a doplň konkrétní práci. Stávající text zadání zůstává zachovaný. Šablonu přidej znovu pro každou novou úlohu, která ji má používat.
+5. Vyber model a režim a spusť úlohu. Samotné uložení šablony ani přidání instrukcí nic nespouští.
 
-The dialog always shows the default template. The authoritative source for a specific project is its saved JSON, which the agent is instructed to read. The template is portable to other agent environments: copy the JSON and reference it in the task brief.
+Dialog vždy ukazuje výchozí šablonu. Autoritativní pro konkrétní projekt je jeho uložený JSON, který agent dostane pokyn přečíst. Šablona je přenositelná i do jiného agentního prostředí: zkopíruj JSON a odkaž na něj v zadání.
 
-## Organization
+## Organizace
 
-| Department | Roles | Count |
+| Oddělení | Role | Počet |
 |---|---|---:|
-| Leadership & Operations | CEO, COO / Office Manager | 2 |
-| Sales & Marketing | Head of Sales & Marketing, 2 Account Executives, Marketing, Customer Success | 5 |
-| Development & Delivery | CTO, 2 PM / Product Owners, 3 teams of 5 specialists each | 18 |
-| Internal IT, Data & AI | Lead Architect, Sysadmin, Data & AI, DevOps, Security | 5 |
-| Total | | **30** |
+| Vedení a provoz | CEO, COO / Office Manager | 2 |
+| Obchod a marketing | Head of Sales & Marketing, 2 Account Executives, Marketing, Customer Success | 5 |
+| Vývoj a dodávka | CTO, 2 PM / Product Owners, 3 týmy po 5 specialistech | 18 |
+| Interní IT, data a AI | Lead Architect, Sysadmin, Data & AI, DevOps, Security | 5 |
+| Celkem | | **30** |
 
-Each development team (Alpha, Beta, Gamma) includes frontend, backend, fullstack, QA, and UX. Specialists report directly to the CTO; the PM coordinates tasks but does not form a fourth management layer. Managers also perform hands-on work. HR matters are handled by the COO together with team leads. DevOps and Security fill two missing positions in the original five-person IT department. External accounting, legal, and creative services are outside the count of 30.
+Každý vývojový tým (Alpha, Beta, Gamma) má frontend, backend, fullstack, QA a UX. Specialisté se zodpovídají přímo CTO; PM koordinuje úkoly, netvoří čtvrtou řídicí vrstvu. Vedoucí také vykonávají odbornou práci. Personální agendu zajišťuje COO společně s vedoucími. DevOps a Security doplňují dvě chybějící pozice v původním pětičlenném IT oddělení. Externí účetnictví, právo a kreativní služby jsou mimo počet 30.
 
 ```mermaid
 flowchart TD
-  Owner[Ty: goals and acceptance] --> CEO[CEO]
-  CEO --> COO[COO / operations]
+  Owner[Ty: cíle a převzetí] --> CEO[CEO]
+  CEO --> COO[COO / provoz]
   CEO --> Growth[Head of Sales & Marketing]
-  CEO --> CTO[CTO / delivery]
+  CEO --> CTO[CTO / dodávka]
   CEO --> Architect[Lead Architect]
-  Growth --> Sales[2 sales reps + marketing + customer success]
+  Growth --> Sales[2 obchodníci + marketing + customer success]
   CTO --> PM[2 PM / Product Owners]
-  CTO --> Squads[Alpha, Beta, Gamma: 3 × 5 specialists]
-  PM -. coordination .-> Squads
+  CTO --> Squads[Alpha, Beta, Gamma: 3 × 5 specialistů]
+  PM -. koordinace .-> Squads
   Architect --> Platform[Sysadmin + Data & AI + DevOps + Security]
 ```
 
-The delivery process is **task brief → technical plan → execution → independent review → acceptance**. The handover report includes specific paths to outputs, performed checks, results, and limitations. The author does not confirm acceptance of their own work. For the first verification, use one small task involving roles CTO, PM, fullstack, and QA.
+Postup dodávky je **zadání → technický plán → realizace → nezávislá kontrola → převzetí**. Předávací report obsahuje konkrétní cesty k výstupům, provedené kontroly, výsledky a omezení. Autor sám nepotvrzuje přijetí své práce. Pro první ověření použij jeden malý úkol s rolemi CTO, PM, fullstack a QA.
 
-## What the Template Actually Activates
+## Co šablona skutečně aktivuje
 
-Multi-day product delivery, highlighting of input questions, and background research are handled by a separate experimental mode: **AI Projects**. See [guide and current limitations](../docs/LONG_RUNNING_PROJECTS.md). The template itself does not trigger this mode, and week-long operation is not yet verified.
+Vícedenní dodávku produktu, zvýrazněné vstupní otázky a dohledávání podkladů řeší samostatný experimentální režim **Projekty AI**. Viz [návod a aktuální omezení](../docs/LONG_RUNNING_PROJECTS.md). Šablona ho sama nespouští a týdenní provoz zatím není ověřený.
 
-It is an organizational template and set of instructions. **It does not automatically create 30 running agents nor enforce permissions.** You choose the model and mode for each specific run. Nested teams and models assigned to individual roles require further implementation. The separate AI Projects mode already has a worker/reviewer cycle with a choice of two profiles; its operational verification is described in the linked guide.
+Je to organizační předloha a sada instrukcí. **Nevytváří automaticky 30 běžících agentů ani nevynucuje oprávnění.** Model i režim vybíráš pro konkrétní běh. Vnořené týmy a modely přiřazené všem jednotlivým rolím vyžadují další implementaci. Samostatný režim Projekty AI už má cyklus realizátor/kontrolor s volbou dvou profilů; jeho provozní ověření popisuje odkazovaný návod.
 
-Fields `preferred_model`, `model_preferences`, and `execution_policy` express template preferences; they do not override Studio profiles or operational limits. Cloud fallback is disabled in the template. The template itself does not require cloud, OAuth, or keys. `project_brief.approved_external_actions` is for recording specific owner decisions, not as technical authorization for actions.
+Pole `preferred_model`, `model_preferences` a `execution_policy` vyjadřují preference předlohy; nepřepisují profily Studia ani provozní limity. Cloudový fallback je v předloze vypnutý. Šablona sama nepotřebuje cloud, OAuth ani klíče. `project_brief.approved_external_actions` slouží pro záznam konkrétních rozhodnutí vlastníka, nikoli jako technické oprávnění k akcím.

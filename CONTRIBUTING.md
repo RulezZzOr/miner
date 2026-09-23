@@ -1,12 +1,10 @@
-# Contributing
+# Přispívání
 
-This is an experimental self-hosted application. Please reproduce a problem in a temporary
-project before reporting it. Include the version, platform, model backend and a redacted error;
-never attach credentials, private company files or complete agent transcripts.
+Jde o experimentální aplikaci pro vlastní provoz. Před nahlášením chybu zopakujte v dočasném projektu. Uveďte verzi, systém, poskytovatele modelu a chybovou zprávu bez citlivých údajů. Nepřikládejte hesla, soukromé firemní soubory ani celé přepisy agentů.
 
-## Local checks
+## Místní kontroly
 
-Install the application with `sh setup-studio`. From the repository root:
+Nainstalujte aplikaci pomocí `sh setup-studio`. V kořenové složce repozitáře spusťte:
 
 ```sh
 frontier/.venv/bin/python -m unittest discover -s studio/tests -v
@@ -14,20 +12,14 @@ node --test studio/tests/*.cjs
 frontier/.venv/bin/python scripts/build_release.py
 ```
 
-Node.js is required for frontend tests, not for the running Studio UI. For a fresh-install check:
+Node.js je potřeba pro testy rozhraní, nikoli pro provoz Studia. Čistou instalaci ověřte takto:
 
 ```sh
-frontier/.venv/bin/python scripts/smoke_release.py dist/switch-studio-0.4.0-alpha.1-macos.zip --suite
+frontier/.venv/bin/python scripts/smoke_release.py dist/switch-studio-0.4.0-alpha.4-macos.zip --suite
 ```
 
-Use the Linux `.tar.gz` archive on Linux. These tests validate mechanisms and deterministic
-workflows; live-model quality requires separate, bounded evaluation with recorded outcomes.
+Na Linuxu použijte archiv `.tar.gz`. Tyto testy ověřují mechanismy a pracovní postupy s předvídatelným výsledkem. Kvalita skutečného modelu vyžaduje samostatnou ohraničenou zkoušku s uloženými výsledky.
 
-The optional GitHub Actions template is in `docs/ci/studio-platforms.example.yml`.
-It is not installed as an active workflow in this initial publication. To enable it, a maintainer
-with workflow-write permission can copy it into `.github/workflows/studio-platforms.yml`.
-Upstream workflows under `frontier/.github/` are retained as upstream source and do not run here.
+Volitelná šablona GitHub Actions je v `docs/ci/studio-platforms.example.yml`. Není aktivním pracovním postupem. Správce s oprávněním zápisu pracovních postupů ji může zkopírovat do `.github/workflows/studio-platforms.yml`. Původní postupy ve `frontier/.github/` jsou zachovány jako zdrojový obsah a zde se nespouštějí.
 
-Keep upstream changes focused, preserve attribution, and document user-visible behavior and
-validation in pull requests. Do not commit `agent.toml`, `.env`, `.switch-agent`, `.apodex`,
-SSH target configuration, generated datasets or provider credentials.
+Změny původního projektu udržujte úzce zaměřené a zachovejte uvedení autorů. V návrhu změny popište chování a provedené ověření. Neukládejte do Gitu `agent.toml`, `.env`, `.switch-agent`, `.apodex`, konfiguraci SSH cílů, generované datové sady ani přihlašovací údaje.

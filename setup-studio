@@ -4,19 +4,19 @@ set -eu
 switch_root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 case $(uname -s) in
   Darwin|Linux) ;;
-  *) echo 'Use Switch Studio Windows.cmd on Windows (WSL2 required).' >&2; exit 1 ;;
+  *) echo 'Ve Windows použijte Switch Studio Windows.cmd (vyžaduje WSL2).' >&2; exit 1 ;;
 esac
 if command -v uv >/dev/null 2>&1; then
   switch_uv=$(command -v uv)
 elif [ -x "$HOME/.local/bin/uv" ]; then
   switch_uv="$HOME/.local/bin/uv"
 else
-  echo 'Install uv first: https://docs.astral.sh/uv/getting-started/installation/' >&2
-  echo 'On Windows, install uv inside your WSL distribution, then run this launcher again.' >&2
+  echo 'Nejprve nainstalujte uv: https://docs.astral.sh/uv/getting-started/installation/' >&2
+  echo 'Ve Windows nainstalujte uv uvnitř distribuce WSL a spusťte tento spouštěč znovu.' >&2
   exit 1
 fi
 UV_PROJECT_ENVIRONMENT="$switch_root/frontier/.venv" "$switch_uv" sync \
   --project "$switch_root/frontier" --locked --python 3.12 \
   --no-default-groups --extra document-readers --inexact
 "$switch_root/frontier/.venv/bin/python" "$switch_root/scripts/start_studio.py" --check
-echo 'Installation ready. Start with ./switch-studio'
+echo 'Instalace připravena. Spusťte ./switch-studio'

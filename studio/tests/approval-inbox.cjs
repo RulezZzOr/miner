@@ -29,26 +29,26 @@ test('polling and adding another approval preserve typed feedback and card ident
 });
 test('yes is bound to the original run and preserves risk confirmation',async()=>{
  const {ctx,calls}=fixture();const item=tool();item.request.dangerous='Sensitive command';const card=ctx.approvalInboxCard(item);
- find(card,'input').value='yes';await find(card,'button',"Yes").onclick();
+ find(card,'input').value='yes';await find(card,'button',"Ano").onclick();
  assert.deepEqual(JSON.parse(JSON.stringify(calls[0])),{url:'/api/decision',body:{run:'run-a',approval:'a',allow:true,feedback:'',confirmation:'yes'}});
 });
 test('custom reply declines the pending action and sends feedback, empty reply sends nothing',async()=>{
- const {ctx,calls}=fixture();const card=ctx.approvalInboxCard(tool());const button=find(card,'button',"Send response");
+ const {ctx,calls}=fixture();const card=ctx.approvalInboxCard(tool());const button=find(card,'button',"Odeslat odpověď");
  await button.onclick();assert.equal(calls.length,0);find(card,'textarea').value='Only inspect the service';await button.onclick();
  assert.equal(calls[0].body.allow,false);assert.equal(calls[0].body.feedback,'Only inspect the service');
 });
 test('no denies and mission custom replies use answer API',async()=>{
- const {ctx,calls}=fixture();await find(ctx.approvalInboxCard(tool()),'button',"No").onclick();assert.equal(calls[0].body.allow,false);
+ const {ctx,calls}=fixture();await find(ctx.approvalInboxCard(tool()),'button',"Ne").onclick();assert.equal(calls[0].body.allow,false);
  const card=ctx.approvalInboxCard({kind:'question',key:'q',mission:'m',question:'q1',context:'Cloud',title:'URL?'});
- find(card,'textarea').value='https://example.test';await find(card,'button',"Send response").onclick();
+ find(card,'textarea').value='https://example.test';await find(card,'button',"Odeslat odpověď").onclick();
  const call=calls.find(x=>x.body?.action==='answer');assert.equal(call.body.id,'m');assert.equal(call.body.question,'q1');assert.equal(call.body.answer,'https://example.test');
 });
 test('server rejection keeps input and exposes error without silently approving',async()=>{
  const {ctx}=fixture();ctx.api=async()=>{throw new Error('Type yes first');};const item=tool();item.request.dangerous='Risk';const card=ctx.approvalInboxCard(item);
- find(card,'textarea').value='Keep this draft';await find(card,'button',"Yes").onclick();
- assert.equal(find(card,'textarea').value,'Keep this draft');assert.ok(card.children.some(n=>n.textContent==='Type yes first'&&!n.hidden));assert.equal(find(card,'button',"Yes").disabled,false);
+ find(card,'textarea').value='Keep this draft';await find(card,'button',"Ano").onclick();
+ assert.equal(find(card,'textarea').value,'Keep this draft');assert.ok(card.children.some(n=>n.textContent==='Type yes first'&&!n.hidden));assert.equal(find(card,'button',"Ano").disabled,false);
 });
 test('double click cannot send a second decision',async()=>{
  const {ctx}=fixture();let count=0,finish;ctx.api=()=>{count++;return new Promise(r=>finish=r);};ctx.pollApprovalInbox=async()=>{};
- const button=find(ctx.approvalInboxCard(tool()),'button',"Yes");const pending=button.onclick();await button.onclick();assert.equal(count,1);finish({});await pending;
+ const button=find(ctx.approvalInboxCard(tool()),'button',"Ano");const pending=button.onclick();await button.onclick();assert.equal(count,1);finish({});await pending;
 });

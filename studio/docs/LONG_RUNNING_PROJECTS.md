@@ -1,98 +1,98 @@
-# Long-Term AI Projects — Build Company
+# Dlouhodobé projekty AI firmy
 
-Status: Implemented experimental mode in Studio. Weekly continuous operation and reliable delivery of a comprehensive product on a local model are not yet verified.
+Stav: implementovaný experimentální režim ve Studiu. Týdenní nepřetržitý provoz ani spolehlivá dodávka komplexního produktu na lokálním modelu zatím nejsou ověřené.
 
-For product management even after acceptance, use [Products](PRODUCT_LIFECYCLE.md).
-Each AI Project is a single execution; the product retains additional requirements,
-accepted versions, and maintenance intervals.
+Pro správu produktu i po převzetí použij [Produkty](PRODUCT_LIFECYCLE.md).
+Jednotlivý Projekt AI je jedna realizace; produkt nad ním uchovává další požadavky,
+převzaté verze a interval údržby.
 
-## Usage
+## Použití
 
-1. Select a project folder and open **AI Projects → New Long-Term Project**.
-2. Describe the target product, reference materials, and constraints. Provide verifiable criteria, one per line.
-3. Select a model for planning/execution and a model for review. They may be identical; review always gets a new session.
-4. Set project duration, total number of runs, minutes and steps per run. Auto-approval is disabled by default. Without it, tasks wait for tool approval via **Run / Tool Approval**.
-5. Use **Save Task Brief**, then **Start Preparation**. Saving alone does not trigger the model.
-6. The planner reviews reference materials, proposes tasks, and raises any questions. Questions are highlighted, and answers are saved. After answering them, confirm the plan.
-7. The controller executes tasks, triggers independent reviews, and returns findings to the author. At the end, it verifies the entire product’s criteria.
-8. After review, Studio automatically runs pre-approved control commands. The status **Product Ready for Acceptance** requires actual success of these processes and unchanged source files. Without commands, the status **Missing Independent Checks** offers adding them or explicit manual acceptance without automatic verification.
-9. **Accept Product** re-verifies file contents and permissions, saves a recoverable version, and merges it into the original project; newer conflicting edits are rejected. **Re-verify** triggers another final review.
+1. Vyber projektovou složku a otevři **Projekty AI → Nový dlouhodobý projekt**.
+2. Popiš cílový produkt, podklady a omezení. Zadej ověřitelná kritéria, každé na samostatný řádek.
+3. Vyber model pro plán/realizaci a model pro kontrolu. Mohou být stejné; review vždy dostane novou relaci.
+4. Nastav délku projektu, celkový počet běhů, minuty a kroky na běh. Volba automatického schvalování je ve výchozím stavu vypnutá. Bez ní úlohy čekají na schválení nástrojů přes **Průběh / schválení nástrojů**.
+5. Použij **Uložit zadání**, pak **Spustit přípravu**. Samotné uložení nespouští model.
+6. Plánovač prohlédne podklady, navrhne úkoly a případné otázky. Otázky jsou zvýrazněné a odpovědi se ukládají. Po jejich zodpovězení potvrď plán.
+7. Řadič provádí úkoly, spouští samostatná kontrola a vrací nálezy autorovi. Na konci ověřuje kritéria celého produktu.
+8. Po review Studio samo spustí předem schválené příkazy kontrol. Stav **Produkt k převzetí** vyžaduje skutečný úspěch těchto procesů a nezměněné zdroje. Bez příkazů stav **Chybí nezávislé kontroly** nabízí jejich doplnění nebo výslovné ruční převzetí bez automatického ověření.
+9. **Převzít produkt** znovu ověří obsah i práva souborů, uloží obnovitelnou verzi a sloučí ji do původního projektu; novější konfliktní úpravy odmítne. **Znovu ověřit** spustí další závěrečná kontrola.
 
-Paused or blocked execution allows changing models and limits for subsequent runs.
-First, the active worker must finish. Saving settings does not resume work,
-does not change the overall deadline, and remains in the decision history.
+Pozastavená nebo blokovaná realizace dovoluje změnit modely a limity dalších běhů.
+Nejdřív musí skončit aktivní pracovník. Uložení nastavení samo práci neobnoví,
+nemění celkový termín a zůstává v historii rozhodnutí.
 
-Closing the browser does not stop execution. Studio and the computer must remain running. A model on a remote server does not replace the controller on this machine.
+Zavření prohlížeče práci nezastaví. Studio a počítač musí zůstat spuštěné. Model na vzdáleném serveru sám nenahrazuje řadič na tomto počítači.
 
-## What Is Implemented
+## Co je implementované
 
-- SQLite with transactional writes, WAL, and connection closing: task brief, plan, dependencies, questions, answers, attempts, and accepted reports.
-- Queue of sequential tasks and one active worker for the entire Studio. A regular task and a long-term project cannot simultaneously occupy the same slot.
-- Blocking a specific task pauses its dependencies; independent work can continue. In full blocking, empty model cycles are not started.
-- Models for execution and review are selected separately. No automatic switch to another provider.
-- New executions work in a separate copy of the sources by default. Workers of this execution share its folder; the button **Open Working Version in Editor** opens it in Studio. The original project changes only upon acceptance. `/workspace` is an alias for file tools; the shell uses the physical working folder and relative paths.
-- The native planner has limited tools: reading and writing its own report only; it must not perform execution before plan confirmation. This is not an OS sandbox. For the Codex backend, phase rules are instructions, not the same tool filter.
-- The report must be a real JSON file. The controller checks structure, dependencies, existence of product files, SHA-256, and coverage of criteria. Binary artifacts are supported up to 50 MB per file; text reports up to 2 MB.
-- New review session for each task and final model-based product assessment. Model reports are separate from actual exit codes and logs of the independent executor. Successful tests do not prove general product correctness.
-- Fixes after review: at most three failed rounds before blocking. Repeated faulty reports or operational errors incur delays and stop after three attempts.
-- Time limits per run and per project, run count limits, and operational log limits (128 MB/run, 1 GB/project). These are not limits on total product file size or monetary budget.
-- Pause, resume, and termination preserve existing files and history.
-- Before starting the worker, the attempt reservation and process identity are saved. The worker waits for write confirmation. On restart, recorded workers are cleaned up by PID and creation time, and interrupted attempts are resumed as new sessions with instructions to first verify files.
-- Process recording is refreshed every second. This manages ordinary child processes, not intentionally escaping programs.
+- SQLite s transakčním zápisem, WAL a zavíráním spojení: zadání, plán, závislosti, otázky, odpovědi, pokusy a přijaté reporty.
+- Fronta navazujících úkolů a jeden aktivní pracovník pro celé Studio. Běžná úloha a dlouhodobý projekt nemohou současně obsadit stejný slot.
+- Blokace konkrétního úkolu pozastaví jeho závislosti; nezávislá práce může pokračovat. Při úplné blokaci se nespouští prázdné modelové cykly.
+- Modely pro realizaci a review se vybírají zvlášť. Žádný automatický přechod na jiného poskytovatele.
+- Nové realizace standardně pracují v oddělené kopii zdrojů. Pracovníci této realizace sdílejí její složku; tlačítko **Otevřít pracovní verzi v editoru** ji otevře ve Studiu. Původní projekt se změní až při převzetí. `/workspace` je alias souborových nástrojů; shell používá fyzickou pracovní složku a relativní cesty.
+- Nativní plánovač má omezení nástrojů: čtení a zápis svého reportu; nemá provádět realizaci před potvrzením plánu. Toto není OS izolované prostředí. U backendu Codex jsou fázová pravidla instrukcemi, nikoli stejným filtrem nástrojů.
+- Report musí být skutečný JSON soubor. Řadič kontroluje strukturu, závislosti, existenci produktových souborů, SHA-256 a pokrytí kritérií. Binární artefakty jsou podporované do 50 MB na soubor; textové reporty do 2 MB.
+- Nová relace review pro každý úkol a závěrečné modelové posouzení produktu. Modelové reporty jsou oddělené od skutečných exit kódů a logů nezávislého vykonavatele. Ani úspěšné testy nedokazují obecnou bezchybnost produktu.
+- Opravy po kontrole, nejvýše tři neúspěšná kola před blokací. Opakované vadné reporty nebo provozní chyby mají prodlevu a po třech pokusech se zastaví.
+- Časové limity jednotlivých běhů i projektu, limit počtu běhů a limity provozních logů (128 MB/běh, 1 GB/projekt). Nejde o omezení celkové velikosti produktových souborů nebo peněžní rozpočet.
+- Pause, pokračování a ukončení zachovávají dosavadní soubory a historii.
+- Před spuštěním pracovníka se uloží rezervace pokusu a identita procesu. Pracovník čeká na potvrzení zápisu. Při restartu se evidovaní pracovníci uklidí podle PID a času vzniku a přerušený pokus se obnovuje jako nová relace s pokynem nejprve ověřit soubory.
+- Procesní evidence se obnovuje každou sekundu. Jde o správu běžných potomků, nikoli izolaci úmyslně unikajícího programu.
 
-## Architecture
+## Architektura
 
 ```mermaid
 flowchart TD
-  GUI[Studio: task brief, questions, acceptance] --> API[Local API]
-  API --> DB[(SQLite: project state and evidence)]
-  DB --> Controller[Persistent plan and next task selection]
-  Controller --> Planner[Planner: reference materials and questions]
-  Planner --> Questions[Highlighted questions and plan confirmation]
+  GUI[Studio: zadání, otázky, převzetí] --> API[Lokální API]
+  API --> DB[(SQLite: stav projektu a důkazy)]
+  DB --> Controller[Trvalý plán a výběr dalšího úkolu]
+  Controller --> Planner[Plánovač: podklady a otázky]
+  Planner --> Questions[Zvýrazněné otázky a potvrzení plánu]
   Questions --> GUI
-  Controller --> Builder[Executor: new session]
-  Builder --> Files[Project files + JSON report]
-  Files --> Reviewer[Reviewer: different session / optionally different model]
-  Reviewer -->|findings| Builder
-  Reviewer --> Final[Full product assessment]
-  Final --> Checks[Approved commands: actual process and log]
-  Checks --> Gate[Content, file permissions, exit codes]
-  Gate --> Version[Content version and merge into original project]
+  Controller --> Builder[Realizátor: nová relace]
+  Builder --> Files[Projektové soubory + JSON report]
+  Files --> Reviewer[Reviewer: jiná relace / volitelně jiný model]
+  Reviewer -->|nálezy| Builder
+  Reviewer --> Final[Kontrola celého produktu]
+  Final --> Checks[Schválené příkazy: skutečný proces a log]
+  Checks --> Gate[Obsah, práva souborů, exit kódy]
+  Gate --> Version[Obsahová verze a sloučení do původního projektu]
   Gate --> GUI
   Gate --> DB
 ```
 
-Controller data: `.switch-agent/studio/projects.sqlite3`.
+Data řadiče: `.switch-agent/studio/projects.sqlite3`.
 
-Reports in working projects: `company/projects/<ai-project>/reports/<attempt>.json`. Their accepted form and checksums are also stored in the database. Content versions store sources up to 50 MB/file, 500 MB, and 20,000 files; exclude `.env*`, `.git`, dependencies, cache, and operational metadata. They do not replace environment and data backups. Details: [loop, evidence, and deployment](CONTROL_LOOP.md).
+Reporty v pracovních projektech: `company/projects/<projekt-AI>/reports/<pokus>.json`. Jejich přijatá podoba a kontrolní součty se ukládají i do databáze. Obsahové verze ukládají zdroje do 50 MB/soubor, 500 MB a 20 000 souborů; vynechávají `.env*`, `.git`, závislosti, cache a provozní metadata. Nenahrazují zálohu prostředí a dat. Podrobnosti: [smyčka, důkazy a nasazení](CONTROL_LOOP.md).
 
-On restart, the controller processes completed reports or limited re-execution of interrupted attempts. Recovery does not guarantee exactly one execution of any external action; payments, message sending, and deployment are therefore not part of the automatic delivery in this mode.
+Při restartu řadič zpracuje dokončený report nebo omezeně zopakuje přerušený pokus. Obnova nezaručuje přesně jedno provedení libovolné externí akce; platby, odesílání zpráv a nasazení proto nejsou součástí automatické dodávky tohoto režimu.
 
-## Internet and Reference Materials
+## Internet a podklady
 
-Public reference materials may be looked up by the model using available tools. Native `web_search` requires a configured `SERPER_API_KEY`. The GUI shows whether the configuration is present without revealing the key; this is not a live search test. `web_fetch` can directly load provided URLs. Without search, supply links or complete its configuration. Private reference materials, business decisions, and permissions must be provided by the owner; secrets do not belong in the task brief.
+Veřejné podklady může model dohledávat dostupnými nástroji. Nativní `web_search` vyžaduje nastavený `SERPER_API_KEY`. GUI ukazuje přítomnost konfigurace bez zveřejnění klíče; nejde o živý test vyhledávání. `web_fetch` může přímo načítat dodané URL. Bez vyhledávání dodej odkazy nebo dokonči jeho konfiguraci. Soukromé podklady, obchodní rozhodnutí a oprávnění musí dodat vlastník; tajemství nepatří do zadání.
 
-## Background Operation
+## Provoz na pozadí
 
 ```sh
 ./switch-studio --no-open
-# Optional macOS user service:
+# Volitelná uživatelská služba macOS:
 ./switch-studio-service enable
 ./switch-studio-service status
 ./switch-studio-service disable
 ```
 
-The macOS service uses launchd, starts on login, and restarts the controller on crash. It does not allow public network access. On this Mac, attempting to run the service hit a system restriction on accessing the Documents folder; registration was removed and Studio was restarted normally. macOS protections were not altered. The installer now verifies the service response and removes registration on failure.
+Služba macOS používá launchd, startuje po přihlášení a restartuje řadič po pádu. Nepovoluje veřejný síťový přístup. Na tomto Macu pokus o spuštění služby narazil na systémový zákaz přístupu ke složce Dokumenty; registrace byla odstraněna a Studio znovu spuštěno běžným způsobem. Nebyla měněna ochrana macOS. Instalátor nyní ověřuje odpověď služby a při neúspěchu registraci odstraní.
 
-For actual weekly operation, choose and set up a permanently available host. The Mac must not sleep; for Linux, a user systemd service with `Restart=on-failure` and running `switch-studio --no-open` is suitable. Remote access can be handled via an SSH tunnel to loopback port 4317. Cloud model logins and configurations must be verified in the service environment.
+Pro skutečný týdenní provoz zbývá zvolit a zprovoznit trvale dostupný host. Mac nesmí usnout; pro Linux je vhodná uživatelská systemd služba s `Restart=on-failure` a spuštěním `switch-studio --no-open`. Vzdálený přístup lze řešit SSH tunelem k loopback portu 4317. Přihlášení ke cloudovým modelům a jejich konfigurace se musí ověřit v prostředí služby.
 
-## What Is Verified and What Is Not Yet
+## Co bylo ověřeno a co ještě ne
 
-- Automated tests: plan, questions, independent tasks, separate review, fixes, restart, faulty reports, file changes, limits, safe paths, and process identities.
-- Integration test: four real Frontier processes via deterministic local model API, file write to project, reading by reviewer, and acceptance. Planning attempt to write via shell is rejected.
-- GUI: display of saved project, form with models and limits, work status, and history.
-- Live pilots revealed report errors, working path issues, and search under ignored folders. Fixes are covered by regression tests. The current state of real model runs is in the development copy at `analysis/audit/OVERNIGHT_IMPLEMENTATION.md`; completion cannot be inferred from test API.
-- A test with accelerated time verifies the seven-day limit; **it does not replace a seven-day operational test**.
-- Remaining: verifying longer real-world delivery, network interruptions, and re-login after long operation. Extending to parallel isolation, conflict graphs between sources, and sandboxed workers is future work.
+- Automatizované testy: plán, otázky, nezávislé úkoly, oddělené review, opravy, restart, chybné reporty, změna souborů, limity, bezpečné cesty a identity procesů.
+- Integrační test: čtyři skutečné procesy Frontieru přes deterministické lokální modelové API, zápis souboru do projektu, přečtení reviewerem a převzetí. Plánovací pokus o zápis přes shell se odmítne.
+- GUI: zobrazení uloženého projektu, formulář s modely a limity, stav práce a historie.
+- Živé piloty odhalily chyby reportů, pracovních cest a hledání pod ignorovanou složkou. Opravy jsou pokryté regresními testy. Aktuální stav skutečného modelového průchodu je ve vývojové kopii v `analysis/audit/OVERNIGHT_IMPLEMENTATION.md`; dokončení nelze odvodit z testovacího API.
+- Test se zrychleným časem ověřuje sedmidenní limit; **nenahrazuje sedmidenní provozní test**.
+- Zbývá ověřit delší reálnou dodávku, přerušení sítě a obnovení přihlášení při dlouhém provozu. Rozšíření na paralelní oddělení, graf rozporů mezi zdroji a sandboxované pracovníky je další práce.
 
-Comparison with the publicly described Apodex product is in [APODEX_COMPARISON.md](APODEX_COMPARISON.md).
+Srovnání s veřejně popsaným produktem Apodex je v [APODEX_COMPARISON.md](APODEX_COMPARISON.md).

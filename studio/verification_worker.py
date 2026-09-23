@@ -1,4 +1,4 @@
-"""Activation and parent-loss watchdog for controller-approved checks."""
+"Sledování aktivace a ztráty rodiče pro kontroly schválené řídicím modulem."
 import json
 import os
 import signal
@@ -9,7 +9,7 @@ from pathlib import Path
 
 
 def command_outcome(directory, wrapper_code):
-    """Keep the actual child's signal while treating wrapper failure as failure."""
+    "Zachovat signál skutečného potomka, při selhání obalového procesu považovat za selhání."
     result = {"exit_code": wrapper_code, "wrapper_exit_code": wrapper_code}
     try:
         data = json.loads((Path(directory) / "command-result.json").read_text())

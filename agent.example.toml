@@ -1,6 +1,6 @@
 default_profile = "local"
 
-# Explicit placeholders: replace the model with one actually served at your URL.
+# Zástupné hodnoty: zadejte model skutečně dostupný na vaší adrese.
 [profiles.local]
 protocol = "chat_completions"
 chat_dialect = "ollama"
@@ -28,7 +28,7 @@ max_output_tokens = 4096
 thinking_format = "content_block"
 thinking_in_history = true
 
-# Other OpenAI-compatible services: add another profile with its own base_url,
-# model, api_key_env and the real context limits. There is no implicit fallback.
-# Models without native tool calling can opt into tool_mode = "text".
-# Custom protocols: protocol = "custom", factory = "your_package:build_client".
+# Další kompatibilní služby: přidejte profil s vlastní hodnotou base_url,
+# model, api_key_env a skutečnými limity kontextu. Automatický náhradní model není nastaven.
+# Modely bez nativního volání nástrojů mohou použít tool_mode = "text".
+# Vlastní protokoly: protocol = "custom", factory = "your_package:build_client".

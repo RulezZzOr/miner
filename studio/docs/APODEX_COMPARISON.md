@@ -1,22 +1,22 @@
-# Apodex and Our Long-Term Approach
+# Apodex a náš dlouhodobý režim
 
-Verified from the public website on 22 September 2026. Website claims are not an independent operational test.
+Ověřeno z veřejného webu 22. 9. 2026. Webová tvrzení nejsou nezávislý provozní test.
 
-Apodex distinguishes between Deep Research, Deep Solve, and Deep Discover. It emphasizes preserving state, decisions, and constraints across weeks of work. [Official website](https://www.apodex.com/)
+Apodex rozlišuje Deep Research, Deep Solve a Deep Discover. Zdůrazňuje uchování stavu, rozhodnutí a omezení napříč týdny práce. [Oficiální web](https://www.apodex.com/)
 
-For Deep Discover, it describes asynchronous orchestration of up to 150 agents, a shared, continuously updated knowledge store, and separate controller contexts. [Architecture description](https://www.apodex.com/discover)
+U Deep Discover popisuje asynchronní orchestraci až 150 agentů, společné průběžně doplňované úložiště zjištění a oddělené kontexty kontrolorů. [Popis architektury](https://www.apodex.com/discover)
 
-FrontierAgent is their public agent framework. Adopting the framework does not automatically grant access to all features of the hosted product or its models. [Official GitHub](https://github.com/ApodexAI)
+FrontierAgent je jejich veřejný agentní framework. Převzetí frameworku nezpřístupňuje automaticky veškeré funkce hostovaného produktu nebo jeho modely. [Oficiální GitHub](https://github.com/ApodexAI)
 
-## What We Implement in Miner
+## Co implementujeme v Mineru
 
-| Principle | Current Implementation |
+| Princip | Aktuální provedení |
 |---|---|
-| Persistent project state | SQLite: task brief, plan, dependencies, questions, answers, and attempts |
-| Traceable evidence | Reports on disk, copies of accepted reports in the database, checksums of product files |
-| Separate verification | New review session for each task and final product verification; model can be chosen separately |
-| Automatic corrections | Findings are returned to the worker; after three failed attempts, a block is triggered |
-| Recovery after interruption | Unique attempts, saved process identities, cleanup before restart, and limited retries |
-| Human input | Highlighted questions and permanently stored answers, enabling independent continuation of work |
+| Trvalý stav projektu | SQLite: zadání, plán, závislosti, otázky, odpovědi a pokusy |
+| Dohledatelné důkazy | Reporty na disku, kopie přijatých reportů v databázi, kontrolní součty produktových souborů |
+| Oddělené ověření | Nová relace review pro každý úkol a závěrečné ověření produktu; model lze zvolit zvlášť |
+| Automatické opravy | Nálezy se vrací realizátorovi; po třech neúspěšných kolech vzniká blokace |
+| Obnova po přerušení | Jedinečné pokusy, uložené identity procesů, úklid před restartem a omezené opakování |
+| Vstup od člověka | Zvýrazněné otázky a trvale uložené odpovědi, pokračování nezávislé práce |
 
-Our controller currently runs only one worker at a time. It does not support 150 parallel agents, a full conflict graph across sources, nor automatic rewriting of its own control code. We do not claim functional or performance parity with the hosted Apodex product.
+Náš řadič zatím spouští jednoho pracovníka současně. Nemá 150 paralelních agentů, plný graf rozporů mezi zdroji ani automatické přepisování vlastního řídicího kódu. Neuvádíme funkční nebo výkonnostní shodu s hostovaným Apodexem.

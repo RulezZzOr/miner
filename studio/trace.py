@@ -1,4 +1,4 @@
-"""Append-only operational decisions committed with mission state transitions."""
+"Operativní rozhodnutí přidaná jen na konec, zaznamenaná spolu s přechody stavu mise."
 import hashlib
 import json
 import uuid

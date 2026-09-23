@@ -1,9 +1,4 @@
-"""Local release processes, health probes, incident evidence and verified replacement.
-
-This backend runs on this machine, binds to loopback by configuration, and is not
-public hosting. A candidate must become healthy before the previous process stops.
-Each release has its own URL. Remote deployment is deliberately a separate adapter.
-"""
+"Lokální procesy vydání, zdravotní sondy, důkazy o incidentech a ověřená náhrada.\n\nTento backend běží na tomto stroji, dle konfigurace se váže na smyčku zpětné vazby a není\nveřejným hostováním. Kandidát musí být zdravý, než se předchozí proces zastaví.\nKaždé vydání má svou vlastní URL. Vzdálené nasazení je úmyslně odděleným adaptérem.\n"
 from __future__ import annotations
 
 import json
@@ -35,12 +30,12 @@ def settings(body):
         argv = shlex.split(argv)
     if (not isinstance(argv, list) or not 1 <= len(argv) <= 100 or
             any(not isinstance(a, str) or not a or len(a) > 4000 or "\0" in a for a in argv)):
-        raise ValueError("Enter the service command as arguments or a single command line.")
+        raise ValueError("Zadej příkaz služby jako argumenty nebo jeden příkazový řádek.")
     if not any("{port}" in a for a in argv) or not any("{host}" in a for a in argv):
-        raise ValueError("Service command must use {host} and {port}; Studio will substitute 127.0.0.1 and a free port.")
+        raise ValueError("Příkaz služby musí použít {host} a {port}; Studio dosadí 127.0.0.1 a volný port.")
     path = body.get("health_path", "/")
     if not isinstance(path, str) or not path.startswith("/") or path.startswith("//") or any(c in path for c in "\r\n\\"):
-        raise ValueError("Health path must be a local path starting with /.")
+        raise ValueError("Health cesta musí být místní cesta začínající /.")
     return {"argv": argv, "health_path": path[:1000], "expected_status": 200,
             "expected_text": str(body.get("expected_text", ""))[:1000],
             "auto_repair": body.get("auto_repair") is True,
@@ -66,8 +61,8 @@ class Deployments:
         for record in records:
             if record["status"] in {"starting", "healthy", "unhealthy", "stopping"}:
                 if not ProcessTree.recover(record.get("processes", [])):
-                    raise RuntimeError("Previous deployment process failed to terminate.")
-                record.update(status="interrupted", processes=[], error="Studio was restarted.")
+                    raise RuntimeError("Předchozí proces nasazení se nepodařilo ukončit.")
+                record.update(status="interrupted", processes=[], error="Studio bylo restartováno.")
                 self.save(record)
             if record.get("desired") == "running":
                 old = self.pending_restart.get(record["product"])
@@ -84,7 +79,7 @@ class Deployments:
         with self.missions.connect() as db:
             row = db.execute("SELECT data FROM deployments WHERE id=?", (key,)).fetchone()
         if not row:
-            raise ValueError("Deployment does not exist.")
+            raise ValueError("Nasazení neexistuje.")
         return json.loads(row[0])
 
     def list(self, product=None):
@@ -96,19 +91,19 @@ class Deployments:
     def start(self, product, release, *, recovery_count=0):
         spec = product.get("deployment_settings")
         if not spec:
-            raise ValueError("First, set up the local service and its availability check.")
+            raise ValueError("Nejdřív nastav místní službu a její kontrolu dostupnosti.")
         if not release.get("version_id") or not release.get("verification_id"):
-            raise ValueError("Deployment requires saved version content and successful independent checks.")
+            raise ValueError("Nasazení vyžaduje uložený obsah verze a úspěšné nezávislé kontroly.")
         version = self.missions.versions.get(release["version_id"])
         evidence = self.missions.verifications.get(release["verification_id"])
         if (evidence["status"] != "passed" or evidence.get("sources") != version["files"]
                 or evidence.get("source_modes") != version["modes"]):
-            raise ValueError("Version does not match the actually verified source files.")
+            raise ValueError("Verze neodpovídá skutečně ověřeným zdrojovým souborům.")
         with self.lock:
             if any(r["status"] == "starting" for r in self.list(product["id"])):
-                raise ValueError("A new deployment for this product is already being verified.")
+                raise ValueError("Už se ověřuje nové nasazení tohoto produktu.")
             if len(self.processes) >= 10:
-                raise ValueError("Local backend has a limit of 10 concurrent service processes.")
+                raise ValueError("Místní backend má limit 10 současných procesů služeb.")
             key = uuid.uuid4().hex[:16]
             directory = self.studio.data / "deployments" / key
             root = directory / "release"
@@ -161,7 +156,7 @@ class Deployments:
         except (OSError, ValueError):
             pass
 
-    def stop(self, key, *, reason="Stopped by owner.", keep_desired=False):
+    def stop(self, key, *, reason="Zastaveno vlastníkem.", keep_desired=False):
         with self.lock:
             record = self.get(key)
             pair = self.processes.pop(key, None)
@@ -181,7 +176,7 @@ class Deployments:
                           processes=tree.identities() if pair and not clean else [], ended=time.time(),
                           log=self.logs.pop(key, record.get("log", "").encode()).decode("utf-8", errors="replace"))
             if not clean:
-                record.update(status="unhealthy", error="Cannot terminate all service processes.")
+                record.update(status="unhealthy", error="Nelze ukončit všechny procesy služby.")
                 self.processes[key] = pair
             self.save(record)
         return record
@@ -198,7 +193,7 @@ class Deployments:
                                 for process in pair[1].refresh()
                                 for connection in process.net_connections(kind="inet"))
             if not owned:
-                raise RuntimeError("The deployment's own process is not yet listening on the port.")
+                raise RuntimeError("Na portu ještě nenaslouchá vlastní proces nasazení.")
             opener = urllib.request.build_opener(NoRedirect)
             with opener.open(record["url"] + record["spec"]["health_path"], timeout=1) as response:
                 body = response.read(65536).decode("utf-8", errors="replace")
@@ -230,7 +225,7 @@ class Deployments:
                             self.save(old)
             except Exception as exc:
                 previous["recovery_count"] = max(previous.get("recovery_count", 0), count_before + 1)
-                previous.update(error="Service recovery failed: " + str(exc)[:1000])
+                previous.update(error="Obnova služby selhala: " + str(exc)[:1000])
                 self.save(previous)
                 if previous.get("recovery_count", 0) < 3:
                     self.pending_restart[product_id] = previous
@@ -243,9 +238,9 @@ class Deployments:
                 check = self.probe(record) if process.poll() is None else {
                     "at": time.time(), "passed": False,
                     **command_outcome(self.studio.data / "deployments" / key, process.returncode),
-                    "error": "Service process terminated."}
+                    "error": "Proces služby skončil."}
                 if check.get("signal"):
-                    check["error"] += " Signal: " + check["signal"] + "."
+                    check["error"] += " Signál: " + check["signal"] + "."
                 with self.lock:
                     if key not in self.processes:
                         continue
@@ -263,14 +258,14 @@ class Deployments:
                         record.update(status="healthy", healthy_at=time.time())
                     elif failed:
                         record.update(status="unhealthy", incident=record.get("incident") or uuid.uuid4().hex[:16],
-                                      error=check.get("error", "Availability check failed."))
+                                      error=check.get("error", "Kontrola dostupnosti neprošla."))
                     if record["status"] == "healthy" and check["passed"] and time.time() - record.get("healthy_at", time.time()) >= 60:
                         record["recovery_count"] = 0  # a minute of stable service ends the recovery series
                     self.save(record)
                 if activate:
                     for previous in self.list(record["product"]):
                         if previous["id"] != key and previous["id"] in self.processes:
-                            self.stop(previous["id"], reason="Replaced by verified new version.")
+                            self.stop(previous["id"], reason="Nahrazeno ověřenou novou verzí.")
                 elif failed:
                     stopped = self.stop(key, reason=record["error"])
                     stopped.update(status="unhealthy", incident=record["incident"])
@@ -284,4 +279,4 @@ class Deployments:
 
     def close(self):
         for key in list(self.processes):
-            self.stop(key, reason="Studio is shutting down.", keep_desired=True)
+            self.stop(key, reason="Studio se ukončuje.", keep_desired=True)

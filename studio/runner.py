@@ -1,4 +1,4 @@
-"""One isolated Frontier process per GUI task; durable events and approval IPC."""
+"Jeden izolovaný Frontier proces na úlohu GUI; trvalé události a IPC schválení."
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ except ImportError:
 
 
 def limit_mission_tools(settings, attempt_seconds):
-    """Leave recovery/reporting time after a stuck tool in a bounded attempt."""
+    "Po uváznutí nástroje ponechte čas na obnovu/oznamování v rámci omezeného počtu pokusů."
     if not attempt_seconds:
         return None  # Legacy requests retain their existing profile budget.
     cap = max(1, int(float(attempt_seconds) / 3))
@@ -40,14 +40,14 @@ def limit_mission_tools(settings, attempt_seconds):
 
 
 def normalize_report_args(args):
-    """Validate controller JSON before writing and normalize encoded data."""
+    "Před zápisem ověřte JSON řadiče a normalizujte kódovaná data."
     if args.get("ops") or args.get("rows") is not None:
-        raise ValueError("For the report, use data as a JSON object or content as valid JSON text.")
+        raise ValueError("Pro report použij data jako JSON objekt nebo content jako platný JSON text.")
     report = args.get("data") if args.get("data") is not None else json.loads(args.get("content", ""))
     if isinstance(report, str):
         report = json.loads(report)
     if not isinstance(report, dict):
-        raise ValueError("The report must be a JSON object, not a list or standalone text.")
+        raise ValueError("Report musí být JSON objekt, ne seznam ani samostatný text.")
     normalized = {k: v for k, v in args.items() if k not in {"content", "data", "rows", "ops"}}
     return {**normalized, "data": report}
 
@@ -75,7 +75,7 @@ def run(directory: Path) -> int:
         root = Path(request["cwd"]).resolve()
         link = Path(os.environ["APODEX_WORKSPACE_LINK"])
         if not link.is_symlink():
-            raise RuntimeError("Missing working link for the Studio project.")
+            raise RuntimeError("Chybí pracovní odkaz na projekt ve Studio.")
         link.unlink()
         link.symlink_to(root, target_is_directory=True)
         # Native file tools validate physical roots as well as /workspace.
@@ -116,8 +116,8 @@ def run(directory: Path) -> int:
                     allowed = candidate.resolve() == expected_report and not args.get("ops")
                 if not allowed:
                     return ToolCallIntervention(skip_with_result=
-                        "This phase allows reading tools and submission via save_mission_report. "
-                        "Do not modify product files or select the report path yourself.")
+                        "Tato fáze dovoluje čtecí nástroje a odevzdání přes save_mission_report. "
+                        "Produktové soubory neupravuj a nevybírej cestu reportu sám.")
                 return await original_call(observer, ctx, tool_call)
 
             TerminalObserver.on_tool_call = planning_call
@@ -132,7 +132,7 @@ def run(directory: Path) -> int:
                 try:
                     report = reporter.validate(tool_call.get("args") or {})
                 except (ValueError, TypeError, KeyError) as exc:
-                    message = "Report NOT saved: " + str(exc)[:1800] + ". Correct the fields and call save_mission_report again."
+                    message = "Report NEBYL uložen: " + str(exc)[:1800] + ". Opravte pole a znovu zavolejte save_mission_report."
                     observer.r.note(message)
                     return ToolCallIntervention(skip_with_result=message)
                 # Keep the existing file-write approval and journal. The model
@@ -153,8 +153,8 @@ def run(directory: Path) -> int:
                         normalized = normalize_report_args(args)
                     except (ValueError, TypeError) as exc:
                         return ToolCallIntervention(skip_with_result=
-                            f"Report NOT saved: {exc}. Fix the format and call create_file again; "
-                            "preferably pass data directly as a JSON object. Do not mark the work as complete.")
+                            f"Report NEBYL uložen: {exc}. Oprav formát a zavolej create_file znovu; "
+                            "nejlépe předávej data přímo jako JSON objekt. Neoznačuj práci za hotovou.")
                     tool_call = {**tool_call, "args": normalized}
             prior = await original_guarded_call(observer, ctx, tool_call)
             if normalized is not None:
@@ -175,7 +175,7 @@ def run(directory: Path) -> int:
         TerminalObserver.on_tool_call = guarded_call
         TerminalObserver.on_turn_end = guarded_turn_end
     lock = threading.Lock()
-    outcome = {"status": "incomplete", "reason": "The process ended without a confirmed result."}
+    outcome = {"status": "incomplete", "reason": "Proces skončil bez potvrzeného výsledku."}
 
     def emit(kind, **data):
         event = {"type": kind, "time": time.time(), **data}
@@ -232,7 +232,7 @@ def run(directory: Path) -> int:
 
         def incomplete(self, text, **kwargs):
             if reporter and reporter.saved and kwargs.get("stopped_by") == "mission_report_saved":
-                self.final("Report verified and saved. The controller will review the phase result.", **kwargs)
+                self.final("Report ověřen a uložen. Řadič zkontroluje výsledek fáze.", **kwargs)
                 return
             outcome.update(status="incomplete", reason=kwargs.get("stopped_by", ""))
             emit("incomplete", text=text, **kwargs)
@@ -250,11 +250,11 @@ def run(directory: Path) -> int:
 
         def note(self, msg):
             visible = msg
-            if msg.startswith("workflow →"):
+            if msg.startswith("pracovní postup →"):
                 visible = (
-                    "Working mode: team of agents"
+                    "Pracovní režim: tým agentů"
                     if request["mode"] == "agent_team"
-                    else "Working mode: standalone agent"
+                    else "Pracovní režim: samostatný agent"
                 )
             emit("note", text=visible)
             super().note(msg)
@@ -313,40 +313,40 @@ def run(directory: Path) -> int:
     configure(Path(request["config"]), request["profile"])
     if not request.get("mission"):
         os.environ["SWITCH_STUDIO_PHASE_INSTRUCTIONS"] = (
-            "You are editing the project open in Studio. Save requested source files directly in the project, "
-            "not only in chat or run artifacts. File tools map /workspace to the selected project. "
-            "Shell commands already start in the physical project directory. Use relative paths in shell; "
-            "do not cd to /workspace or create a /workspace mount or symlink. "
-            f"The installed Python interpreter is {json.dumps(sys.executable)}; use this absolute path "
-            "when running Python tests rather than assuming a command named python exists. "
-            "Report the actual command output and any unresolved failures.")
+            "Upravujete projekt otevřený ve Studiu. Uložte požadované zdrojové soubory přímo do projektu, "
+            "nejen v chatu nebo artefaktech běhu. Nástroje pro práci se soubory mapují /workspace na vybraný projekt. "
+            "Příkazové řádky již začínají ve fyzickém adresáři projektu. V shellu používejte relativní cesty; "
+            "Nepřecházej příkazem cd do /workspace a nevytvářej pro /workspace přípojný bod ani symbolický odkaz. "
+            f"Nainstalovaný Python interpreter je {json.dumps(sys.executable)}; tuto absolutní cestu použij "
+            "při spouštění testů Pythonu místo předpokladu existence příkazu python. "
+            "Nahlášte skutečný výstup příkazu a všechny nevyřešené selhání.")
     if request.get("mission"):
         phase = request["mission"]["phase"]
-        scope = ("Only plan the later work. Do not implement the product. Your sole deliverable is the plan JSON. Do not research the web or attempt SSH now. "
-                 "Use at most three local discovery calls, then save a short plan for the execution worker. "
-                 "Put requested server inspection into an execution task; do not invent missing access requirements before an actual check. "
-                 if phase == "plan" else "Read the actual source files without editing them. Your sole deliverable is the review JSON. "
-                 "Shell execution is unavailable in this phase. Do not claim you ran tests: the controller executes the approved checks after final review."
-                 if phase in {"review", "final"} else "Implement only the assigned task and save its product files in /workspace.")
+        scope = ("Nyní pouze naplánuj pozdější práci. Produkt neimplementuj. Jediným výstupem je JSON s plánem. Nyní nehledej na webu ani nezkoušej SSH. "
+                 "Použijte nejvýše tři lokální volání objevování, poté uložte krátký plán pro pracovníka. "
+                 "Vložte požadovanou inspekci serveru do úkolu ke spuštění; před skutečnou kontrolou nevymýšlejte chybějící požadavky na přístup. "
+                 if phase == "plan" else "Přečtěte si aktuální zdrojové soubory bez jejich úpravy. Vaším jediným výstupem je kontrolní JSON. "
+                 "V této fázi není spuštění shellu dostupné. Neuvádějte, že jste spustili testy: schválené kontroly provede řadič až po finální kontrolě."
+                 if phase in {"review", "final"} else "Implementujte pouze přidělený úkol a uložte jeho výstupní soubory do /workspace.")
         os.environ["SWITCH_STUDIO_PHASE_INSTRUCTIONS"] = (
-            f"This run is the {phase.upper()} phase of a multi-run controller. {scope} "
-            "Finish by calling save_mission_report with structured named arguments. Never encode a JSON string or choose a report path. The application saves it. "
-            "The overall product goal describes later work, not permission to change this phase. "
-            "A chat answer or task-board update is not a saved report. Do not put this report in /outputs. "
-            "File tools understand the /workspace alias. Shell commands run in the physical project directory; "
-            "During BUILD, use create_file with literal content for product source code, without shell quoting. "
-            "use relative paths there and never create or modify a /workspace mount or symlink. "
-            "Native shell calls are one-shot: do not leave servers or jobs running in the background, "
-            "including nohup. Test and temporary service in one bounded Python script using Popen, "
-            "request timeouts, and finally terminate/wait for only the child you started. "
-            "The controller owns persistent deployment. If a check needs more time than allowed, "
-            "report the limitation instead of evading the time limit. "
-            "Do not browse the web for routine implementation facts that the provided specification already settles. "
-            "Separate observations from hypotheses in reports and documentation. An exit code alone does not "
-            "identify the cause of a failure; passing a finite set of checks does not prove the absence of all bugs "
-            "or memory leaks. State which checks actually ran and leave an unproven cause unknown. "
-            "During review, request correction of unsupported causal claims in delivered documentation. "
-            "If an essential input is missing, save a blocked report with concrete questions.")
+            f"Tento běh je fáze {phase.upper()} víceběhového řadiče. {scope} "
+            "Dokončete voláním save_mission_report s pojmenovanými argumenty ve strukturovaném formátu. Nikdy nekódujte JSON jako řetězec ani nevolte cestu k reportu – aplikace ho uloží sama. "
+            "Celkový cíl produktu popisuje pozdější práci; nedává oprávnění měnit tuto fázi. "
+            "Odpověď v chatu ani aktualizace seznamu úkolů nejsou uloženou zprávou. Tuto zprávu neukládej do /outputs. "
+            "Nástroje pro práci se soubory rozumí aliasu /workspace. Příkazy shellu běží ve fyzickém adresáři projektu; "
+            "Během BUILD používejte create_file s doslovným obsahem pro zdrojový kód produktu, bez uvozovek pro shell. "
+            "Používej tam relativní cesty a nikdy nevytvářej ani neupravuj přípojný bod nebo symbolický odkaz /workspace. "
+            "Nativní volání shellu jsou jednorázová: neponechávejte servery ani úlohy běžící na pozadí, "
+            "včetně nohup. Otestujte dočasnou službu v jednom omezeném Python skriptu pomocí Popen, "
+            "časové limity požadavků a nakonec terminate/wait pouze pro podproces, který jsi spustil. "
+            "Trvalé nasazení vlastní řadič. Pokud kontrola potřebuje více času, než je povoleno, "
+            "uveď toto omezení; časový limit neobcházej. "
+            "Nehledej na webu běžné implementační údaje, které již určuje zadaná specifikace. "
+            "Ve zprávách a dokumentaci odděluj pozorování od hypotéz. Samotný návratový kód nestačí k tomu, aby bylo možné "
+            "určit příčinu selhání; úspěšné provedení konečné sady kontrol neprokazuje nepřítomnost všech chyb "
+            "ani úniků paměti. Uveďte, které kontroly skutečně proběhly, a neznámou příčinu ponechte nedokázanou. "
+            "Během kontroly požadujte opravu nepodložených příčinných tvrzení v doručené dokumentaci. "
+            "Pokud chybí nezbytný podklad, ulož zprávu se stavem blocked a konkrétními otázkami.")
     if request.get("mission"):
         # Hide forbidden tools from the model as well as enforcing calls. A
         # visible bash schema otherwise invites repeated rejected attempts.
@@ -356,8 +356,8 @@ def run(directory: Path) -> int:
         tool_seconds = limit_mission_tools(settings, request["mission"].get("attempt_seconds"))
         if tool_seconds:
             os.environ["SWITCH_STUDIO_PHASE_INSTRUCTIONS"] += (
-                f" Each tool call has at most {tool_seconds:g} seconds; the whole attempt is also bounded. "
-                "Reserve time to save your report after a tool failure.")
+                f" Každé volání nástroje má nejvýše {tool_seconds:g} sekund; časově omezený je i celý pokus. "
+                "Rezervujte čas na uložení reportu i po selhání nástroje.")
         allowed_tools = set(settings["agent"]["agent_tools"]) - {"add_task", "update_task"}
         if phase in {"plan", "review", "final"}:
             allowed_tools &= {"read_file", "glob_search", "grep_search", "web_search", "web_fetch",
@@ -372,12 +372,12 @@ def run(directory: Path) -> int:
         if inventory:
             settings["agent"]["agent_tools"].append("ssh_inventory")
             os.environ["SWITCH_STUDIO_PHASE_INSTRUCTIONS"] += (
-                " SSH inventory is configured and available through ssh_inventory. "
-                "Call it with target=" + next(iter(inventory.targets)) +
-                " and section=system, services, projects, or integrations. "
-                "Use its timestamped evidence files for the remote inventory; do not retry bash ssh or HTTP on the SSH port. "
-                "Earlier reports about missing SSH support predate this connector. "
-                "Never ask for key contents or tokens. Integration key/dependency names prove only configuration presence, not functionality.")
+                " Zásobník SSH je nakonfigurován a dostupný přes ssh_inventory. "
+                "Zavolejte jej s parametrem target=" + next(iter(inventory.targets)) +
+                " a section=system, services, projects nebo integrations. "
+                "Použijte jeho časově označené důkazové soubory pro vzdálený inventář; neopakujte bash ssh ani HTTP na SSH portu. "
+                "Předchozí reporty o chybějící podpoře SSH jsou starší než tento konektor. "
+                "Nikdy nepožadujte obsah klíčů ani tokeny. Názvy integračního klíče nebo závislostí prokazují pouze přítomnost konfigurace, nikoli funkčnost.")
         settings["agent"]["task_board"] = False
         phase_profile.write_text(yaml.safe_dump(settings, sort_keys=False))
     args = [

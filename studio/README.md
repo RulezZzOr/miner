@@ -1,93 +1,95 @@
 # Switch Studio
 
-**Company Builder & Driver:** companies, project portfolios, departments, dependencies, repeated tasks, and loops with limits. [Usage and boundaries](docs/COMPANY_DRIVER.md).
+**Company Tvůrce & Řadič:** firmy, portfolio projektů, oddělení, závislosti, opakovaná práce a trvalá smyčka s limity. [Použití a hranice](docs/COMPANY_DRIVER.md).
 
-Local GUI built on top of the full FrontierAgent backend. Runs on `http://127.0.0.1:4317` and requires no frontend build, CDN, or cloud account.
+Vlastní lokální GUI nad plným FrontierAgent backendem. Běží na `http://127.0.0.1:4317` a nevyžaduje frontendový build, CDN ani cloudový účet.
 
-## Launch
+## Spuštění
 
-Installation for **macOS, Linux, and Windows via WSL2**: [INSTALL.md](../INSTALL.md).
+Instalace pro **macOS, Linux a Windows přes WSL2**: [INSTALL.md](../INSTALL.md).
 
-In the project root directory:
+V kořenové složce projektu:
 
 ```sh
 ./switch-studio
-# or a specific working directory
-./switch-studio --cwd /path/to/project
-# without automatically opening the browser
+# nebo konkrétní pracovní složka
+./switch-studio --cwd /cesta/k/projektu
+# bez automatického otevření prohlížeče
 ./switch-studio --no-open --port 4317
 ```
 
-On macOS, you can also double-click `Switch Studio.command`. The terminal window keeps the server running; Ctrl+C terminates the server and its active task. Closing the web tab alone does not interrupt the running task. First, use the **Stop** button if you want to terminate it.
+Na macOS lze také dvakrát kliknout na `Switch Studio.command`. Okno terminálu udržuje server v běhu; Ctrl+C ukončí server i jeho aktivní úlohu. Zavření samotné webové záložky běžící úlohu neruší. Nejdřív použij tlačítko **Zastavit**, pokud ji chceš ukončit.
 
-Uses `frontier/.venv`; missing environment is created automatically on first launch via `setup-studio`.
-Manual installation or update: `sh setup-studio` (requires `uv`). Installs the base runtime and document readers from the lockfile. `--all-extras` is intended for broader development environments.
+Používá `frontier/.venv`; chybějící prostředí při prvním startu vytvoří `setup-studio`.
+Ruční instalace nebo aktualizace: `sh setup-studio` (vyžaduje `uv`). Instaluje základní
+runtime a čtečky dokumentů z lockfile. `--all-extras` je určeno pro širší vývojové prostředí.
 
-## Optional ChatGPT and Claude Accounts
+## Volitelné účty ChatGPT a Claude
 
-In the **Models → Accounts · optional** window, select a provider. Studio first verifies login. If missing, click **Login in browser**, then **Open login**, and complete the provider login. Upon return, the list of available models appears automatically. **Add selected model** creates a profile; the model for a task is selected in the right panel. The internal Ollama remains the default and requires no cloud account.
+V okně **Modely → Účty · volitelné** vyber poskytovatele. Studio nejdřív ověří přihlášení. Pokud chybí, klikni na **Přihlásit v prohlížeči**, potom na **Otevřít přihlášení** a dokonči přihlášení u poskytovatele. Po návratu se automaticky objeví nabídka dostupných modelů. **Přidat vybraný model** vytvoří profil; model pro úlohu se vybírá v pravém panelu. Interní Ollama zůstává výchozí a nepotřebuje žádný cloudový účet.
 
-- **ChatGPT:** official [Codex App Server](https://learn.chatgpt.com/docs/app-server), sharing login with local Codex CLI. Codex `0.155.1` has been verified on this machine. The model runs via its own Codex agent environment, in single-agent mode. Task length is managed by Codex; the Stop button works. Studio explicitly sets sandbox `workspace-write` and policy `untrusted` when auto-approval is disabled. Command and file change requests are forwarded to the GUI. Unsupported interactions are rejected. This is not an OpenAI API call using a ChatGPT OAuth token, nor is it Frontier’s team mode.
-- **Claude Console:** official [Anthropic CLI OAuth](https://platform.claude.com/docs/en/cli-sdks-libraries/cli/authentication), separate API billing in Console. This is not a Claude Pro/Max subscription login. Uses the original Studio agent environment, including ReAct, Agent Team, and compaction. Token refresh support is provided by Anthropic SDK `>=1.0.0`.
+- **ChatGPT:** oficiální [Codex App Server](https://learn.chatgpt.com/docs/app-server), sdílí přihlášení s lokálním Codex CLI. Na tomto počítači byl ověřen Codex `0.155.1`. Model běží přes vlastní Codex agentní prostředí, v režimu jednoho agenta. Délku úlohy spravuje Codex; tlačítko Zastavit funguje. Studio výslovně nastavuje izolované prostředí `workspace-write` a při vypnutém automatickém schvalování politiku `untrusted`. Požadavky na příkazy a změny souborů se předají do GUI. Nepodporované interakce se odmítnou. Nejde o ChatGPT OAuth token vložený do OpenAI API ani o týmový režim Frontieru.
+- **Claude Console:** oficiální [Anthropic CLI OAuth](https://platform.claude.com/docs/en/cli-sdks-libraries/cli/authentication), samostatné účtování API v Console. Není to přihlášení předplatným Claude Pro/Max. Používá původní agentní prostředí Studia, včetně ReAct, Agent Team a kompakce. Podporu obnovování tokenů zajišťuje Anthropic SDK `>=1.0.0`.
 
-A cloud profile can be removed from Studio using the **Remove from Studio** button. This does not affect logins in other applications; a shared Codex account is not logged out. The task using this profile must first be stopped. Pending login attempts can be cancelled; they expire after five minutes.
+Cloudový profil lze tlačítkem **Odebrat ze Studia** odstranit. Přihlášení ostatních aplikací se tím nemění; sdílený Codex účet se neodhlašuje. Úloha s tímto profilem musí být nejdřív zastavená. Přihlášení čekající na dokončení lze zrušit; po pěti minutách vyprší.
 
-Tokens are not stored in model profiles, tasks, or the GUI. Codex manages its own credentials. Claude has a separate profile `switch-studio` under `.switch-agent/studio/anthropic/`; CLI and SDK manage its credential files and token refresh. Global Claude Code login or shell environment remains unchanged. Login is triggered only by user action; without a cloud account, local operation continues.
+Tokeny se neukládají do modelových profilů, úloh ani GUI. Codex spravuje své vlastní přihlašovací údaje. Claude má oddělený profil `switch-studio` pod `.switch-agent/studio/anthropic/`; CLI a SDK spravují jeho přihlašovací soubory a obnovování tokenů. Globální přihlášení Claude Code ani prostředí shellu se nemění. Přihlášení se spouští až akcí uživatele, bez cloudového účtu lze nadále pracovat lokálně.
 
-Optional dependencies:
+Volitelné závislosti:
 
-- `codex` must be on PATH; see [Codex CLI installation](https://developers.openai.com/codex/cli).
-- `ant` must be on PATH or in `.switch-agent/tools/ant`; see [official Anthropic CLI](https://github.com/anthropics/anthropic-cli). On this Mac, `1.34.0` is locally installed for arm64 with SHA-256 verified against the official release. Nothing is installed into global configuration.
+- `codex` musí být na PATH, viz [instalace Codex CLI](https://developers.openai.com/codex/cli).
+- `ant` musí být na PATH nebo v `.switch-agent/tools/ant`, viz [oficiální Anthropic CLI](https://github.com/anthropics/anthropic-cli). Na tomto Macu je lokálně nainstalovaná `1.34.0` pro arm64 s ověřeným SHA-256 z oficiálního release. Neinstaluje se nic do globální konfigurace.
 
-Login is local: open the authorization link in a browser on the same machine where Studio and the provider’s callback are running.
+Přihlášení je lokální: autorizační odkaz otevři v prohlížeči na stejném počítači, na kterém běží Studio a callback poskytovatele.
 
-## Features
+## Funkce
 
-- **Verified delivery and recovery:** isolated working copy, actual approved test commands,
-  decision history, content versions, controlled merging, and file rollback.
-  Optional local service with HTTP monitoring and a queue of fixes.
-  [Architecture and precise procedure](docs/CONTROL_LOOP.md).
+- **Ověřená dodávka a obnova:** izolovaná pracovní kopie, skutečné schválené testovací příkazy,
+  historie rozhodnutí, obsahové verze, kontrolované sloučení a návrat souborů.
+  Volitelně místní služba s HTTP monitoringem a frontou oprav.
+  [Architektura a přesný postup](docs/CONTROL_LOOP.md).
 
-- **Products:** persistent digital product card, queue of fixes and new features,
-  subsequent executions with original criteria, history of accepted versions, and optional
-  scheduled maintenance. Automatic continuation has its own limit and is disabled by default. [Usage and boundaries of product management](docs/PRODUCT_LIFECYCLE.md).
+- **Produkty:** trvalá karta digitálního produktu, fronta oprav a nových funkcí,
+  navazující realizace s původními kritérii, historie převzatých verzí a volitelná
+  plánovaná údržba. Automatické navazování má vlastní limit a ve výchozím stavu je
+  vypnuté. [Použití a hranice správy produktů](docs/PRODUCT_LIFECYCLE.md).
 
-- **Project notes in Markdown:** if the selected project has `PROJECT.md` in its root, Studio adds its saved content to the new task brief. A short guide with links to decisions, insights, and sources is sufficient; files are edited in your existing editor. [Rules and usage](docs/MARKDOWN_NOTES.md).
+- **Projektové zápisky v Markdownu:** pokud má vybraný projekt v kořeni `PROJECT.md`, Studio přidá jeho uložený obsah do nového zadání. Stačí krátký rozcestník s odkazy na rozhodnutí, poznatky a zdroje; soubory upravíš v existujícím editoru. [Pravidla a použití](docs/MARKDOWN_NOTES.md).
 
-- **Preview:** run a static HTML/CSS/JS website on a separate loopback port, click directly in Studio, mobile width 390 px, and auto-reload on saved changes. The **Create starter website** button saves a real `index.html` into a new folder. [Usage and boundaries of preview](docs/WEB_PREVIEW.md).
-- **AI Projects:** experimental long-running task brief, persistent plan and questions, recovery after restart, and separate worker/reviewer. [Usage and verified boundaries](docs/LONG_RUNNING_PROJECTS.md).
-- **Templates → AI Build Company:** clickable overview of 30 roles, saving your own copy into the project, and adding instructions to the task brief. [Template structure and usage](templates/README.md).
-- Selection of existing project folders and file tree.
-- UTF-8 file editor up to 2 MB, line numbering, Tab, Cmd/Ctrl+S, file creation, and reload from disk.
-- Revision check on save: if the file was modified by an agent or another editor in the meantime, the server returns a conflict and does not overwrite changes.
-- Selection and addition of model profiles, `/models` check for OpenAI-compatible API/Ollama.
-- ReAct and Agent Team via the actual full backend, configurable limit for main agent steps.
-- Live text, separate reasoning, tool calls, approval cards, activity, console, and output files.
-- History of tasks created in Studio; view restored after page reload.
-- Overview of main agent and requests for creating workers from real events.
-- Stopping a monitored process tree including descendants in their own process groups. After 5 seconds, forced termination follows; the cancelled status appears only after cleanup.
-- Waiting for approval is handled directly in the GUI. Auto-approval is disabled by default and can be enabled per task.
+- **Náhled:** spuštění statického HTML/CSS/JS webu na odděleném loopback portu, klikání přímo ve Studiu, mobilní šířka 390 px a automatické obnovení uložených změn. Tlačítko **Vytvořit startovací web** uloží skutečný `index.html` do nové složky. [Použití a hranice náhledu](docs/WEB_PREVIEW.md).
+- **Projekty AI:** experimentální dlouhodobé zadání, trvalý plán a otázky, obnova po restartu a samostatný realizátor/kontrolor. [Použití a ověřené hranice](docs/LONG_RUNNING_PROJECTS.md).
+- **Šablony → AI firma:** klikací přehled 30 rolí, uložení vlastní kopie do projektu a přidání instrukcí k zadání. [Struktura a použití šablony](templates/README.md).
+- Výběr existujících projektových složek a strom souborů.
+- Editor UTF-8 souborů do 2 MB, číslování řádků, Tab, Cmd/Ctrl+S, vytváření souborů a opětovné načtení z disku.
+- Kontrola revize při ukládání: změnil-li soubor mezitím agent nebo jiný editor, server vrátí konflikt a změny nepřepíše.
+- Výběr a přidávání modelových profilů, kontrola `/models` pro OpenAI kompatibilní API/Ollamu.
+- ReAct a Agent Team přes skutečný plný backend, nastavitelný limit kroků hlavního agenta.
+- Živý text, oddělené uvažování, volání nástrojů, schvalovací karty, aktivita, konzole a výstupní soubory.
+- Historie úloh vytvořených ve Studiu; obnovení zobrazení po reloadu stránky.
+- Přehled hlavního agenta a požadavků na vytvoření pracovníků z reálných událostí.
+- Zastavení sledovaného stromu procesů včetně potomků ve vlastních procesních skupinách. Po 5 s následuje nucené ukončení; stav zrušeno se zobrazí až po úklidu.
+- Čekání na schválení se řeší přímo v GUI. Automatické schvalování je standardně vypnuté a lze ho zapnout pro konkrétní úlohu.
 
-Switching project or model does not affect an already running task. The agent works with saved files. An open file is added to the task brief by its path; unsaved changes must be saved first. A new task brief creates a new session; the GUI currently does not restore context from an old session for further conversation.
+Přepnutí projektu ani modelu nemění už spuštěnou úlohu. Agent pracuje s uloženými soubory. Otevřený soubor se do zadání přidá svou cestou; jeho neuložené změny je nutné nejdřív uložit. Nové zadání vytváří novou relaci; GUI zatím neobnovuje kontext staré relace pro další rozhovor.
 
-## Saving and operation
+## Uložení a provoz
 
-- Original configuration: `agent.toml`.
-- Model adjustments from GUI: `.switch-agent/studio/models.json`. Original TOML is not overwritten; overwrites apply only to Studio.
-- Projects and history: `.switch-agent/studio/`.
-- Events, approvals, and logs: `.switch-agent/studio/runs/<id>/`.
-- Actual sessions and backend outputs: `<project>/.apodex/runs/<session-id>/`.
-- API keys are read from environment or `.env` for original TOML / in `frontier/`; GUI stores only the variable name.
+- Původní konfigurace: `agent.toml`.
+- Modelové úpravy z GUI: `.switch-agent/studio/models.json`. Původní TOML se nepřepisuje; přepisy se týkají Studia.
+- Projekty a historie: `.switch-agent/studio/`.
+- Události, schvalování a log: `.switch-agent/studio/runs/<id>/`.
+- Skutečné relace a výstupy backendu: `<projekt>/.apodex/runs/<session-id>/`.
+- API klíče se čtou z prostředí nebo `.env` u původního TOML / ve `frontier/`; GUI ukládá jen jméno proměnné.
 
-The server listens only on loopback. It checks Host, Origin, and token for modification requests. The editor does not allow paths outside the open project, symbolic links anywhere in the path, or `.env*` / `.git` / `.switch-agent`, regardless of case. Read and write operations use open directory descriptors and `O_NOFOLLOW`, so swapping a directory for a symlink between check and opening cannot bypass protection. These web API checks do not replace agent command isolation: **native backend runs with user permissions**, just like the terminal version.
+Server naslouchá pouze na loopbacku. Kontroluje Host, Origin a token pro změnové požadavky. Editor nepovoluje cestu mimo otevřený projekt, symbolické odkazy v kterékoli části cesty ani `.env*` / `.git` / `.switch-agent` bez ohledu na velikost písmen. Čtení a zápis používají otevřené deskriptory složek a `O_NOFOLLOW`, takže výměna složky za symlink mezi kontrolou a otevřením ochranu neobejde. Tyto kontroly webového API nenahrazují izolaci agentových příkazů: **nativní backend běží s oprávněními uživatele** stejně jako terminálová verze.
 
-Studio GUI currently runs one task at a time. Each native launch has its own stable working link under `.apodex/runtime/native/workspaces/<invocation>/workspace`; a separate CLI run does not overwrite it. Within team tasks, delegation remains functional. A successful process return alone does not mean a completed task: the GUI distinguishes confirmed completion, incomplete result, error, and cancellation.
+GUI Studia zatím pouští jednu úlohu současně. Každé nativní spuštění má vlastní stabilní pracovní odkaz pod `.apodex/runtime/native/workspaces/<invocation>/workspace`; samostatný CLI běh jej nepřepíše. Uvnitř týmové úlohy delegování zůstává funkční. Úspěšný návrat procesu sám neznamená hotový úkol: GUI rozlišuje potvrzené dokončení, neúplný výsledek, chybu a zrušení.
 
-## Scope of this version
+## Rozsah této verze
 
-This is a local web IDE with a simple text editor. It currently lacks LSP/autocomplete, debugger, manual interactive terminal, or multiple open editor tabs. Nested department hierarchies 1 → 5 → 25 and models for arbitrary individual roles are not yet implemented. AI Projects have separate model selection for work and review, and automatic fix return. Reliable complex delivery on a specific Qwen and week-long operation remain open verification.
+Je to lokální webové IDE s jednoduchým textovým editorem. Nemá zatím LSP/autocomplete, debugger, ruční interaktivní terminál ani více otevřených editorových záložek. Vnořená oddělení 1 → 5 → 25 a modely pro libovolné jednotlivé role zatím nejsou implementované. Projekty AI mají samostatný výběr modelu pro práci a review a automatické vracení oprav. Spolehlivá komplexní dodávka na konkrétním Qwenu a týdenní provoz zůstávají otevřeným ověřením.
 
-## Tests
+## Testy
 
 ```sh
 frontier/.venv/bin/python -m unittest discover -s studio/tests -v
@@ -96,10 +98,10 @@ node --check studio/static/app.js
 node --test studio/tests/*.cjs
 ```
 
-Integration tests run an actual Frontier process against a deterministic local test API. They verify approval → tool → file → completion, stopping, history, and HTTP/editing boundaries. These are not tests of intelligence or real model quality.
+Integrační testy spouštějí skutečný Frontier proces proti deterministickému lokálnímu testovacímu API. Ověřují schválení → nástroj → soubor → dokončení, zastavení, historii a HTTP/editační hranice. Nejde o test inteligence ani kvality reálného modelu.
 
-## Fixes for audit of 22 Sep 2026
+## Opravy auditu z 22. 9. 2026
 
-All seven confirmed findings have been fixed and regression-verified in the [audit report](../analysis/audit/AUDIT.md). The helper summary uses the protocol and configuration of the selected workflow in both modes. Model check without authentication sends no key from the environment. Codex output list iterates through all event pages up to the log size recorded at the start of reading.
+Všech sedm potvrzených nálezů má opravu a regresní ověření v [auditním reportu](../analysis/audit/AUDIT.md). Pomocná sumarizace používá protokol a konfiguraci zvoleného workflow v obou režimech. Kontrola modelu bez autentizace neposílá žádný klíč z prostředí. Seznam výstupů Codexu prochází všechny stránky událostí až po velikost logu zaznamenanou při zahájení čtení.
 
-Native process management regularly tracks descendants and re-captures their identity before Stop. This is not OS-level isolation of an intentionally evading program; such limitation would require a container or other system sandbox. Working links are separate; project files and installation cache may still be shared across different runs.
+Správa nativních procesů pravidelně sleduje potomky a před Stop znovu zachytí jejich identitu. Nejde o OS izolaci úmyslně unikajícího programu; takové omezení by vyžadovalo kontejner nebo jiný systémový izolované prostředí. Pracovní odkazy jsou oddělené, samotné projektové soubory a instalační cache mohou nadále sdílet různé běhy.

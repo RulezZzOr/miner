@@ -2,8 +2,8 @@
 setlocal
 wsl.exe --exec true >nul 2>&1
 if errorlevel 1 (
-  echo Install and initialize WSL2 first: wsl --install
-  echo See INSTALL.md for the Windows setup steps.
+  echo Nejprve nainstalujte a nastavte WSL2: wsl --install
+  echo Postup nastaveni Windows najdete v INSTALL.md.
   pause
   exit /b 1
 )

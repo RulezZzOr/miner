@@ -1,56 +1,103 @@
-# Products: From Initial Task Brief to Ongoing Maintenance
+# Produkty: od prvního zadání k další údržbě
 
-Status as of 2026-09-23: Experimental digital product management implemented on top of the existing AI Projects controller. One product can have multiple sequential executions, a change queue, and a history of accepted versions. This is not a universal capability to produce any arbitrary product or automatically operate an entire company.
+Stav 2026-09-23: implementovaná experimentální správa digitálních produktů nad
+stávajícím řadičem Projektů AI. Jeden produkt může mít více postupných realizací,
+frontu změn a historii převzatých verzí. Nejde o univerzální schopnost vyrobit
+libovolný produkt nebo automaticky provozovat celou firmu.
 
-## Usage
+## Použití
 
-1. Open the workspace folder and select **Products → New Product**.
-2. Describe the purpose, users, permanent criteria, reference materials, and constraints. Select a model for work and review, and set limits for this specific execution. Choose a type: web, service/API, automation, data, content/documentation, or custom digital product. The type serves as context for the model, not as a pre-installed tech stack or a guarantee of the outcome.
-3. **Create Product** only saves the card and the request for the first version. **Start Execution** creates the associated project and initiates its planning.
-4. **Open Execution** navigates to existing AI Projects: questions, plan, workers, approval, independent review, and acceptance.
-5. Once you accept the result, it appears under **Accepted Versions**. Add further fixes, features, or maintenance. A new execution must satisfy both permanent criteria and change-specific criteria.
+1. Otevři pracovní složku, zvol **Produkty → Nový produkt**.
+2. Popiš účel, uživatele, trvalá kritéria, podklady a omezení. Vyber model pro práci
+   a review a limity jednotlivé realizace. Vyber typ: web, služba/API, automatizace,
+   data, obsah/dokumentace nebo vlastní digitální produkt. Typ je kontext pro model,
+   nikoli předinstalovaný technologický stack nebo garance výsledku.
+3. **Založit produkt** pouze uloží kartu a požadavek na první verzi. **Spustit realizaci**
+   založí navázaný projekt a spustí jeho plánování.
+4. **Otevřít realizaci** vede do existujících Projektů AI: otázky, plán, pracovníci,
+   schvalování, samostatná kontrola a převzetí.
+5. Až převezmeš výsledek, objeví se ve **Převzatých verzích**. Přidej další opravu,
+   funkci nebo údržbu. Nová realizace musí splnit trvalá kritéria i kritéria změny.
 
-For an older accepted project, use **Continue Managing as Product**. Reconnecting re-verifies its files; it is not allowed to attach an unaccepted, modified, or already attached project.
+U staršího převzatého projektu použij **Dál spravovat jako produkt**. Připojení znovu
+ověří jeho soubory; není dovoleno připojit nepřevzatý, změněný nebo již připojený projekt.
 
-## Automatic Sequencing
+## Automatické navazování
 
-By default, this feature is disabled. After explicit activation, the controller runs the queue based on priority (1 = highest), always processing the first version before subsequent changes. It confirms plans that have no open questions. It does not assume ownership responsibility for missing decisions.
+Ve výchozím stavu je vypnuté. Po explicitním zapnutí řadič spouští frontu podle
+priority (1 nejvyšší), první verzi vždy před následnými změnami. Potvrzuje plány,
+které nemají otevřené otázky. Neodpovídá za vlastníka na chybějící rozhodnutí.
 
-Tool approval is a separate option during product creation. If automatic approval is disabled, running tasks on it continue to wait. Default acceptance of each version remains with the owner. In local deployment settings, automatic acceptance and deployment can be enabled separately: in this case, autopilot accepts only versions with successful independent checks.
+Schvalování nástrojů je samostatná volba při založení produktu. Pokud není povolené
+automaticky, běžící úlohy na něj dál čekají. Výchozí převzetí každé verze zůstává na vlastníkovi.
+V nastavení místního nasazení lze zvlášť zapnout automatické převzetí a nasazení:
+potom autopilot přijme pouze verzi s úspěšnými nezávislými kontrolami.
+Blokované a pozastavené úlohy se
+automaticky neobnovují. **Pozastavit produkt** zastaví automatické navazování a požádá
+o zastavení aktivní realizace. Před jejím obnovením musí být aktivní i nadřazený produkt.
+Pozastavení správy samo nezastavuje už nasazenou službu; k tomu je samostatné tlačítko.
 
-Blocked and paused tasks do not automatically resume. **Pause Product** stops automatic sequencing and requests stopping the active execution. Before resuming, the parent product must be active. Pausing management itself does not stop an already deployed service; a separate button is required for that.
+Celkový limit realizací má rozsah 1–100, výchozí 10. Každá realizace má vlastní limit
+dní, pokusů, minut a kroků. Po vyčerpání celkového limitu se další práce nespustí,
+dokud vlastník limit nezmění. Limity nevyjadřují peněžní rozpočet. Studio stále sdílí
+jeden aktivní slot pracovníka mezi všemi produkty, projekty i jednorázovými úlohami.
 
-The overall execution limit ranges from 1 to 100, with a default of 10. Each execution has its own limits for days, attempts, minutes, and steps. Once the overall limit is exhausted, further work will not start until the owner changes the limit. Limits do not represent a monetary budget. Studio still shares a single active worker slot across all products, projects, and one-off tasks.
+## Pravidelná údržba
 
-## Scheduled Maintenance
+Interval 0 znamená vypnuto; lze nastavit 1–30 dní. Od první převzaté verze si řadič
+pamatuje termín. Po jeho dosažení porovná uložené kontrolní součty a připraví jeden
+požadavek údržby: prohlédnout produkt, provést dostupné kontroly, opravit potvrzené
+vady v rozsahu a uložit report. Bez automatického navazování požadavek zůstane ve frontě.
 
-An interval of 0 means disabled; it can be set to 1–30 days. From the first accepted version, the controller remembers the due date. Upon reaching it, it compares stored checksums and prepares one maintenance request: review the product, perform available checks, fix confirmed defects within scope, and save a report. Without automatic sequencing, the request remains in the queue.
+Otevřená realizace údržbu odloží. Výpadek nebo uspání nevytvoří záplavu doháněných
+úkolů. Existující otevřený požadavek údržby se nezdvojuje; po restartu se čte uložený
+termín. Nově převzatá verze posune termín od svého převzetí.
 
-An open execution defers maintenance. An outage or sleep state does not cause a flood of catch-up tasks. An existing open maintenance request is not duplicated; upon restart, the saved due date is read. A newly accepted version shifts the due date from its acceptance time.
+**Ověřit soubory poslední verze** kontroluje lokální soubory posledního převzetí.
+Změna souboru může být záměrná; kontrola sama ji neoznačuje za chybu ani ji nevrací.
+Není to monitoring dostupnosti nasazeného webu nebo služby. Studio a hostitel musejí
+zůstat spuštěné, aby plánované úlohy běžely.
 
-**Verify Files of Latest Version** checks local files of the most recent accepted version. A file change may be intentional; the check itself does not flag it as an error nor revert it. This is not a monitoring tool for the availability of a deployed web service. Studio and the host must remain running for scheduled tasks to execute.
-
-## Data and Boundaries
+## Data a hranice
 
 ```mermaid
 flowchart LR
-  P[Product and Permanent Criteria] --> Q[Change and Maintenance Queue]
-  Q --> M[Execution in AI Projects]
-  M --> B[Plan and Questions → Work → Review]
-  B --> A[Owner Acceptance]
-  A --> V[Version History and Checksums]
+  P[Produkt a trvalá kritéria] --> Q[Fronta změn a údržby]
+  Q --> M[Realizace v Projektech AI]
+  M --> B[Plán a otázky → práce → review]
+  B --> A[Převzetí vlastníkem]
+  A --> V[Historie verzí a kontrolní součty]
   V --> Q
 ```
 
-Products use the `products` table in the same `projects.sqlite3` database as AI Projects. Creation of an associated execution and its reservation in the queue are written in a single transaction. The new table does not remove original projects or their history. Each version includes a reference to the execution, criteria and checks from the report, files, and SHA-256. New versions additionally store the content and permissions of source files and a reference to independent checks. **Preview Restore of This Version** shows changes; restoration checks the revision and first saves the previous state. `.env`, dependencies, and runtime data are not included in restoration. File and folder swapping requires manual transfer. Old records containing only hashes do not retroactively retrieve content. For code history, Git remains appropriate.
+Produkty používají tabulku `products` ve stejné `projects.sqlite3` jako Projekty AI.
+Vznik navázané realizace a její rezervace ve frontě se zapisují v jedné transakci.
+Nová tabulka neodstraňuje původní projekty ani historii. Verze obsahuje odkaz na
+realizaci, kritéria a kontroly z reportu, soubory a SHA-256. Nové verze navíc ukládají
+obsah i práva zdrojových souborů a odkaz na nezávislé kontroly. **Náhled obnovy této verze**
+ukáže změny; obnova kontroluje revizi a nejdřív uloží předchozí stav. `.env`, závislosti
+a provozní data nejsou v obnově. Záměna souboru a složky vyžaduje ruční přesun.
+Staré záznamy pouze s hashi nezískají obsah zpětně. Pro historii kódu je dál vhodný Git.
 
-Project knowledge continues to reside in `PROJECT.md` and related Markdown files. SQLite stores operational state, not a new copy of the knowledge map.
+Projektové znalosti dál patří do `PROJECT.md` a souvisejících Markdown souborů.
+SQLite uchovává provozní stav, nikoli novou kopii znalostní mapy.
 
-Local deployment now runs the approved service command on loopback, verifies HTTP, stores incidents, and optionally forwards them to the fix queue. A new process replaces the old one only after two successful checks. An older verified version can be redeployed; automatic rollback of data or public hosting is not provided. [Operational Procedure](CONTROL_LOOP.md). Management of remote production infrastructure, CRM, payments, or sending communications is not connected via this extension. A physical product may receive digital reference materials, but not confirmation of actual manufacturing. Weekly operation and quality of complex deliveries on real models remain unverified.
+Místní nasazení nyní spouští schválený příkaz služby na loopbacku, ověřuje HTTP,
+ukládá incidenty a volitelně je předává do fronty oprav. Nový proces nahradí starý
+až po dvou úspěšných kontrolách. Starší ověřenou verzi lze znovu nasadit; není zde
+automatický rollback dat ani veřejný hosting. [Provozní postup](CONTROL_LOOP.md).
+Správa vzdálené produkční infrastruktury, CRM, platby ani odesílání komunikace
+nejsou tímto rozšířením připojené. Fyzický
+produkt může dostat digitální podklady, ne potvrzení skutečné výroby. Týdenní provoz
+a kvalita složitých dodávek na reálných modelech zůstávají neověřené.
 
-## Verification
+## Ověření
 
-- Tests: two versions, preservation of original criteria and history, rejection of modified results, restart, maintenance interval, execution limit, questions, pause, and transaction rollback on save error.
-- Integration: first delivery and subsequent change across eight real Frontier processes against a deterministic model API, writing `OK` → `OK-v2`, and two acceptances.
-- Frontend: filled-out forms, delayed responses, concurrent changes, and workspace folder changes.
-- The live model was not verified by this test. A detailed record is in the development copy: `analysis/product-lifecycle-validation.json`.
+- Testy: dvě verze, zachování původních kritérií a historie, odmítnutí změněného
+  výsledku, restart, interval údržby, limit realizací, otázky, pozastavení a rollback
+  transakce při chybě uložení.
+- Integrace: první dodávka a následná změna přes osm skutečných procesů Frontieru
+  proti deterministickému modelovému API, zápis `OK` → `OK-v2` a dvě převzetí.
+- Frontend: rozepsané formuláře, opožděné odpovědi, souběh změn a změna pracovní složky.
+- Živý model tímto testem ověřen nebyl. Podrobný záznam ve vývojové kopii:
+  `analysis/product-lifecycle-validation.json`.

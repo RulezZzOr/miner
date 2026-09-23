@@ -28,7 +28,7 @@ class VerificationTests(unittest.TestCase):
         self.controller.save(m)
         self.finish(helpers.report())
         self.finish(helpers.report("pass"))
-        m = self.finish(helpers.report("pass", "Product is readable."))
+        m = self.finish(helpers.report("pass", "Produkt lze přečíst."))
         self.assertEqual(m["status"], "running")
         self.assertIsNone(m["final_report"])
         record = self.controller.verifications.get(m["verification_result"]["id"])
@@ -45,7 +45,7 @@ class VerificationTests(unittest.TestCase):
         self.controller.save(m)
         self.finish(helpers.report())
         self.finish(helpers.report("pass"))
-        m = self.finish(helpers.report("pass", "Product is readable."))
+        m = self.finish(helpers.report("pass", "Produkt lze přečíst."))
         self.assertEqual(m["status"], "awaiting_checks")
         for action in ("accept", "manual_accept"):
             with self.assertRaises(ValueError):
@@ -76,7 +76,7 @@ class VerificationTests(unittest.TestCase):
     def test_nonartifact_source_change_invalidates_success(self):
         self.deliver()
         (self.project / "unreported.py").write_text("raise RuntimeError('new bug')")
-        with self.assertRaisesRegex(ValueError, "Source files"):
+        with self.assertRaisesRegex(ValueError, "Zdrojové soubory"):
             self.controller.action({"id": self.key, "action": "accept"})
 
     def test_permission_change_invalidates_verified_delivery(self):
@@ -84,7 +84,7 @@ class VerificationTests(unittest.TestCase):
         record = self.controller.verifications.get(self.current()["verification_id"])
         relative, mode = next(iter(record["source_modes"].items()))
         (self.project / relative).chmod(mode ^ 0o100)
-        with self.assertRaisesRegex(ValueError, "File permissions"):
+        with self.assertRaisesRegex(ValueError, "Práva souborů"):
             self.controller.action({"id": self.key, "action": "accept"})
 
     def test_cancel_stops_a_real_check_process(self):
@@ -106,5 +106,5 @@ class VerificationTests(unittest.TestCase):
 
     def test_named_pipe_is_rejected_without_waiting_for_a_writer(self):
         os.mkfifo(self.project / "pipe")
-        with self.assertRaisesRegex(ValueError, "special file"):
+        with self.assertRaisesRegex(ValueError, "speciální soubor"):
             source_manifest(self.project)

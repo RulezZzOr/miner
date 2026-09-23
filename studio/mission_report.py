@@ -60,13 +60,13 @@ class MissionReport:
 
     def validate(self, value):
         if not isinstance(value, dict):
-            raise ValueError("Pass named tool fields, not a JSON string.")
+            raise ValueError("Předej pojmenovaná pole nástroje, nikoli JSON řetězec.")
         model = Blocked if value.get("status") == "blocked" else Plan if self.phase == "plan" else Result
         report = model.model_validate(value).model_dump()
         if report["status"] != "blocked":
             allowed = {"plan"} if self.phase == "plan" else {"done"} if self.phase == "build" else {"pass", "changes"}
             if report["status"] not in allowed:
-                raise ValueError(f"For phase {self.phase} use a status from {sorted(allowed)}.")
+                raise ValueError(f"Pro fázi {self.phase} použij status z {sorted(allowed)}.")
         if report["status"] == "plan":
             try:
                 from .missions import parse_plan
@@ -74,7 +74,7 @@ class MissionReport:
                 from missions import parse_plan
             parse_plan(report)
             if any(self.attempt + ".json" in str(t) for t in report["tasks"]):
-                raise ValueError("Internal report does not belong to execution tasks.")
+                raise ValueError("Interní report nepatří mezi realizační úkoly.")
         return report
 
     def tool(self):
@@ -94,16 +94,16 @@ class MissionReport:
             # Only the observer can add these internal arguments, after validation
             # and the normal create_file approval. No caller-selected destination.
             if path != str(self.path):
-                raise ValueError("Incorrect report target path.")
+                raise ValueError("Nesprávná cílová cesta reportu.")
             report = self.validate(data)
             result = await create_file.ainvoke({"path": path, "data": report})
             if self.path.is_file() and json.loads(self.path.read_text()) == report:
                 self.saved = True
-                return "Report verified and saved. This run is complete."
+                return "Report ověřen a uložen. Tento běh je dokončen."
             return result
 
         return Tool(name="save_mission_report", description=(
-            "Submit the result of this phase and terminate the run. Pass fields directly as arguments, "
-            "not as JSON text. The application will verify the content itself and save the file to the correct path. "
-            "For a plan, use status=plan, specific execution tasks and questions (usually []). "
-            "Use status=blocked only for mandatory owner decisions."), parameters=schema, func=write)
+            "Odevzdej výsledek této fáze a ukonči běh. Pole předej přímo jako argumenty, "
+            "nikoli jako JSON text. Aplikace sama ověří obsah a uloží soubor na správnou cestu. "
+            "Pro plán použij status=plan, konkrétní realizační tasks a questions (obvykle []). "
+            "Status blocked použij pouze pro nezbytné rozhodnutí vlastníka."), parameters=schema, func=write)

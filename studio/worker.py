@@ -1,4 +1,4 @@
-"""Start a runner only after Studio has durably recorded its process identity."""
+"Spusťte runner až po tom, co Studio trvale zaznamená identitu svého procesu."
 import json
 import os
 import sys
