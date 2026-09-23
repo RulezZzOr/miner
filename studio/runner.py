@@ -311,6 +311,15 @@ def run(directory: Path) -> int:
     if request.get("oauth_provider") == "claude_console":
         os.environ["ANTHROPIC_CONFIG_DIR"] = request["oauth_config_dir"]
     configure(Path(request["config"]), request["profile"])
+    if not request.get("mission"):
+        os.environ["SWITCH_STUDIO_PHASE_INSTRUCTIONS"] = (
+            "You are editing the project open in Studio. Save requested source files directly in the project, "
+            "not only in chat or run artifacts. File tools map /workspace to the selected project. "
+            "Shell commands already start in the physical project directory. Use relative paths in shell; "
+            "do not cd to /workspace or create a /workspace mount or symlink. "
+            f"The installed Python interpreter is {json.dumps(sys.executable)}; use this absolute path "
+            "when running Python tests rather than assuming a command named python exists. "
+            "Report the actual command output and any unresolved failures.")
     if request.get("mission"):
         phase = request["mission"]["phase"]
         scope = ("Only plan the later work. Do not implement the product. Your sole deliverable is the plan JSON. Do not research the web or attempt SSH now. "

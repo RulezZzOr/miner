@@ -287,7 +287,7 @@ function updateCursor() {
     .value.slice(0, $("#editor").selectionStart)
     .split("\n");
   $("#cursor-position").textContent =
-    `Line ${text.length}, sloupec ${text.at(-1).length + 1}`;
+    `Line ${text.length}, column ${text.at(-1).length + 1}`;
 }
 function clearFile() {
   state.fileEpoch++;
