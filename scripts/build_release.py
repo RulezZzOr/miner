@@ -16,7 +16,7 @@ TREES = (
     "frontier/workflows", "frontier/benchmarks", "frontier/assets", "frontier/docs",
 )
 FILES = (
-    "setup-studio", "switch-studio", "agent.example.toml", "INSTALL.md", "THIRD_PARTY.md",
+    "setup-studio", "switch-studio", "agent.example.toml", "INSTALL.md", "THIRD_PARTY.md", "LICENSE", "NOTICE",
     "frontier/pyproject.toml", "frontier/uv.lock", "frontier/LICENSE", "frontier/README.md",
     "frontier/SWITCH.md", "frontier/config/providers.yaml",
 )

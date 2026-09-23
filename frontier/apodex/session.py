@@ -1,3 +1,5 @@
+# Modified for Miner / Switch Studio, 2026-09-23.
+# Changes from ApodexAI/FrontierAgent; see frontier/SWITCH.md and THIRD_PARTY.md at the repository root.
 """Interactive session: the REPL + a single agent run.
 
 Wires the LLM, the local coding tools, and the :class:`TerminalObserver`

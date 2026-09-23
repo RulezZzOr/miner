@@ -1,3 +1,5 @@
+# Modified for Miner / Switch Studio, 2026-09-23.
+# Changes from ApodexAI/FrontierAgent; see frontier/SWITCH.md and THIRD_PARTY.md at the repository root.
 """Domain-neutral, config-driven ReAct loop.
 
 Workflow phases, terminal tools, and recovery policy are injected through

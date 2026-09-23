@@ -1,3 +1,5 @@
+# Modified for Miner / Switch Studio, 2026-09-23.
+# Changes from ApodexAI/FrontierAgent; see frontier/SWITCH.md and THIRD_PARTY.md at the repository root.
 """YAML-driven agent profiles for apodex.
 
 A *profile* is everything that makes the terminal behave as one kind of agent

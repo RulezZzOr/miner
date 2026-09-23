@@ -1,3 +1,5 @@
+# Modified for Miner / Switch Studio, 2026-09-23.
+# Changes from ApodexAI/FrontierAgent; see frontier/SWITCH.md and THIRD_PARTY.md at the repository root.
 """Anthropic LLMClient — wraps :class:`anthropic.AsyncAnthropic`."""
 
 from __future__ import annotations

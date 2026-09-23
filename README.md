@@ -4,9 +4,8 @@ A self-hosted web IDE and workflow manager for building and maintaining digital 
 
 **Status: `0.4.0-alpha.1` · experimental · macOS / Linux / Windows via WSL2**
 
-Miner is the repository name; the application is called **Switch Studio**. It builds on
-[ApodexAI/FrontierAgent](https://github.com/ApodexAI/FrontierAgent), with a browser interface,
-persistent project workflows and a Company Builder & Driver. The current interface and most
+Miner is the repository name; the application is called **Switch Studio**. It provides
+a browser interface, persistent project workflows and a Company Builder & Driver. The current interface and most
 Studio documentation are in Czech; the backend and upstream documentation are in English.
 
 ## What it does

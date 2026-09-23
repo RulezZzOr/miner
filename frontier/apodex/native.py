@@ -1,3 +1,5 @@
+# Modified for Miner / Switch Studio, 2026-09-23.
+# Changes from ApodexAI/FrontierAgent; see frontier/SWITCH.md and THIRD_PARTY.md at the repository root.
 """Workspace-local mutable state for host-native execution.
 
 Native mode is the default for Linux host installations and the convenience

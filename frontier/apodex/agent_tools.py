@@ -1,3 +1,5 @@
+# Modified for Miner / Switch Studio, 2026-09-23.
+# Changes from ApodexAI/FrontierAgent; see frontier/SWITCH.md and THIRD_PARTY.md at the repository root.
 """The local coding tool surface (Claude-Code parity) + risk classification.
 
 All tools are FrontierAgent's existing ``plugins.tools`` LangChain tools,
