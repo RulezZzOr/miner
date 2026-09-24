@@ -1,13 +1,42 @@
-# Miner — Switch Studio
+# Miner · Switch Studio
 
-A self-hosted web IDE and workflow manager for building and maintaining digital products with AI agents.
+### Build with agents. See the work.
 
-**Status: `0.4.0-alpha.9` · experimental · macOS / Linux / Windows via WSL2**
+A self-hosted AI workspace for building and maintaining digital products. Give your
+team a clear task, follow its progress in a live dashboard or 3D office, and inspect
+the files, reviews and checks behind the result.
 
-Miner is the repository name; the application is called **Switch Studio**. It provides
-a browser interface, persistent project workflows and a Company Builder & Driver. The interface, built-in instructions and Studio documentation are in English.
-Question-mark help beside controls explains their purpose, use and a concrete example.
-Existing user-authored task briefs and history keep their original language.
+**Local models · Separate review · Persistent work · English interface**
+
+[Get started](#quick-start) · [Download](https://github.com/RulezZzOr/miner/releases) ·
+[Explore 64 capabilities](studio/docs/FEATURES.md) · [Security](SECURITY.md)
+
+**`0.4.0-alpha.9` · Experimental · macOS / Linux / Windows via WSL2**
+
+![Switch Studio 3D Office showing department desks, task states and a selected task's model and progress](docs/media/office-3d.jpg)
+
+*Your work as a company floor. Select a desk to see its task, model, phase and next step.*
+
+| Give direction | Follow progress | Check the result |
+| --- | --- | --- |
+| Assign a project, department or model. Define what “done” means. | See active work, dependencies and decisions that need your attention. | Inspect saved files, independent command results, review and source hashes. |
+
+## A workspace you can actually follow
+
+| Live dashboard | Live dependency map |
+| --- | --- |
+| ![Dashboard with active work, queue counts, an owner decision and the task composer](docs/media/dashboard.jpg) | ![Dependency map highlighting the current implementation task and upcoming verification](docs/media/live-map.jpg) |
+| Work, blockers and new assignments in one place. | Follow the current step and see what comes next. |
+
+These are **actual application screenshots with synthetic demo data**, not live
+customer work or a model-performance benchmark. The office is original CSS 3D
+rendered in the browser; it reads the same recorded task state as the dashboard.
+[Screenshot notes](docs/media/README.md) · [How the office works](studio/docs/OFFICE.md)
+
+Miner is the repository name; the application is **Switch Studio**. Use it for a
+bounded development task, a sourced research report, a small web product or a queue
+of maintenance changes. Company Builder & Driver adds departments, recurring work
+and a portfolio view. Contextual question-mark help explains controls with examples.
 
 ## Feature overview
 
@@ -70,6 +99,21 @@ Windows users run the backend inside WSL2; see [installation instructions](INSTA
 There is no native Windows executable or signed macOS installer in this alpha.
 Closing the browser does not stop the server; stopping the server stops its active workers.
 
+## Your first pilot
+
+1. Open a **new test project folder** and configure your local model in **More → Models**.
+2. Create a company with a worker and a different reviewer profile. Use a short task
+   with clear criteria; keep automatic tool approval off for the first run.
+3. Assign the task from **Dashboard**, follow **3D Office / Live map**, and answer
+   any necessary owner questions.
+4. Inspect the saved files and **Result card**. Accept after the approved checks
+   pass; then try one small change to exercise the next delivery cycle.
+
+For example: build a static product page with a responsive layout and a local
+contact-form demo. Require actual HTML/CSS/JS files, checks for the agreed form
+behavior, and a short handoff. Keep email sending, payments and production deployment
+outside this first pilot. Success is a verified output you can open, not a “done” message.
+
 ## How work moves
 
 ```mermaid
@@ -91,6 +135,20 @@ flowchart LR
 
 A model saying “done” is not sufficient to pass independent verification. The selected checks
 still determine what is verified; they cannot prove properties they do not test.
+
+## Small stack, clear responsibilities
+
+| Layer | Technology | Responsibility |
+| --- | --- | --- |
+| Workspace and visual views | JavaScript, HTML and CSS, including CSS 3D | Render the editor, dashboard, office and task map in the browser. |
+| Controllers and agent integration | Python, with the bundled FrontierAgent runtime | Coordinate tasks, approvals, review, verification and process recovery. |
+| State and knowledge | SQLite, content objects and Markdown files | Keep execution history, version evidence and readable project notes. |
+| Model inference | Configured local or remote model server / optional adapter | Generate model responses; Studio does not bundle or implement the model weights. |
+
+Python keeps the controller close to the existing agent runtime. Model inference is
+a separate concern, and 3D rendering happens in the browser. There is no frontend
+build, CDN or mandatory cloud account. Performance depends on the model server,
+context, tools and workload; this project does not claim a general throughput benchmark.
 
 ## Current boundaries
 
@@ -148,16 +206,5 @@ project, not an official Apodex product.
 
 No credentials, local company records, agent transcripts or model weights are included.
 
-### Alpha.6: bounded reviews and decision experiments
-
-Reviews now use immutable evidence packets with a fixed read budget and typed outcomes. Optional task selection supports Off, Shadow and Select with stale-response rejection. **Decision lab** provides read-only idea scoring, document triage and CRM routing proposals, using a local chat profile or optional TypeSafe cloud, with saved Markdown reports. See [behavior, setup and limits](studio/docs/DECISION_LAB.md).
-
-### Alpha.7: dashboard first
-
-The home screen shows active agents, queued company assignments and items requiring attention
-across all projects. Add a task in place: select a project, company/department or standalone
-model, write the brief and define “Done when”. Company tasks inherit existing worker/reviewer
-and permission settings; paused Drivers keep new work queued. Standalone tasks start with
-normal tool approvals and do not include independent review. More options contains constraints,
-priority and verification commands or the standalone step limit. Refreshing never clears a draft.
-The Workspace, 3D Office and live map remain directly accessible; secondary tools are under More.
+See [Releases](https://github.com/RulezZzOr/miner/releases) for versioned downloads
+and [the feature catalog](studio/docs/FEATURES.md) for the detailed capability inventory.
