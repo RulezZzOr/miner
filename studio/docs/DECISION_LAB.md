@@ -4,7 +4,7 @@ Version 0.4.0-alpha.6 adds original implementations of patterns investigated in 
 
 ## Review contract
 
-The controller takes a content-addressed snapshot before each review. It prepares at most 24,000 UTF-8 bytes of evidence, including exact criteria and constraints, worker claims marked as claims, source hashes, explicit truncation and up to 8,000 bytes of source excerpts. Required criteria and constraints are never silently cut to fit. Oversize required context stops with a concrete request to split the task.
+The controller takes a content-addressed snapshot before each review. It prepares at most 24,000 UTF-8 bytes of evidence, including exact criteria and constraints, short worker claims marked as claims, snapshot identity, explicit truncation and up to 8,000 bytes of source excerpts. Exact file hashes stay in controller metadata and validate reads and acceptance; opaque hashes and duplicate worker checks are omitted from the model prompt. Required criteria and constraints are never silently cut to fit. Oversize required context stops with a concrete request to split the task.
 
 The reviewer has only `read_review_evidence` and `save_mission_report`. Extra discovery is limited to two attempts of 3,000 source bytes each, including failed path requests. Only paths from the snapshot index are accepted. General `PROJECT.md` injection, native file browsing, web browsing and shell execution are unavailable in this phase. The complete prompt and packet are retained in the run request. Review has at most six turns and eight minutes, respecting shorter owner limits. A timeout blocks identical automatic retries.
 

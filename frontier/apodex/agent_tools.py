@@ -114,6 +114,8 @@ def terminal_tool_registry() -> dict[str, Any]:
 _READ_ONLY = frozenset({
     "read_file", "grep_search", "glob_search", "file_editor_view", "todo_write",
     "web_search", "web_fetch", "read_text", "view_image", "recover_result",
+    # Studio's immutable, allowlisted snapshot reader has no write/network access.
+    "read_review_evidence",
     # Task board & planning built-ins
     "add_task", "update_task", "finish_planning",
     # Subagent & report workflow built-ins

@@ -63,13 +63,9 @@ def build_packet(mission, attempt, task, version, read_object, independent):
               'sources_note_truncated': clip(mission.get('sources', ''), 1200)[1],
               'owner_answers': [{'question': q['question'], 'answer': q['answer']} for q in mission['questions']
                                 if q.get('answer') is not None and (not task or q.get('task') in {None, task['id']})],
-              'worker_claims': [{'title': t['title'], 'summary': clip(t.get('summary', ''), 1400 if task else 300)[0],
-                                'summary_truncated': clip(t.get('summary', ''), 1400 if task else 300)[1],
-                                'review_status': t.get('status'),
-                                'checks': [{'criterion': c['criterion'], 'passed': c['passed'],
-                                            'evidence': clip(c['evidence'], 500)[0],
-                                            'evidence_truncated': clip(c['evidence'], 500)[1]}
-                                           for c in t.get('checks', [])] if task else []} for t in tasks],
+              'worker_claims': [{'title': t['title'], 'summary': clip(t.get('summary', ''), 420 if task else 300)[0],
+                                'summary_truncated': clip(t.get('summary', ''), 420 if task else 300)[1],
+                                'review_status': t.get('status')} for t in tasks],
               'independent': independent, 'artifacts': artifacts, 'source_index': [], 'excerpts': [],
               'omitted_source_count': len(files) - len(chosen),
               'limits': {'extra_reads': READ_CALLS, 'bytes_per_read': READ_BYTES}}
@@ -77,12 +73,14 @@ def build_packet(mission, attempt, task, version, read_object, independent):
     for p in chosen:
         raw = read_object(files[p])
         allowed[p] = {'sha256': files[p], 'bytes': len(raw), 'kind': classify_path(p)}
-        packet['source_index'].append({'path': p, **allowed[p]})
+        # Exact hashes stay in controller metadata and validate every read/pass.
+        # Repeating opaque digests in the model prompt adds tokens, not evidence.
+        packet['source_index'].append({'path': p, 'bytes': len(raw), 'kind': allowed[p]['kind']})
     if len(encoded(packet)) > PACKET_BYTES - 1000:
         raise ValueError('Review packet exceeds its fixed budget. Split the task; required criteria and constraints were not silently truncated.')
     remaining = min(INLINE_BYTES, PACKET_BYTES - len(encoded(packet)) - 1000)
-    # Artifacts first; only short selected documentation follows. Original hashes
-    # and truncation flags remain visible. No claim of completeness is manufactured.
+    # Artifacts first; only short selected documentation follows. Snapshot identity
+    # and truncation remain visible. No claim of completeness is manufactured.
     for p in chosen:
         if remaining < 300 or (p not in artifacts and len(packet['excerpts']) >= len(artifacts) + 2):
             break

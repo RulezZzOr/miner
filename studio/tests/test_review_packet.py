@@ -28,6 +28,8 @@ class PacketTests(unittest.TestCase):
         self.assertTrue(packet['excerpts'][0]['truncated'])
         self.assertEqual(packet['excerpts'][0]['path'], 'deliverable.md')
         self.assertEqual(allowed['deliverable.md']['sha256'], version['files']['deliverable.md'])
+        self.assertNotIn('sha256', packet['source_index'][0])
+        self.assertNotIn('checks', packet['worker_claims'][0])
         m['constraints'] = '不可裁剪' * 10000
         with self.assertRaisesRegex(ValueError, 'required criteria and constraints'):
             build_packet(m, {'phase': 'review'}, task, version, objects.__getitem__, {})
@@ -70,6 +72,12 @@ class PacketTests(unittest.TestCase):
         check['needs_owner'] = True
         with self.assertRaises(ValueError):
             reporter.validate(value)
+
+    def test_bounded_reader_needs_no_write_approval(self):
+        from apodex.agent_tools import assess_tool_risk, RISK_SAFE, RISK_CONFIRM
+        self.assertEqual(assess_tool_risk('read_review_evidence', {'path': 'evidence.md'}, '/tmp').level, RISK_SAFE)
+        # A similarly named unknown tool cannot inherit that permission.
+        self.assertEqual(assess_tool_risk('read_review_evidence_and_write', {}, '/tmp').level, RISK_CONFIRM)
 
 
 class ReviewControllerTests(unittest.TestCase):

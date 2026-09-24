@@ -153,8 +153,9 @@ class MissionTests(unittest.TestCase):
         record = self.controller.verifications.verify(m)
         prompt = self.launched[-1][0]["task"]
         self.assertIn('FUNCTIONALITY:', prompt)
-        self.assertIn('"exit_code": 0', prompt)
-        self.assertIn(record["id"], prompt)
+        packet, _ = json.JSONDecoder().raw_decode(prompt[prompt.index('{"version"'):])
+        self.assertEqual(packet['independent']['checks'][0]['exit_code'], 0)
+        self.assertEqual(packet['independent']['id'], record['id'])
         self.assertIsNone(m["final_report"])
         m = self.finish(report("pass", "Product is readable."))
         self.assertEqual(m["status"], "ready")
