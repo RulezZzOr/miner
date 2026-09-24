@@ -21,9 +21,15 @@ class Task(Record):
     criteria: list[str] = Field(min_length=1, max_length=20)
 
 
+class Readiness(Record):
+    status: Literal["ready", "clarify", "blocked"]
+    reason: str = Field(min_length=1, max_length=2000)
+
+
 class Plan(Record):
     status: Literal["plan"]
     tasks: list[Task] = Field(min_length=1, max_length=40)
+    readiness: Readiness | None = None
     questions: list[Question] = Field(default_factory=list, max_length=20)
 
 
@@ -67,6 +73,8 @@ class MissionReport:
             raise ValueError("Pass named tool fields, not a JSON string.")
         model = Blocked if value.get("status") == "blocked" else Plan if self.phase == "plan" else Result
         report = model.model_validate(value).model_dump()
+        if self.phase == "plan" and report.get("readiness") is None:
+            report.pop("readiness", None)  # retain the historical report shape for simple briefs
         if self.typed_review and report["status"] != "blocked":
             for check in report.get("checks", []):
                 if check["outcome"] is None or check["issue"] is None:

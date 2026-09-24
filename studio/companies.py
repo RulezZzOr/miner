@@ -115,7 +115,7 @@ class Companies:
         t = {"id": uuid.uuid4().hex[:12], "project": project, "department": department,
              "title": draft["title"], "goal": draft["goal"], "criteria": draft["criteria"],
              "verification_checks": draft["verification_checks"], "sources": draft["sources"],
-             "constraints": draft["constraints"], "kind": kind,
+             "constraints": draft["constraints"], "kind": kind, "process_mode": draft["process_mode"],
              "priority": number(body.get("priority", 2), 1, 3, "Priority"),
              "depends_on": list(dict.fromkeys(deps)), "enabled": True,
              "interval_hours": number(body.get("interval_hours", 0), 0, 8760, "Interval in hours"),
@@ -252,6 +252,7 @@ class Companies:
         now = self.clock()
         m = self.missions.prepare({"project": t["project"], "title": t["title"], "goal": t["goal"],
             "criteria": t["criteria"], "verification_checks": t["verification_checks"], "sources": t["sources"],
+            "process_mode": t.get("process_mode", "auto"),
             "constraints": t["constraints"] + "\nCompany task. Prepare external communications, payments, and production changes only as background material; do not execute them.",
             "profile": c["profile"], "review_profile": c["review_profile"], "auto_approve": c["policy"]["auto_tools"],
             "max_attempts": allowance, "attempt_minutes": c["policy"]["attempt_minutes"],

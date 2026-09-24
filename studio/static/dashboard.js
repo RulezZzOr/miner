@@ -119,7 +119,7 @@ function renderDashboard() {
   }), "No agent is running right now. Add a task or inspect a queued company's status below.");
   const attentionCards = summary.attention.map(m => dashboardCard(m.title, status(m.status), m.message || "Open the execution for the next step.", () => dashboardOpenMission(m), "Review next step"));
   for (const c of data.companies) for (const t of c.tasks.filter(t => t.status === "needs_owner")) attentionCards.push(dashboardCard(t.title, "Owner action", t.outcome || `${c.name} · ${data.departments[t.department] || t.department}`, () => dashboardOpenCompany(c.id, t.id)));
-  if (approvals) attentionCards.unshift(dashboardCard(`${approvals} pending decision${approvals === 1 ? "" : "s"}`, "Waiting for you", "Approve, decline, or send your own instruction in the approval inbox.", focusApprovalInbox, "Answer now"));
+  if (approvals) attentionCards.unshift(dashboardCard(`${approvals} pending decision${approvals === 1 ? "" : "s"}`, "Waiting for you", "Review approvals, answers or brief corrections in the approval inbox.", focusApprovalInbox, "Answer now"));
   dashboardList("#dashboard-attention", attentionCards, "No open blockers or decisions in the latest snapshot.");
   const taskCards = summary.tasks.map(t => dashboardCard(t.title, t.enabled ? status(t.status) : "Disabled", `${t.company.name} · ${projectName(t.project)} · ${data.departments[t.department] || t.department}${t.company.status !== "active" && ["queued","scheduled"].includes(t.status) ? " · Driver paused" : ""}`, () => dashboardOpenCompany(t.company.id, t.id)));
   for (const m of summary.standalone) taskCards.push(dashboardCard(m.title, status(m.status), `${projectName(m.project)} · ${m.message || ""}`, () => dashboardOpenMission(m)));
@@ -154,7 +154,7 @@ function dashboardTaskPayload(values, company) {
     if (!company.projects.includes(values.project)) throw new Error("This project is no longer assigned to that company.");
     return {url:"/api/companies/action", body:{id:company.id, revision:company.revision, action:"add_task", project:values.project, department:values.who,
       title:goal.split("\n")[0].slice(0,160), goal, criteria, kind:"work", priority:Number(values.priority),
-      constraints:values.constraints, verification_checks:values.checks, depends_on:[], interval_hours:0, max_cycles:1}};
+      constraints:values.constraints, verification_checks:values.checks, process_mode:values.process || "auto", depends_on:[], interval_hours:0, max_cycles:1}};
   }
   return {url:"/api/runs", body:{project:values.project, profile:values.who, mode:values.mode, max_turns:Number(values.turns), auto_approve:false,
     task:`${goal}\n\nDone when:\n${criteria.map(c => `- ${c}`).join("\n")}${values.constraints.trim() ? `\n\nConstraints:\n${values.constraints.trim()}` : ""}`}};
@@ -165,7 +165,7 @@ async function submitDashboardTask(event) {
   const feedback = $("#dashboard-task-feedback"), form = $("#dashboard-task-form");
   feedback.hidden = true;
   if (state.dirty) { feedback.textContent = "Save the open file before starting new work."; feedback.hidden = false; return; }
-  const values = Object.fromEntries(["project","destination","who","brief","criteria","priority","checks","mode","turns","constraints"].map(k => [k,$(`#dashboard-${k}`).value]));
+  const values = Object.fromEntries(["project","destination","who","brief","criteria","priority","checks","mode","turns","constraints","process"].map(k => [k,$(`#dashboard-${k}`).value]));
   dashboardSubmitting = true;
   const controls = $$('input, select, textarea, button', form), disabled = controls.map(c => c.disabled);
   controls.forEach(c => c.disabled = true);

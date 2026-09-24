@@ -33,7 +33,7 @@ class ProjectModel(BaseHTTPRequestHandler):
         # Count only tool results from this fresh worker context.
         count = sum(m.get("role") == "tool" for m in messages)
         if planning:
-            report = {"status": "plan", "questions": [], "tasks": [{"id": "build", "title": "Build",
+            report = {"status": "plan", "questions": [], "readiness": {"status": "ready", "reason": "The fixture has a precise file output and local acceptance command."}, "tasks": [{"id": "build", "title": "Build",
                 "instructions": "Write product.txt with OK", "depends_on": [], "criteria": ["File OK"]}]}
         else:
             report = {"status": "done" if building else "pass", "summary": "Fixture verified",

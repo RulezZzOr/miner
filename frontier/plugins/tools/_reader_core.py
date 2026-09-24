@@ -7,6 +7,17 @@ import re as _re
 import subprocess
 import sys
 
+
+def _guard_office_archive(path):
+    """Miner safety limit before Office libraries expand user-supplied ZIPs."""
+    import zipfile
+    with zipfile.ZipFile(path) as archive:
+        entries = archive.infolist()
+        if len(entries) > 10000 or sum(i.file_size for i in entries) > 100_000_000:
+            raise ValueError("Office archive exceeds 100 MB expanded data or 10,000 entries")
+        if any(i.file_size > 25_000_000 for i in entries):
+            raise ValueError("Office archive member exceeds 25 MB expanded data")
+
 _CACHE_DIR = "/workspace/.readdoc_cache"  # bind-mounted, persists across commands; missing/unwritable → silently re-render
 
 # Diagnostic trace: only when env READDOC_TRACE is set, record each step's routing and
@@ -764,6 +775,12 @@ def main() -> None:
         # A glob / comma list matching exactly one image with nothing skipped: fall back to a plain single-file read (old behaviour)
         path = _imgs[0]
     ext = _ext(path)
+    if ext in {"xlsx", "xlsm", "docx", "pptx"}:
+        try:
+            _guard_office_archive(path)
+        except Exception as exc:
+            sys.stderr.write("[read_file error] Office archive rejected: " + str(exc))
+            sys.exit(1)
     trace_on = bool(_os.environ.get("READDOC_TRACE"))
     # Legacy Office binary: the soffice bridge converts to an OOXML copy and the original
     # reader runs on it; the readout header notes the conversion source.
@@ -824,6 +841,8 @@ def main() -> None:
     pdf_param = ext == "pdf" and (pdf_mode != "auto" or pages)
     try:
         # Parse read_path (the converted copy for legacy formats); the cache key stays the original path
+        if read_path != path and ext in {"xlsx", "xlsm", "docx", "pptx"}:
+            _guard_office_archive(read_path)
         if cell_range and ext in ("xlsx", "xlsm"):
             md = fn(read_path, cell_range)
         elif pdf_param:

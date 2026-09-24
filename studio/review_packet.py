@@ -78,7 +78,8 @@ def build_packet(mission, attempt, task, version, read_object, independent):
         packet['source_index'].append({'path': p, 'bytes': len(raw), 'kind': allowed[p]['kind']})
     if len(encoded(packet)) > PACKET_BYTES - 1000:
         raise ValueError('Review packet exceeds its fixed budget. Split the task; required criteria and constraints were not silently truncated.')
-    remaining = min(INLINE_BYTES, PACKET_BYTES - len(encoded(packet)) - 1000)
+    inline_budget = 4000 if mission.get("process", {}).get("effective") == "light" else INLINE_BYTES
+    remaining = min(inline_budget, PACKET_BYTES - len(encoded(packet)) - 1000)
     # Artifacts first; only short selected documentation follows. Snapshot identity
     # and truncation remain visible. No claim of completeness is manufactured.
     for p in chosen:

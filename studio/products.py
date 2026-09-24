@@ -78,7 +78,7 @@ class Products:
                  "constraints": draft["constraints"], "sources": draft["sources"],
                  "settings": {key: draft[key] for key in (
                      "profile", "review_profile", "days", "max_attempts", "attempt_minutes", "max_turns", "auto_approve",
-                     "verification_checks", "isolated", "decision_profile", "decision_mode")},
+                     "verification_checks", "isolated", "decision_profile", "decision_mode", "process_mode")},
                  "status": "active", "autopilot": False, "cycle_limit": 10,
                  "maintenance_days": 0, "next_maintenance": None,
                  "created": now, "updated": now, "backlog": [], "cycles": [], "releases": [],

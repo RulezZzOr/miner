@@ -16,7 +16,8 @@ import os
 import re
 import shutil
 import tempfile
-import xml.etree.ElementTree as _ET
+# Modified for Miner, 2026-09-24: reject XML entities and bound chart reads.
+import defusedxml.ElementTree as _ET
 import zipfile
 
 _GAP = 2          # data-island split threshold: >=2 consecutive blank rows/columns split a block (split condition diff > _GAP)
@@ -571,8 +572,12 @@ def _x_chart_lines(path):
         if not re.fullmatch(r"xl/charts/chart\d+\.xml", name):
             continue
         try:
-            root = _ET.fromstring(z.read(name))
+            if z.getinfo(name).file_size > 2_000_000:
+                out.setdefault("", []).append("Chart omitted: XML exceeds 2 MB safety limit")
+                continue
+            root = _ET.fromstring(z.read(name), forbid_dtd=True)
         except Exception:
+            out.setdefault("", []).append("Chart omitted: invalid or unsafe XML")
             continue
         plot = root.find(f".//{_NSC}plotArea")
         if plot is None:

@@ -227,7 +227,7 @@ function approvalInboxItems(runs, missions) {
   for (const m of missions) {
     if (["accepted","cancelled","expired"].includes(m.status)) continue;
     for (const q of m.questions || []) if (q.answer === null) items.push({
-      key:`question/${m.id}/${q.id}`, kind:"question", mission:m.id, question:q.id,
+      key:`question/${m.id}/${q.id}`, kind:q.kind === "readiness" ? "readiness" : "question", mission:m.id, project:m.project, question:q.id,
       context:m.title, title:q.question, reason:q.reason});
     if (m.status === "awaiting_plan" && !(m.questions || []).some(q=>q.answer===null)) items.push({
       key:`plan/${m.id}`, kind:"plan", mission:m.id, project:m.project, context:m.title,
@@ -268,6 +268,11 @@ function approvalInboxCard(item) {
   if (item.kind === "tool") {
     card.append(el("p", "", item.request.reason), el("pre", "", item.request.preview || item.request.target));
   } else if (item.reason) card.append(el("p", "", item.reason));
+  if (item.kind === "readiness") {
+    card.append(el("p", "", "This needs a corrected brief, not a Yes/No approval. Open Brief readiness and revise the goal or completion criteria."));
+    card.append(missionButton("Revise brief", () => dashboardOpenMission({id:item.mission, project:item.project}), true));
+    return card;
+  }
   if (item.kind === "plan") {
     const detail = el("details"), list = el("ol");
     detail.append(el("summary", "", "View proposed plan"));
@@ -322,7 +327,7 @@ function renderApprovalInbox(items) {
     const node = approvalInboxCard(item); approvalInboxCards.set(item.key,{node}); $("#approvals").append(node);
   }
   approvalInboxBadges(items.length);
-  $("#approval-status").textContent = items.length ? "The agent needs your decision. Choose Yes, No, or write a response." : "No request is awaiting your decision.";
+  $("#approval-status").textContent = items.length ? "Review the request and choose an action below." : "No request is awaiting your decision.";
 }
 async function pollApprovalInbox() {
   if (approvalInboxLoading || !state.data) return;

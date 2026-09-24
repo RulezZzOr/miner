@@ -21,9 +21,11 @@ from pathlib import Path
 
 try:
     from .process_tree import ProcessTree
+    from .test_evidence import check_kind, test_count, git_revision
     from .verification_worker import command_outcome
 except ImportError:
     from process_tree import ProcessTree
+    from test_evidence import check_kind, test_count, git_revision
     from verification_worker import command_outcome
 
 IGNORED = {".git", ".venv", "node_modules", "__pycache__", ".pytest_cache", ".ruff_cache",
@@ -92,8 +94,12 @@ def validate_checks(value):
         timeout = item.get("timeout", 300)
         if isinstance(timeout, bool) or not isinstance(timeout, int) or not 1 <= timeout <= 3600:
             raise ValueError("Check timeout must be 1–3600 seconds.")
+        kind = item.get("kind", check_kind(argv))
+        minimum = item.get("minimum_tests", 1)
+        if kind not in {"command", "test"} or isinstance(minimum, bool) or not isinstance(minimum, int) or not 1 <= minimum <= 1000000:
+            raise ValueError("Check kind must be command or test, with a positive minimum_tests count.")
         result.append({"id": str(index + 1), "label": str(item.get("label", argv[0]))[:200],
-                       "argv": argv, "timeout": timeout})
+                       "argv": argv, "timeout": timeout, "kind": kind, "minimum_tests": minimum})
     return result
 
 
@@ -154,12 +160,17 @@ class Verifications:
         try:
             before = source_manifest(record["root"])
             record["sources"] = before
+            record["git_revision"] = git_revision(record["root"])
             record["source_modes"] = source_modes(record["root"], before)
             self.save(record)
             for spec in record["specs"]:
                 if cancel.is_set():
                     raise RuntimeError("Verification was paused.")
                 check = self.command(record, spec, cancel)
+                if spec.get("kind") == "test":
+                    check["test_count"] = test_count(check.get("log", ""))
+                    if check["test_count"] is None or check["test_count"] < spec.get("minimum_tests", 1):
+                        check["error"] = "Test evidence is missing or below the required test count. Provide a supported test-runner summary."
                 record["checks"].append(check)
                 self.save(record)
                 if check["exit_code"] != 0 or check.get("error"):
@@ -167,6 +178,8 @@ class Verifications:
             after = source_manifest(record["root"])
             if before != after or source_modes(record["root"], after) != record["source_modes"]:
                 raise RuntimeError("Files changed during verification. Re-verify the final content.")
+            if git_revision(record["root"]) != record["git_revision"]:
+                raise RuntimeError("Git revision changed during verification.")
             record["status"] = "passed"
         except Exception as exc:
             record.update(status="cancelled" if cancel.is_set() else "failed", error=str(exc)[:2000])
@@ -225,12 +238,20 @@ class Verifications:
         record = self.get(m.get("verification_id"))
         if record["mission"] != m["id"] or record["status"] != "passed":
             raise ValueError("Independent verifications failed.")
-        if record["specs"] != m["verification_checks"]:
+        if validate_checks(record["specs"]) != validate_checks(m["verification_checks"]):
             raise ValueError("The task brief for independent verifications has changed.")
-        if source_manifest(m["workspace"]) != record["sources"]:
+        expected = dict(record["sources"])
+        if m.get("status") == "accepted" and not m.get("work_project"):
+            expected.update(m.get("notes_sync", {}).get("hashes", {}))
+        if source_manifest(m["workspace"]) != expected:
             raise ValueError("Source files have changed since the independent verification.")
-        if source_modes(m["workspace"], record["sources"]) != record.get("source_modes"):
+        modes = dict(record.get("source_modes", {}))
+        if m.get("status") == "accepted" and not m.get("work_project"):
+            modes.update(m.get("notes_sync", {}).get("modes", {}))
+        if source_modes(m["workspace"], expected) != modes:
             raise ValueError("File permissions have changed or were not verified. Run verifications again.")
+        if "git_revision" in record and git_revision(m["workspace"]) != record["git_revision"]:
+            raise ValueError("Git revision changed since verification. Run verifications again.")
         return record
 
     def close(self):

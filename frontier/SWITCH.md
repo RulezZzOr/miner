@@ -33,3 +33,10 @@ cover file output handling, native workspace behavior, cancellation/checkpoint r
 provider adapters, direct web fetch behavior and structured mission reports. Studio owns
 the company/project/product controllers and explicitly scoped SSH inventory connector.
 Private runtime state, local configurations and development session logs are excluded.
+
+## Miner document-reader hardening (2026-09-24)
+
+The Office reader now bounds ZIP expansion before parsing OOXML documents and
+uses `defusedxml` for direct chart XML reads, with a 2 MB chart-member limit.
+`defusedxml` is part of the locked Studio runtime. These changes preserve upstream
+attribution and do not turn native model execution into an operating-system sandbox.

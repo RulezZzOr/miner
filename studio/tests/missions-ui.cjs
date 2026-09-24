@@ -42,3 +42,15 @@ test('closing the dialog during a request leaves the view unchanged',async()=>{
   const {ctx,pending,nodes}=fixture();const request=ctx.loadMissions();nodes['#missions-dialog'].open=false;
   pending[0](data());await request;assert.equal(ctx.renders,0);
 });
+test('selection reads current draft state after a successful save instead of a captured stale flag',async()=>{
+ const {ctx,pending}=fixture();let dirty=true,buttons=[],warnings=[];
+ ctx.$$=selector=>selector.includes('form') && dirty ? [{dataset:{dirty:'true'}}] : [];
+ ctx.toast=message=>warnings.push(message);
+ ctx.missionButton=(label,fn)=>{const button={onclick:fn,classList:{toggle(){}}};buttons.push(button);return button;};
+ ctx.renderMission=()=>{dirty=false;};
+ const request=ctx.loadMissions(true);pending[0]({...data(),missions:[{id:'a',title:'A',status:'paused'}]});
+ ctx.missionLabels={paused:'Paused'};await request;
+ const select=buttons[0].onclick();assert.equal(pending.length,2);pending[1]({...data(),missions:[]});await select;
+ assert.equal(warnings.length,0);
+ dirty=true;await buttons[0].onclick();assert.equal(warnings.length,1);
+});

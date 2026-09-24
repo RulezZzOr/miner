@@ -559,6 +559,11 @@ class Studio:
         if bounded_review and backend != "frontier":
             raise Problem("This backend does not support bounded review evidence tools.")
         notes = None if bounded_review else self.project_notes(project)
+        if notes and mission and mission.get("process", {}).get("project_notes_bytes", 12000) < 12000:
+            budget = mission["process"]["project_notes_bytes"]
+            raw = notes["context"].encode()
+            if len(raw) > budget:
+                notes["context"] = raw[:budget].decode("utf-8", errors="ignore") + "\n[Notes excerpt truncated; read relevant sections from PROJECT.md when needed.]"
         ssh_targets = targets_for(self.config.resolve().parent, mission)
         with self.lock:
             # The current GUI supports one active task at a time.
@@ -917,6 +922,8 @@ class Handler(BaseHTTPRequestHandler):
                           "capabilities": self.studio.missions.capabilities()}
             elif path == "/api/verification":
                 result = self.studio.missions.verifications.get(q["id"])
+            elif path == "/api/delivery":
+                result = self.studio.missions.delivery(q["id"])
             elif path == "/api/mission-trace":
                 result = {"events": self.studio.missions.trace(q["id"])}
             elif path == "/api/decision-lab":

@@ -22,6 +22,17 @@ test('global inbox includes another run and project, questions and plans but no 
  {id:'m3',status:'cancelled',questions:[{id:'old',answer:null}]}]);
  assert.deepEqual(Array.from(items,x=>x.kind),['tool','question','plan']);assert.equal(items[0].run,'r2');
 });
+test('conflicting readiness brief routes to revision instead of an ineffective yes/no answer',()=>{
+ const {ctx}=fixture();
+ const items=ctx.approvalInboxItems([],[{id:'m',project:'p',title:'Audit',status:'blocked',questions:[{id:'q',kind:'readiness',question:'Audit or repair?',answer:null}]}]);
+ assert.equal(items[0].kind,'readiness');
+ let opened;
+ ctx.dashboardOpenMission=m=>{opened=m;};
+ ctx.missionButton=(label,fn)=>{const button=new Node('button',label);button.onclick=fn;return button;};
+ const card=ctx.approvalInboxCard(items[0]);
+ assert.equal(find(card,'button','Yes'),undefined);assert.equal(find(card,'textarea'),undefined);
+ find(card,'button','Revise brief').onclick();assert.equal(opened.id,'m');assert.equal(opened.project,'p');
+});
 test('polling and adding another approval preserve typed feedback and card identity',()=>{
  const {ctx,nodes}=fixture();ctx.renderApprovalInbox([tool()]);const card=nodes['#approvals'].children[0];find(card,'textarea').value='Use staging';
  ctx.renderApprovalInbox([tool(),tool('run-b','b')]);assert.equal(nodes['#approvals'].children[0],card);assert.equal(find(card,'textarea').value,'Use staging');

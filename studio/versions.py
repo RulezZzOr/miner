@@ -65,6 +65,40 @@ class Versions:
             raise ValueError("Saved version is corrupted; recovery has been stopped.")
         return data
 
+    def derive_notes(self, base, updates, label):
+        """Create a documentation-only version without touching project files."""
+        allowed = {"PROJECT.md", "notes/NOTES.md", "notes/DECISIONS.md", "notes/SOURCES.md"}
+        if not set(updates) <= allowed:
+            raise ValueError("Documentation update contains an unexpected path.")
+        version = {**base, "id": uuid.uuid4().hex[:16], "created": time.time(), "label": label,
+                   "files": dict(base["files"]), "modes": dict(base["modes"])}
+        for path, content in updates.items():
+            raw = content.encode("utf-8")
+            if len(raw) > (12000 if path == "PROJECT.md" else 2_000_000):
+                raise ValueError("Notes need compaction before updating: " + path)
+            digest = hashlib.sha256(raw).hexdigest()
+            target = self.object_path(digest)
+            if not target.exists():
+                temporary = target.with_name(target.name + "." + uuid.uuid4().hex)
+                try:
+                    with temporary.open("xb") as stream:
+                        stream.write(raw)
+                        stream.flush()
+                        os.fsync(stream.fileno())
+                    os.replace(temporary, target)
+                finally:
+                    temporary.unlink(missing_ok=True)
+            self.read_object(digest)
+            version["files"][path] = digest
+            version["modes"].setdefault(path, 0o644)
+        fd = os.open(self.objects, os.O_RDONLY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        self.save("versions", version)
+        return version
+
     def snapshot(self, root, *, label, expected=None, expected_modes=None):
         try:
             from .server import read_project_file

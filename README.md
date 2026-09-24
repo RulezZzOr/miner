@@ -2,7 +2,7 @@
 
 A self-hosted web IDE and workflow manager for building and maintaining digital products with AI agents.
 
-**Status: `0.4.0-alpha.7` · experimental · macOS / Linux / Windows via WSL2**
+**Status: `0.4.0-alpha.8` · experimental · macOS / Linux / Windows via WSL2**
 
 Miner is the repository name; the application is called **Switch Studio**. It provides
 a browser interface, persistent project workflows and a Company Builder & Driver. The interface, built-in instructions and Studio documentation are in English.
@@ -18,6 +18,9 @@ Existing user-authored task briefs and history keep their original language.
 - Use an OpenAI-compatible model endpoint, including a local Ollama server.
 - Run single-agent ReAct or Agent Team workflows.
 - Plan a project, execute tasks, request a separate model review and run explicit verification commands.
+- Check brief readiness, scale process to task impact and resume from a compact saved handoff.
+- Inspect a result card bound to actual checks and source hashes, with explicit freshness and limitations.
+- Append conflict-checked Markdown acceptance notes after delivery. See the [delivery workflow](studio/docs/DELIVERY_WORKFLOW.md).
 - Keep task dependencies, questions, evidence, attempt limits and recovery state in SQLite.
 - Organize projects and recurring work through Company Builder & Driver.
 - Follow work and blockers on a live dependency diagram or the interactive **3D Office**.

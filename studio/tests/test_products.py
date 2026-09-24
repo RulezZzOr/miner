@@ -51,7 +51,7 @@ class ProductTests(unittest.TestCase):
         p = self.products.action({"id": p["id"], "action": "start", "item": item})
         self.key = p["cycles"][-1]["mission"]
         self.controller.tick()
-        self.finish({"status": "plan", "tasks": [plan_task()], "questions": []})
+        self.finish({"status": "plan", "tasks": [plan_task()], "questions": [], "readiness": {"status": "ready", "reason": "Fixture output and owner checks agree."}})
         self.controller.action({"id": self.key, "action": "approve_plan"})
         self.controller.tick()
         (self.project / "deliverable.txt").write_text(content)

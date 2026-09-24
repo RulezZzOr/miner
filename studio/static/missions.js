@@ -27,6 +27,60 @@ async function missionAction(id, action, extra = {}) {
   await api("/api/missions/action", {id, action, ...extra});
   await loadMissions(true);
 }
+function renderDeliveryWorkflow(panel, m) {
+  if (m.readiness) {
+    const r = m.readiness, box = el("details", "mission-task"); box.open = r.status !== "ready";
+    box.append(el("summary", "", `Brief readiness · ${r.status}`));
+    box.append(el("p", "", r.limitations));
+    for (const c of r.checks) box.append(el("p", "", `${c.passed ? "Passed" : "Needs clarification"}: ${c.name}`));
+    if (r.semantic_required) box.append(el("p", "", `Planning assessment: ${r.semantic_status}${r.semantic_reason ? " · " + r.semantic_reason : ""}`));
+    if (m.process) box.append(el("p", "missions-note", `Process: ${m.process.effective} · ${m.process.reason}`));
+    if (["draft", "paused", "blocked", "waiting"].includes(m.status) && !m.active_attempt && !m.tasks.length) {
+      const edit = el("details"); edit.append(el("summary", "", "Revise task brief"));
+      const form = el("form");
+      for (const [name, title] of [["goal", "Goal"], ["criteria", "Done when · one per line"], ["constraints", "Constraints"], ["sources", "Sources"], ["reason", "Reason for revision"]]) {
+        const label = el("label", "", title), input = el("textarea"); input.name = name; input.rows = 2;
+        input.value = name === "criteria" ? m.criteria.join("\n") : m[name] || "";
+        input.required = ["goal", "criteria", "reason"].includes(name); input.maxLength = name === "reason" ? 3000 : 12000;
+        label.append(input); form.append(label);
+      }
+      form.oninput = () => form.dataset.dirty = "true";
+      const save = el("button", "button", "Save revised brief"); save.type = "submit"; form.append(save);
+      form.onsubmit = async event => {
+        event.preventDefault(); save.disabled = true;
+        try {
+          const values = Object.fromEntries(new FormData(form));
+          values.criteria = values.criteria.split("\n").map(v => v.trim()).filter(Boolean);
+          await missionAction(m.id, "revise_brief", {...values, expected_brief_hash:r.brief_hash});
+        } catch (error) { toast(error.message, true); save.disabled = false; }
+      };
+      edit.append(form); box.append(edit);
+    }
+    if (m.brief_revisions?.length) box.append(el("p", "missions-note", `${m.brief_revisions.length} prior brief revision(s) preserved in the project record.`));
+    panel.append(box);
+  }
+  if (m.handoff) {
+    const box = el("details", "mission-task"); box.append(el("summary", "", "Continuation handoff"));
+    box.append(el("p", "", "Saved before the latest attempt. Full task state remains in Studio; changed references must be read again."));
+    const output = el("pre"); output.textContent = JSON.stringify(m.handoff, null, 2); box.append(output); panel.append(box);
+  }
+  const result = el("details", "mission-task");
+  result.append(el("summary", "", "Result card · outputs, checks and limitations"));
+  result.append(missionButton("Refresh result evidence", async () => {
+    const card = await api(`/api/delivery?id=${encodeURIComponent(m.id)}`), body = el("div", "delivery-evidence");
+    body.append(el("p", card.freshness === "stale" ? "mission-feedback" : card.freshness === "current" ? "mission-state" : "missions-note", `${card.status} · evidence ${card.freshness} · checks ${card.check_status}`));
+    body.append(el("p", "missions-note", `Product snapshot: ${card.version || "not accepted"} · verified commit: ${card.verified_git_revision || "file hashes only"}`));
+    for (const file of card.artifacts) body.append(el("p", "", `${file.path} · ${file.sha256.slice(0,12)}`));
+    for (const check of card.checks) body.append(el("p", "", `${check.label} · exit ${check.exit_code}${check.test_count != null ? ` · ${check.test_count} tests` : ""}${check.error ? " · " + check.error : ""}`));
+    if (card.changed_files.length) body.append(el("p", "", "Changed since delivery: " + card.changed_files.join(", ")));
+    if (card.freshness_error) body.append(el("p", "", card.freshness_error));
+    for (const limit of card.limitations) body.append(el("p", "missions-note", limit));
+    if (card.notes) body.append(el("p", "", `Project notes: ${card.notes.status}${card.notes.error || card.notes.reason ? " · " + (card.notes.error || card.notes.reason) : ""}`));
+    if (card.notes?.status === "needs_attention") body.append(missionButton("Retry notes without overwriting edits", () => missionAction(m.id, "sync_notes")));
+    result.querySelector(".delivery-evidence")?.remove(); result.append(body);
+  }));
+  panel.append(result);
+}
 function renderMission(m) {
   const panel = $("#mission-detail");
   panel.replaceChildren();
@@ -48,7 +102,7 @@ function renderMission(m) {
   if (m.status === "draft") add("Start preparation", "start", true);
   if (m.status === "awaiting_plan") add("Confirm plan and start work", "approve_plan", true);
   if (["running","waiting","awaiting_plan","verifying"].includes(m.status)) add("Pause", "pause");
-  if (["paused","blocked"].includes(m.status)) add("Continue", "resume", true);
+  if (["paused","blocked"].includes(m.status) && m.readiness?.status !== "clarify") add("Continue", "resume", true);
   if (m.status === "ready") { add("Accept product", "accept", true); add("Re-verify", "recheck"); }
   if (m.status === "accepted" && !m.product_context) actions.append(missionButton("Continue managing as product", () => adoptProduct(m), true));
   if (!["accepted","cancelled","expired"].includes(m.status)) add("End project", "cancel");
@@ -58,6 +112,7 @@ function renderMission(m) {
     await selectRun(m.active_attempt);
   }));
   panel.append(actions);
+  renderDeliveryWorkflow(panel, m);
   const latestReview = [...m.attempts].reverse().find(a => a.review_packet);
   if (latestReview) {
     const packet = latestReview.review_packet, box = el("details", "mission-task");
@@ -108,6 +163,10 @@ function renderMission(m) {
       input.type = "number"; input.name = name; input.min = min; input.max = max; input.value = m[name]; input.required = true;
       label.append(input); form.append(label);
     }
+    const processLabel = el("label", "", "Delivery process"), processSelect = el("select");
+    processSelect.name = "process_mode";
+    for (const mode of ["auto", "light", "standard", "sensitive"]) { const option = el("option", "", mode); option.value = mode; processSelect.append(option); }
+    processSelect.value = m.process_mode || "auto"; processLabel.append(processSelect); form.append(processLabel);
     form.oninput = () => form.dataset.dirty = "true";
     form.append(el("p", "missions-note", "Applies only to future runs. Saved results and overall deadline remain unchanged. The review model may be the same provider in a new session."));
     const save = el("button", "button", "Save models and limits"); save.type = "submit"; form.append(save);
@@ -187,6 +246,10 @@ function renderMission(m) {
   const open = m.questions.filter(q => q.answer === null);
   if (open.length) panel.append(el("h3", "", "I need from you"));
   for (const q of open) {
+    if (q.kind === "readiness") {
+      panel.append(el("p", "mission-feedback", q.question + " Use Brief readiness → Revise task brief above."));
+      continue;
+    }
     const card = el("form", "mission-question");
     card.append(el("strong", "", q.question), el("p", "", q.reason));
     if (q.task) card.append(el("p", "missions-note", `Blocks task: ${q.task}`));
@@ -285,16 +348,16 @@ async function loadMissions(force = false) {
       ? `Controller requires attention: ${data.controller_error}`
       : `${data.capabilities.controller} ${data.capabilities.search_status}`;
     // Polling must never replace answers the user is currently writing.
-    const hasDraft = $$(".mission-question textarea").some(input => input.value.length > 0) ||
+    const hasDraft = () => $$(".mission-question textarea").some(input => input.value.length > 0) ||
       $$("#mission-detail textarea, #mission-detail form").some(input => input.dataset.dirty === "true");
     const signature = JSON.stringify(data.missions);
-    if (!force && (hasDraft || signature === missionSnapshot)) return;
+    if (!force && (hasDraft() || signature === missionSnapshot)) return;
     missionSnapshot = signature;
     if (!data.missions.some(m => m.id === missionSelection)) missionSelection = data.missions[0]?.id || null;
     const list = $("#mission-list"); list.replaceChildren();
     for (const m of data.missions) {
       const button = missionButton(`${m.title} · ${missionLabels[m.status] || m.status}`, async () => {
-        if (hasDraft) { toast("First, save the partially completed response."); return; }
+        if (hasDraft()) { toast("First, save the partially completed response."); return; }
         missionSelection = m.id; missionSnapshot = ""; await loadMissions(true);
       });
       button.classList.toggle("active", m.id === missionSelection);
@@ -329,7 +392,7 @@ function initMissions() {
     const m = await api("/api/missions", {
       project:selected, title:$("#mission-title").value, goal:$("#mission-goal").value,
       criteria:$("#mission-criteria").value.split("\n").map(v => v.trim()).filter(Boolean),
-      verification_checks:$("#mission-checks").value,
+      verification_checks:$("#mission-checks").value, process_mode:$("#mission-process").value,
       sources:$("#mission-sources").value, constraints:$("#mission-constraints").value,
       profile:$("#mission-profile").value, review_profile:$("#mission-review-profile").value,
       decision_profile:$("#mission-decision-profile").value,

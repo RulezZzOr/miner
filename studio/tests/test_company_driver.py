@@ -344,7 +344,7 @@ class CompanyDriverIntegration(unittest.TestCase):
                 self.assertEqual((project/"product.txt").read_text(),"OK")
                 self.assertEqual(m["acceptance"]["kind"],"verified")
                 self.assertEqual(switched, enable_during_run)
-                self.assertEqual(len(m["attempts"]),5 if switched else 4)
+                self.assertEqual(len(m["attempts"]),5 if switched else 4, str(m["attempts"]))
                 driver.tick()
                 current=driver.get(c["id"])
                 self.assertEqual(current["tasks"][0]["status"],"done")
