@@ -1,12 +1,12 @@
 "use strict";
 // Original Studio office view. No code or assets from Agents Office are used.
 const officeDepartments = [
-  {id:"operations",name:"Operations",color:"#90e2bc",x:35,y:30},
-  {id:"delivery",name:"Delivery",color:"#91bfff",x:325,y:30},
-  {id:"growth",name:"Growth",color:"#d7a0ed",x:615,y:30},
-  {id:"finance",name:"Finance",color:"#edcc83",x:35,y:350},
-  {id:"platform",name:"Platform",color:"#79d8df",x:325,y:350},
-  {id:"studio",name:"Studio projects",color:"#bdc7d9",x:615,y:350},
+  {id:"operations",name:"Operations",color:"#569681",x:25,y:25},
+  {id:"delivery",name:"Delivery",color:"#6689b9",x:335,y:25},
+  {id:"growth",name:"Growth",color:"#ab7fba",x:645,y:25},
+  {id:"finance",name:"Finance",color:"#b4934e",x:25,y:410},
+  {id:"platform",name:"Platform",color:"#579ca2",x:335,y:410},
+  {id:"studio",name:"Studio projects",color:"#7d8a9d",x:645,y:410},
 ];
 const officeStatusNames={working:"Working",review:"Reviewing",verifying:"Checking",waiting:"Needs attention",blocked:"Blocked",paused:"Paused",done:"Accepted",finished:"Run finished",queued:"Queued",idle:"Idle",stale:"Awaiting activity",cancelled:"Stopped"};
 function officeRunPhase(m,run) {
@@ -44,6 +44,10 @@ function officeModel(data,companyId="",logs={},now=Date.now()/1000) {
     items.push({id:m ? "mission:"+m.id : "task:"+company.id+":"+task.id,title:task.title||m?.title||"Untitled task",department,status,
       mission:m?.id,run:displayRun?.id,project:m?.project||task.project,company:company?.id,companyName:company?.name||"Studio",phase:run ? officeRunPhase(m,run) : lastAttempt?.phase||m?.phase||"queue",lastRun:!run&&Boolean(displayRun),
       model:displayRun?.model||null,profile:displayRun?.profile||m?.profile||company?.profile||null,reviewProfile:m?.review_profile||company?.review_profile||null,
+      decision:m?.decision||null,
+      reviewEvidence:lastAttempt?.review_packet ? {id:lastAttempt.review_packet.id,bytes:lastAttempt.review_packet.bytes,
+        snapshot:lastAttempt.review_packet.snapshot,reads:lastAttempt.review_reads??null,limits:lastAttempt.review_packet.limits,started:lastAttempt.started} : null,
+      lastActivity:(log?.events||[]).reduce((latest,e)=>Math.max(latest,Number(e.time)||0),0)||null,
       message:m?.message||task.goal||"No execution has started.",updated:m?.updated||task.created||null,
       attempts:m?.attempts?.length||0,completed:m?.tasks?.filter(t=>t.status==="done").length||0,total:m?.tasks?.length||0,
       approvals:log?.approvals?.length||0,summary:company?.purpose||"",source:run ? "Active run" : displayRun ? "Last recorded run" : m ? "Saved execution" : "Saved company task"});
@@ -69,15 +73,19 @@ function officeBox(parent,x,y,z,w,d,h,color,cls="") {
 function officeSeat(parent,item,x,y,color) {
   const seat=el("div","office-seat "+(item?.status||"empty"));seat.style.cssText=`--sx:${x}px;--sy:${y}px;--accent:${color}`;seat.dataset.noContextHelp="true";
   // Desk, legs, screen and chair are independent CSS 3D solids.
-  officeBox(seat,0,0,33,88,48,5,"#586671");
-  for(const [a,b] of [[5,5],[77,5],[5,37],[77,37]])officeBox(seat,a,b,0,5,5,33,"#303b48");
-  officeBox(seat,27,8,38,34,6,22,item ? color:"#364351","office-monitor");
-  officeBox(seat,30,27,39,30,13,1,"#243442");
-  officeBox(seat,31,60,15,28,25,4,"#3e4d5b");officeBox(seat,32,82,17,26,5,27,"#465767");
+  officeBox(seat,0,0,33,88,48,5,"#c6b99f","office-desktop");
+  for(const [a,b] of [[5,5],[77,5],[5,37],[77,37]])officeBox(seat,a,b,0,5,5,33,"#74776c");
+  officeBox(seat,26,8,38,36,6,23,"#354344","office-monitor");
+  officeBox(seat,29,14,42,30,1,15,item ? "#c5e5df":"#bec9c6","office-display");
+  officeBox(seat,30,27,39,30,13,1,"#e8e6dd");
+  officeBox(seat,73,29,39,6,6,8,"#f5f1e6","office-mug");
+  officeBox(seat,31,60,15,28,25,4,"#71857c");officeBox(seat,32,82,17,26,5,27,"#7e9187");
   if(item){
     const person=el("div","office-person");
     officeBox(person,36,59,19,19,18,29,color,"office-torso");
     officeBox(person,37,58,49,17,17,17,"#d4af93","office-head");
+    officeBox(person,37,58,63,17,17,5,"#43413c","office-hair");
+    officeBox(person,37,64,5,7,12,18,"#53646c");officeBox(person,48,64,5,7,12,18,"#53646c");
     officeBox(person,32,44,33,6,22,6,color,"office-arm");officeBox(person,54,44,33,6,22,6,color,"office-arm");
     seat.append(person);
     const button=el("button","office-agent",item.title);button.type="button";button.dataset.noContextHelp="true";
@@ -88,24 +96,32 @@ function officeSeat(parent,item,x,y,color) {
 }
 function renderOfficeScene(model) {
   const world=$("#office-world");world.replaceChildren();
-  officeBox(world,0,0,-16,900,620,16,"#202c3b","office-foundation");
-  officeBox(world,0,0,0,900,8,52,"#344255");officeBox(world,0,0,0,8,620,52,"#344255");
-  // A central walkway connects six department areas.
-  const walkway=el("div","office-walkway");walkway.textContent="S W I T C H   /   S T U D I O";world.append(walkway);
+  world.classList.toggle("office-has-activity",model.active>0);
+  // Independent raised islands and bridges; geometry is generated locally.
+  officeBox(world,140,317,-13,635,30,10,"#cbcdbf","office-bridge");
+  for(const x of [140,450,760])officeBox(world,x,240,-13,30,190,10,"#cbcdbf","office-bridge");
+  officeBox(world,383,292,-15,164,82,16,"#c4d3c8","office-hub-base");
+  const hub=el("button","office-hub");hub.type="button";hub.dataset.noContextHelp="true";
+  hub.append(el("span","office-hub-icon","◈"),el("strong","","Company Driver"),el("small","",`${model.active} active · ${model.attention} need attention`));
+  hub.setAttribute("aria-label","Select the highest priority recorded task");
+  hub.onclick=()=>{if(model.items[0])selectOfficeItem(model.items[0].id);};hub.disabled=!model.items.length;world.append(hub);
   for(const d of model.departments){
     const pod=el("div","office-pod");pod.style.cssText=`--px:${d.x}px;--py:${d.y}px;--accent:${d.color}`;pod.dataset.department=d.id;
+    officeBox(pod,-10,-6,-18,274,252,18,"#c9cebd","office-island");
     const label=el("button","office-department-label",d.name);label.type="button";label.dataset.noContextHelp="true";label.setAttribute("aria-label",`Show ${d.name} tasks`);label.onclick=()=>{officeState.department=officeState.department===d.id?null:d.id;renderOfficeList();};pod.append(label);
-    const cap=el("span","office-pod-count",`${d.items.length} ${d.items.length===1?"task":"tasks"}`);pod.append(cap);
+    const cap=el("span","office-pod-count",`${d.items.length} ${d.items.length===1?"task":"tasks"} · ${d.items.filter(i=>["blocked","waiting","stale"].includes(i.status)).length} alerts`);pod.append(cap);
     for(let n=0;n<4;n++)officeSeat(pod,d.items[n],(n%2)*122,40+Math.floor(n/2)*100,d.color);
     // Plant and low department partition, built from original geometry.
-    officeBox(pod,232,140,0,12,12,15,"#705e52");officeBox(pod,230,138,15,16,16,20,"#52876d");
+    officeBox(pod,237,192,0,13,13,13,"#b99780","office-planter");
+    officeBox(pod,235,190,13,17,17,15,"#74967a","office-leaf");
+    officeBox(pod,238,193,27,11,11,12,"#91ac81","office-leaf");
     world.append(pod);
   }
   positionOfficeCamera();
 }
 function positionOfficeCamera(){
   const stage=$("#office-stage");if(!stage)return;
-  const fit=Math.min((stage.clientWidth-35)/1050,(stage.clientHeight-45)/650);
+  const fit=Math.min((stage.clientWidth-35)/1120,(stage.clientHeight-35)/760);
   $("#office-world").style.setProperty("--camera-angle",officeState.angle+"deg");$("#office-world").style.setProperty("--camera-tilt",officeState.tilt+"deg");
   $("#office-world").style.transform=`translate(-50%,-50%) scale(${Math.max(.14,fit)*officeState.zoom}) rotateX(${officeState.tilt}deg) rotateZ(${officeState.angle}deg)`;
   $("#office-camera-value").textContent=`${Math.round(officeState.zoom*100)}%`;
@@ -133,6 +149,9 @@ function renderOfficeDetail(){
   panel.append(el("span","office-detail-status "+item.status,officeState.offline?"Offline · saved snapshot":officeStatusNames[item.status]),el("h3","",item.title),el("p","office-detail-message",item.message));
   const facts=el("dl","office-facts");for(const [k,v] of [["Company",item.companyName],[item.lastRun?"Last run phase":"Phase",item.phase],["Model",item.model||item.profile||"Not assigned"],["Review profile",item.reviewProfile||"Not assigned"],["Evidence",item.source],["Verified steps",`${item.completed||0} / ${item.total||0}`],["Attempts",String(item.attempts||0)]])facts.append(el("dt","",k),el("dd","",v));panel.append(facts);
   if(item.status==="stale")panel.append(el("p","office-warning","The process has no recent confirmed activity. Check its log; it may be waiting for a model or tool."));
+  if(item.lastActivity)panel.append(el("p","",`Last observed activity: ${new Date(item.lastActivity*1000).toLocaleString("en-GB")}`));
+  if(item.reviewEvidence){const e=item.reviewEvidence;panel.append(el("p","",`Review packet: ${(e.bytes/1024).toFixed(1)} KB · ${e.reads===null?"up to "+e.limits.extra_reads:e.reads+"/"+e.limits.extra_reads} extra reads`),el("p","missions-note",`Immutable snapshot ${e.snapshot}. Freshness is checked before acceptance.`));}
+  if(item.decision){const d=item.decision;panel.append(el("p",d.status==="fallback"?"office-warning":"",`Selection: ${d.mode||"select"} / ${d.status} · ${d.choice||"plan order"}`),el("p","",d.reason||"Waiting for proposal."));}
   const actions=el("div","office-detail-actions");
   if(item.mission)actions.append(missionButton("Open live map",async()=>{$("#office-dialog").close();await showFlow(item.mission);}));
   if(item.run)actions.append(missionButton("Open run and approvals",async()=>{$("#office-dialog").close();await refreshState();await selectRun(item.run);focusApprovalInbox();}));

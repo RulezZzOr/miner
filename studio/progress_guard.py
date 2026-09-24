@@ -5,7 +5,11 @@ from urllib.parse import urlsplit
 
 def phase_limits(phase, seconds, turns):
     """Planning produces a small report; its budget is not the product budget."""
-    return (min(seconds, 300), min(turns, 8)) if phase == 'plan' else (seconds, turns)
+    if phase == 'plan':
+        return min(seconds, 300), min(turns, 8)
+    if phase in {'review', 'final'}:
+        return min(seconds, 480), min(turns, 6)
+    return seconds, turns
 
 
 class ProgressGuard:

@@ -52,11 +52,12 @@ flowchart TD
   Questions --> GUI
   Controller --> Builder[Executor: new session]
   Builder --> Files[Project files + JSON report]
-  Files --> Reviewer[Reviewer: different session / optionally different model]
+  Files --> Reviewer[Architecture reviewer: separate session / model]
   Reviewer -->|findings| Builder
-  Reviewer --> Final[Full product assessment]
-  Final --> Checks[Approved commands: actual process and log]
-  Checks --> Gate[Content, file permissions, exit codes]
+  Reviewer --> Checks[Approved commands: actual process and log]
+  Checks -->|passed| Final[Functional assessment of results and coverage]
+  Checks -->|failed| Builder
+  Final --> Gate[Content, file permissions, exit codes]
   Gate --> Version[Content version and merge into original project]
   Gate --> GUI
   Gate --> DB

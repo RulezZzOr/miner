@@ -59,9 +59,11 @@ flowchart LR
     Owner[Goals and project files] --> Driver[Company Driver / project controller]
     Driver --> Plan[Plan and dependencies]
     Plan --> Worker[Worker in a working copy]
-    Worker --> Review[Separate model review]
+    Worker --> Review[Architecture review]
     Review --> Checks[Verification commands]
-    Checks --> Accept[Accept and merge]
+    Checks --> Final[Functional results and coverage review]
+    Final --> Accept[Accept and merge]
+    Final -->|changes| Worker
     Review -->|changes| Worker
     Checks -->|failure| Worker
     Accept --> Queue[Product changes and maintenance]
@@ -119,3 +121,7 @@ Miner adds the Studio application and integration changes. This is an independen
 project, not an official Apodex product.
 
 No credentials, local company records, agent transcripts or model weights are included.
+
+### Alpha.6: bounded reviews and decision experiments
+
+Reviews now use immutable evidence packets with a fixed read budget and typed outcomes. Optional task selection supports Off, Shadow and Select with stale-response rejection. **Decision lab** provides read-only idea scoring, document triage and CRM routing proposals, using a local chat profile or optional TypeSafe cloud, with saved Markdown reports. See [behavior, setup and limits](studio/docs/DECISION_LAB.md).

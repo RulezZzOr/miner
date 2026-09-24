@@ -8,7 +8,7 @@ def record_transition(db, previous, current, at):
     before = json.loads(previous) if previous else {}
     fields = ("status", "phase", "active_attempt", "tasks", "questions", "attempts", "message",
               "verification_id", "verification_result", "verification_checks", "acceptance", "version_id", "decision",
-              "profile", "review_profile", "attempt_minutes", "max_turns", "max_attempts")
+              "profile", "review_profile", "attempt_minutes", "max_turns", "max_attempts", "decision_mode", "decision_profile")
     changed = [key for key in fields if before.get(key) != current.get(key)]
     if not changed:
         return
@@ -26,6 +26,8 @@ def record_transition(db, previous, current, at):
              "file_changes": attempt.get("file_changes", []), "usage": attempt.get("usage"),
              "elapsed_seconds": attempt.get("elapsed_seconds"), "version": current.get("version_id")}
     event["decision"] = current.get("decision")
+    packet = attempt.get("review_packet")
+    event["review_packet"] = ({k: packet[k] for k in ("id", "snapshot", "bytes", "limits", "omitted_source_count")} if packet else None)
     event["runtime"] = {k: current.get(k) for k in ("profile", "review_profile", "attempt_minutes", "max_turns", "max_attempts")}
     db.execute("INSERT INTO mission_trace VALUES (?, ?, ?, ?)",
                (event["id"], current["id"], at, json.dumps(event, ensure_ascii=False)))

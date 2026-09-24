@@ -36,6 +36,9 @@ class Check(Record):
     criterion: str = Field(min_length=1)
     passed: bool
     evidence: str = Field(min_length=1)
+    outcome: Literal["supported", "contradicted", "insufficient_evidence"] | None = None
+    issue: Literal["none", "architecture", "functionality", "missing_evidence"] | None = None
+    needs_owner: bool = False
 
 
 class Source(Record):
@@ -57,12 +60,21 @@ class MissionReport:
         self.attempt = request["mission"]["attempt"]
         self.path = path
         self.saved = False
+        self.typed_review = bool(request["mission"].get("review_packet"))
 
     def validate(self, value):
         if not isinstance(value, dict):
             raise ValueError("Pass named tool fields, not a JSON string.")
         model = Blocked if value.get("status") == "blocked" else Plan if self.phase == "plan" else Result
         report = model.model_validate(value).model_dump()
+        if self.typed_review and report["status"] != "blocked":
+            for check in report.get("checks", []):
+                if check["outcome"] is None or check["issue"] is None:
+                    raise ValueError("Every review check needs outcome and issue fields.")
+                if check["passed"] and (check["outcome"] != "supported" or check["issue"] != "none" or check["needs_owner"]):
+                    raise ValueError("A check with missing evidence, defects or an owner decision cannot pass.")
+                if report["status"] == "pass" and not check["passed"]:
+                    raise ValueError("A passing report requires every check to pass.")
         if report["status"] != "blocked":
             allowed = {"plan"} if self.phase == "plan" else {"done"} if self.phase == "build" else {"pass", "changes"}
             if report["status"] not in allowed:

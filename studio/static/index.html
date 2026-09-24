@@ -12,6 +12,8 @@
     <link rel="stylesheet" href="/style.css" />
     <link rel="stylesheet" href="/office.css" />
     <script src="/missions.js" defer></script>
+    <script src="/decision-lab.js" defer></script>
+    <script src="/browser-pilot.js" defer></script>
     <script src="/products.js" defer></script>
     <script src="/preview.js" defer></script>
     <script src="/companies.js" defer></script>
@@ -40,6 +42,7 @@
       </div>
       <div class="top-actions">
         <button id="office-button" class="button flow-launch">3D Office</button>
+        <button id="decision-lab-button" class="button">Decision lab</button>
         <button id="flow-button" class="button flow-launch"><span data-icon="pulse"></span> Live map</button>
         <button id="approval-jump" class="button approval-jump" hidden>Waiting for you <span id="approval-count">0</span></button>
         <button id="driver-button" class="button primary">Company · Builder &amp; Driver</button>
@@ -399,6 +402,7 @@
           <div class="mission-fields"><label>Context and links<textarea id="product-sources" rows="2" maxlength="12000"></textarea></label><label>Limitations and out-of-scope items<textarea id="product-constraints" rows="2" maxlength="12000"></textarea></label></div>
           <div class="mission-fields"><label>Worker model<select id="product-profile"></select></label><label>Review model<select id="product-review-profile"></select></label></div>
           <label>Select next task (optional)<select id="product-decision-profile"><option value="">Plan order · no further model</option></select></label>
+          <label>Decision mode<select id="product-decision-mode"><option value="shadow">Shadow · compare without changing task order</option><option value="select">Select · choose among eligible tasks</option><option value="off">Off · no model request</option></select></label>
           <div class="mission-limits"><label>Days for execution<input id="product-days" type="number" min="1" max="30" value="7" required /></label><label>Runs for execution<input id="product-attempts" type="number" min="2" max="1000" value="30" required /></label><label>Minutes for run<input id="product-minutes" type="number" min="1" max="360" value="30" required /></label><label>Steps per run<input id="product-turns" type="number" min="1" max="200" value="40" required /></label></div>
           <label class="mission-permission"><input id="product-auto" type="checkbox" /> Enable tools without individual approval for executions of this product</label>
           <p class="missions-note">Product type helps define the task brief; it is not a guarantee of delivery. Deployment and access to external services must be prepared separately. The native agent operates with the user’s permissions. Run limits are not a monetary budget.</p>
@@ -422,6 +426,7 @@ Form validates required fields."></textarea></label>
           <label>Limitations and decisions<textarea id="mission-constraints" rows="3" placeholder="Technologies, scope, out-of-scope items…"></textarea></label></div>
           <div class="mission-fields"><label>Model for planning and work<select id="mission-profile"></select></label><label>Model for independent review<select id="mission-review-profile"></select></label></div>
           <label>Select next task (optional)<select id="mission-decision-profile"><option value="">Plan order · no further model</option></select></label>
+          <label>Decision mode<select id="mission-decision-mode"><option value="shadow">Shadow · compare without changing task order</option><option value="select">Select · choose among eligible tasks</option><option value="off">Off · no model request</option></select></label>
           <div class="mission-limits"><label>Day limit<input id="mission-days" type="number" min="1" max="30" value="7" required /></label><label>Total runs<input id="mission-attempts" type="number" min="2" max="1000" value="100" required /></label><label>Minutes for run<input id="mission-minutes" type="number" min="1" max="360" value="30" required /></label><label>Steps per run<input id="mission-turns" type="number" min="1" max="200" value="40" required /></label></div>
           <label class="mission-permission"><input id="mission-auto" type="checkbox" /> Enable actions without individual approval</label>
           <p class="missions-note">Without this option, workers wait for tool approval in Studio. The native backend has this user’s permissions; roles are not sandboxed. Run limits are not a monetary budget. Only use models whose consumption you wish to allow.</p>
@@ -594,6 +599,34 @@ Form validates required fields."></textarea></label>
       </div>
     </dialog>
 
+    <dialog id="decision-lab-dialog" aria-labelledby="decision-lab-title" class="wide-dialog">
+      <div class="dialog-heading"><div><span class="eyebrow">READ-ONLY EXPERIMENTS</span><h2 id="decision-lab-title">Decision lab</h2></div><button class="icon-btn close-dialog" aria-label="Close decision lab">×</button></div>
+      <p id="decision-lab-project" class="missions-note"></p>
+      <p>Compare bounded judgments before automating a workflow. Results are model assessments, not verified facts. No CRM changes, messages, purchases or deployments are performed.</p>
+      <form id="decision-lab-form" class="mission-task">
+        <label>Evaluation type<select id="decision-lab-kind"><option value="idea">Product idea · five evidence scores</option><option value="document">Document · type and claim support</option><option value="crm">CRM request · department and urgency</option></select></label>
+        <label>Evaluation provider<select id="decision-lab-profile"></select></label>
+        <p class="missions-note">Choosing TypeSafe sends the supplied text to its cloud API and needs TYPESAFE_API_KEY on the server. A local profile uses its configured endpoint. No request occurs before Evaluate.</p>
+        <label>Claim or question<input id="decision-lab-claim" maxlength="1000" placeholder="What does this evidence establish?" /></label>
+        <label>Evidence text<textarea id="decision-lab-text" rows="7" required placeholder="Paste a short idea brief, source excerpt or redacted customer request. Include observations, dates and known unknowns."></textarea></label>
+        <p class="missions-note">30–12,000 UTF-8 bytes; no silent truncation. Scans need OCR first. One request, up to 120 seconds. Do not include credentials.</p>
+        <button class="button primary" type="submit" id="decision-lab-submit">Evaluate without taking action</button>
+        <p id="decision-lab-feedback" role="status"></p>
+      </form>
+      <details class="mission-task"><summary>Browser pilot · local fixture only</summary>
+        <p>Goal: show only Blue desk. Each step uses a fresh observed state, an allowed operation and a single-use action. This fixture does not connect to a real CRM or other browser tabs.</p>
+        <div id="browser-pilot-fixture">
+          <label>Fixture search<input data-pilot-query maxlength="100" placeholder="Try blue" /></label>
+          <button type="button" class="button" data-pilot-filter>Filter fixture</button>
+          <ul data-pilot-results data-filtered="false"><li data-pilot-item>Blue desk</li><li data-pilot-item>Green chair</li><li data-pilot-item>White lamp</li></ul>
+          <label class="mission-permission"><input type="checkbox" id="browser-pilot-model" /> Ask the selected lab provider for each proposal (optional)</label>
+          <button class="button" id="browser-pilot-step">Observe and run one step</button>
+          <button class="button" id="browser-pilot-reset">Reset fixture</button>
+          <pre data-pilot-log role="status">Ready. No model or browser action has run.</pre>
+        </div>
+      </details>
+      <section id="decision-lab-results" aria-label="Saved evaluations"></section>
+    </dialog>
     <dialog id="office-dialog" aria-labelledby="office-title">
       <div class="dialog-heading office-heading"><div><span class="eyebrow">YOUR WORK, IN ONE PLACE</span><h2 id="office-title">Agent office</h2></div><button class="icon-btn close-dialog" aria-label="Close office">×</button></div>
       <div class="office-topline"><label>Company workspace<select id="office-company"><option value="">All workspaces</option></select></label><div class="office-metrics"><div><strong id="office-active-count">0</strong><small>ACTIVE NOW</small></div><div><strong id="office-attention-count">0</strong><small>NEEDS ATTENTION</small></div><div><strong id="office-done-count">0</strong><small>ACCEPTED</small></div></div><button id="office-layout" class="button">List view</button><button id="office-refresh" class="button">Refresh</button></div>

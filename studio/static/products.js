@@ -248,6 +248,7 @@ function initProducts() {
         criteria:$("#product-criteria").value.split("\n").map(v=>v.trim()).filter(Boolean),
         verification_checks:$("#product-checks").value,
         decision_profile:$("#product-decision-profile").value,
+        decision_mode:$("#product-decision-profile").value ? $("#product-decision-mode").value : "off",
         constraints:$("#product-constraints").value, sources:$("#product-sources").value,
         profile:$("#product-profile").value, review_profile:$("#product-review-profile").value,
         auto_approve:$("#product-auto").checked, days:Number($("#product-days").value),

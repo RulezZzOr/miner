@@ -88,6 +88,7 @@ def run(directory: Path) -> int:
 
     reporter = None
     inventory = None
+    review_evidence = None
     if request.get("mission"):
         from plugins.tools._sandbox import resolve_runtime_path
         expected_report = (Path(request["cwd"]) / "company" / "projects" /
@@ -96,6 +97,17 @@ def run(directory: Path) -> int:
         reporter = MissionReport(request, expected_report)
         import plugins.tools
         plugins.tools._BUILTIN_TOOLS.append(reporter.tool())
+        if request["mission"].get("review_packet"):
+            try:
+                from .review_packet import ReviewEvidence
+            except ImportError:
+                from review_packet import ReviewEvidence
+            def read_snapshot(digest):
+                if len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+                    raise ValueError("Invalid evidence content identifier.")
+                return (Path(request["review_objects"]) / digest).read_bytes()
+            review_evidence = ReviewEvidence(request["mission"]["review_packet"]["sources"], read_snapshot)
+            plugins.tools._BUILTIN_TOOLS.append(review_evidence.tool())
         if request["mission"]["phase"] == "build" and request.get("ssh_targets"):
             inventory = SSHInventory(request)
             plugins.tools._BUILTIN_TOOLS.append(inventory.tool())
@@ -109,6 +121,8 @@ def run(directory: Path) -> int:
                 args = tool_call.get("args") or {}
                 allowed = name in {"read_file", "glob_search", "grep_search", "web_search",
                                    "web_fetch", "recover_result", "add_task", "update_task"}
+                if review_evidence:
+                    allowed = name == "read_review_evidence"
                 if name == "create_file" and isinstance(args.get("path"), str):
                     candidate = Path(resolve_runtime_path(args["path"]))
                     if not candidate.is_absolute():
@@ -325,8 +339,9 @@ def run(directory: Path) -> int:
         scope = ("Only plan the later work. Do not implement the product. Your sole deliverable is the plan JSON. Do not research the web or attempt SSH now. "
                  "Use at most three local discovery calls, then save a short plan for the execution worker. "
                  "Put requested server inspection into an execution task; do not invent missing access requirements before an actual check. "
-                 if phase == "plan" else "Read the actual source files without editing them. Your sole deliverable is the review JSON. "
-                 "Shell execution is unavailable in this phase. Do not claim you ran tests: the controller executes the approved checks after final review."
+                 if phase == "plan" else "Review the supplied immutable evidence packet. Your sole deliverable is the review JSON. "
+                 "Use at most two short read_review_evidence calls if needed. Shell execution is unavailable. "
+                 "Do not claim you ran tests; controller-owned check results are in the evidence packet when available."
                  if phase in {"review", "final"} else "Implement only the assigned task and save its product files in /workspace.")
         os.environ["SWITCH_STUDIO_PHASE_INSTRUCTIONS"] = (
             f"This run is the {phase.upper()} phase of a multi-run controller. {scope} "
@@ -369,6 +384,8 @@ def run(directory: Path) -> int:
         if phase in {"plan", "review", "final"}:
             allowed_tools.discard("create_file")
         settings["agent"]["agent_tools"] = [t for t in settings["agent"]["agent_tools"] if t in allowed_tools] + ["save_mission_report"]
+        if review_evidence:
+            settings["agent"]["agent_tools"] = ["read_review_evidence", "save_mission_report"]
         if inventory:
             settings["agent"]["agent_tools"].append("ssh_inventory")
             os.environ["SWITCH_STUDIO_PHASE_INSTRUCTIONS"] += (
@@ -403,6 +420,8 @@ def run(directory: Path) -> int:
         raise
     finally:
         outcome["session_id"] = os.environ.get("APODEX_SESSION_ID", "")
+        if review_evidence:
+            outcome["review_reads"] = review_evidence.calls
         if code:
             outcome["status"] = "cancelled" if code == 130 else "failed"
         if guard.stop_reason:

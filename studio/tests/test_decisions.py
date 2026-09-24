@@ -106,3 +106,56 @@ class DecisionTests(unittest.TestCase):
         current = self.current()
         self.controller.save(current)
         self.assertEqual(len(self.controller.trace(m["id"])), count)
+
+class DecisionBoundaries(DecisionTests):
+    def test_shadow_keeps_baseline_and_records_disagreement(self):
+        server = self.judge({'action': 'build:two', 'confidence': .95, 'reason': 'Review candidate'})
+        m = self.mission(); m['decision_mode'] = 'shadow'
+        self.assertEqual(self.controller.next_work(m), ('build', 'one'))
+        self.controller.decisions.close()
+        record = self.controller.decisions.get(m['decision_request'])
+        self.assertEqual(record['status'], 'shadow')
+        self.assertEqual(record['choice'], 'build:two')
+        self.assertEqual(record['baseline'], 'build:one')
+        self.assertEqual(self.controller.next_work(m), ('build', 'one'))
+        self.assertEqual(len(server.requests), 1)
+
+    def test_off_performs_no_inference(self):
+        server = self.judge({})
+        m = self.mission(); m['decision_mode'] = 'off'
+        self.assertEqual(self.controller.next_work(m), ('build', 'one'))
+        self.assertEqual(server.requests, [])
+
+    def test_late_reply_and_changed_state_cannot_select_or_spawn_overlap(self):
+        from unittest.mock import patch
+        entered, release = threading.Event(), threading.Event()
+        self.judge({})
+        m = self.mission()
+        def delayed(*args):
+            entered.set(); release.wait(2)
+            return {'action': 'build:two', 'confidence': .99, 'reason': 'Late'}, {}, 'fixture'
+        with patch('studio.decisions.request_choice', delayed):
+            self.assertIsNone(self.controller.next_work(m))
+            self.assertTrue(entered.wait(1))
+            key = m['decision_request']
+            m['tasks'][0]['criteria'] = ['Changed criterion beyond compact frame']
+            self.assertEqual(self.controller.next_work(m), ('build', 'one'))
+            self.assertEqual(len(self.controller.decisions.threads), 1)
+            release.set(); self.controller.decisions.close()
+            self.assertEqual(self.controller.decisions.get(key)['status'], 'superseded')
+        entered.clear(); release.clear()
+        with patch('studio.decisions.request_choice', delayed):
+            self.assertIsNone(self.controller.next_work(m))
+            self.assertTrue(entered.wait(1))
+            key = m['decision_request']
+            record = self.controller.decisions.get(key); record['expires'] = time.time() - 1
+            self.controller.decisions.save(record)
+            self.assertEqual(self.controller.next_work(m), ('build', 'one'))
+            release.set(); self.controller.decisions.close()
+            self.assertEqual(self.controller.decisions.get(key)['status'], 'fallback')
+
+    def test_choice_contract_rejects_malformed_untrusted_values(self):
+        for action, confidence in [([], .9), ('build:one', True), ('build:one', float('nan')),
+                                   ('build:one', float('inf')), ('unknown', .99)]:
+            with self.subTest(action=action, confidence=confidence), self.assertRaises(ValueError):
+                choose_action({'action': action, 'confidence': confidence, 'reason': 'x'}, ['build:one'], .8)

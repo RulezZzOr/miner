@@ -58,7 +58,7 @@ class ProductTests(unittest.TestCase):
         self.finish(report())
         self.finish(report("pass"))
         final = report("pass", "Product is readable.")
-        final["checks"] = [{"criterion": c, "passed": True, "evidence": "read_file: OK"}
+        final["checks"] = [{"criterion": c, "passed": True, "evidence": "read_file: OK", "outcome": "supported", "issue": "none"}
                            for c in self.current()["criteria"]]
         self.finish(final)
         return self.current()

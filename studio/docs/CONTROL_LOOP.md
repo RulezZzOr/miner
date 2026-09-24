@@ -16,11 +16,13 @@ flowchart TD
   Select -. optional .-> Decision[Restricted decision model]
   Decision -. valid action or fallback to ordering .-> Select
   Select --> Work[Worker in working copy]
-  Work --> Review[New model review session]
+  Work --> Review[Architecture review in a separate model session]
   Review -->|specific fix| Work
   Review --> Check[Independent executor of approved commands]
   Check -->|exit, log, resource change| Work
-  Check -->|success| Ready[Version ready for acceptance]
+  Check -->|success| Final[Reviewer assesses functional results and coverage]
+  Final -->|specific fix| Work
+  Final -->|pass| Ready[Version ready for acceptance]
   Ready --> Accept[Acceptance and check for newer changes]
   Accept --> Objects[(File contents and permissions)]
   Accept --> Original[Original project]
@@ -34,6 +36,10 @@ flowchart TD
 ## What Completion Means
 
 The model saves a JSON report and product files. The controller verifies structure, existence, checksums, and coverage of criteria. The model’s assertion “test passed” alone does not count as a successful independent check.
+
+New missions use an architecture-and-functionality workflow. The coder implements and supplies a concise handoff describing responsibilities, interfaces, behavior, scenarios and limitations. Task review focuses on architectural fit and evidence, not style or a line-by-line source audit. For research and document tasks, the same stage assesses structure, source support and usability.
+
+After all task reviews, the controller executes the approved functional checks. Failures return to the coder before final model review. The final reviewer receives the actual exit codes and bounded log excerpts and assesses scenario coverage. A valid result is reused for acceptance only while file contents, permissions and check definitions still match. Existing missions retain their saved verification order; this change does not reopen expired work. Missing checks still require explicit owner action and cannot become automatic verified acceptance.
 
 The owner specifies check commands in the GUI. Each line is a list of arguments separated by shell quoting; operators like `&&`, redirections, or `$()` are not automatically evaluated. A command may explicitly invoke an interpreter, so approve its content. The GUI uses a 5-minute timeout; the API accepts `argv`, `label`, and `timeout` between 1–3600 seconds.
 
@@ -96,3 +102,7 @@ Session checkpoints are written atomically with `fsync`; failure halts work and 
 Models and limits for subsequent runs can be changed after stopping execution. Changing them alone does not resume work or extend the overall deadline. Repetition after an outage does not guarantee exactly one execution of any external action. Payments and communication sending are outside the automatic mode of this controller.
 
 Long-term operation requires a permanently available host and independent measurement. A test with simulated time or a local model fixture does not substitute for a real day or week.
+
+## Bounded judgments (alpha.6)
+
+See [the review contract and Decision lab](DECISION_LAB.md). Review reads immutable, size-limited evidence and emits typed per-criterion outcomes. Optional selection supports Off, Shadow and Select; all model proposals remain inside deterministic eligibility, freshness, timeout and acceptance checks. The UI exposes the evidence packet and the actual decision/fallback reason.

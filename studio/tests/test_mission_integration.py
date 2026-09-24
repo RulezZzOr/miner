@@ -38,7 +38,8 @@ class ProjectModel(BaseHTTPRequestHandler):
         else:
             report = {"status": "done" if building else "pass", "summary": "Fixture verified",
                 "artifacts": ["product.txt"], "checks": [{"criterion": "Product ready" if final else "File OK",
-                    "passed": True, "evidence": "Deterministic fixture read: OK"}]}
+                    "passed": True, "outcome": "supported", "issue": "none", "needs_owner": False,
+                    "evidence": "Deterministic fixture read: OK"}]}
         operations = []
         if planning:
             operations.append(("bash", {"command": "printf BAD > /workspace/should-not-exist.txt"}))
@@ -50,7 +51,7 @@ class ProjectModel(BaseHTTPRequestHandler):
             file_path = physical + "/product.txt" if content == "OK" else "/workspace/product.txt"
             operations.append(("create_file", {"path": file_path, "content": content, "overwrite": content != "OK"}))
         if not planning and not building:
-            operations.append(("read_file", {"path": "/workspace/product.txt"}))
+            operations.append(("read_review_evidence", {"path": "product.txt"}))
         operations.append(("save_mission_report", report))
         if count < len(operations):
             name, args = operations[count]

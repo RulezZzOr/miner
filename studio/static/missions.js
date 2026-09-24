@@ -40,7 +40,7 @@ function renderMission(m) {
   criteria.append(...m.criteria.map(c => el("li", "", c)));
   panel.append(criteria);
   panel.append(el("p", "missions-note", `${m.attempts.length}/${m.max_attempts} runs · limit ${m.days} days` +
-    (m.deadline ? ` · do ${new Date(m.deadline * 1000).toLocaleString("en-GB")}` : "") +
+    (m.deadline ? ` · until ${new Date(m.deadline * 1000).toLocaleString("en-GB")}` : "") +
     ` · work: ${m.profile} · review: ${m.review_profile}`));
   const actions = el("div", "mission-actions");
   actions.append(missionButton("Live progress map", () => showFlow(m.id)));
@@ -58,6 +58,32 @@ function renderMission(m) {
     await selectRun(m.active_attempt);
   }));
   panel.append(actions);
+  const latestReview = [...m.attempts].reverse().find(a => a.review_packet);
+  if (latestReview) {
+    const packet = latestReview.review_packet, box = el("details", "mission-task");
+    box.append(el("summary", "", `Review evidence · ${(packet.bytes / 1024).toFixed(1)} KB · immutable snapshot`));
+    box.append(el("p", "missions-note", `Reviewer: ${latestReview.model || latestReview.profile || "unrecorded"} · up to ${packet.limits.extra_reads} extra reads × ${packet.limits.bytes_per_read} bytes · at most 6 steps / 8 minutes (shorter project limits apply).`));
+    if (latestReview.review_reads != null) box.append(el("p", "", `Additional evidence reads used: ${latestReview.review_reads}/${packet.limits.extra_reads}`));
+    box.append(el("p", "", "File names are routing hints. Excerpts may be incomplete; missing evidence must be reported explicitly. Acceptance rejects changed evidence."));
+    box.append(el("p", "missions-note", `Snapshot ${packet.snapshot} · packet ${packet.id.slice(0,16)} · ${packet.omitted_source_count} files omitted`));
+    for (const [path, source] of Object.entries(packet.sources)) box.append(el("p", "", `${source.kind} · ${path} · ${source.bytes} bytes · ${source.sha256.slice(0,12)}`));
+    panel.append(box);
+  }
+  if (m.decision) {
+    const d = m.decision, box = el("details", "mission-task");
+    box.append(el("summary", "", `Task selection · ${d.mode || "select"} · ${d.status}`));
+    box.append(el("p", "", d.reason || "Waiting for decision."));
+    box.append(el("p", "missions-note", `Provider: ${d.provider || m.decision_profile || "none"} · model: ${d.model || "unavailable"} · baseline: ${d.baseline || "plan order"} · proposal: ${d.choice || "pending"}`));
+    if (d.alternatives) box.append(el("p", "", `Eligible alternatives: ${d.alternatives.join(", ")}`));
+    if (d.confidence != null) box.append(el("p", "missions-note", `Confidence: ${d.confidence.toFixed(3)}${d.provider === "chat" ? " (self-reported; not calibrated)" : ""}`));
+    if (d.elapsed_seconds != null) box.append(el("p", "missions-note", `Decision latency: ${d.elapsed_seconds.toFixed(2)} s`));
+    box.append(missionButton("Compare recorded proposals", async () => {
+      const metrics = await api(`/api/decision-metrics?id=${encodeURIComponent(m.id)}`);
+      const summary = el("p", "decision-metrics", `${metrics.requests} requests · ${metrics.fallbacks} fallbacks · ${metrics.superseded} stale · ${metrics.disagreements}/${metrics.comparisons} proposals differ from plan order. ${metrics.note}`);
+      box.querySelector(".decision-metrics")?.remove(); box.append(summary);
+    }));
+    panel.append(box);
+  }
   if (["draft", "paused", "blocked"].includes(m.status) && !m.active_attempt) {
     const details = el("details", "mission-task");
     details.append(el("summary", "", "Change models and continuation limits"));
@@ -67,6 +93,15 @@ function renderMission(m) {
       select.append(...state.data.profiles.map(p => { const option = el("option", "", `${p.model} · ${p.id}`); option.value = p.id; return option; }));
       select.value = m[name]; label.append(select); form.append(label);
     }
+    const decisionLabel = el("label", "", "Decision provider (optional)"), decisionSelect = el("select");
+    decisionSelect.name = "decision_profile"; populateDecisionModels(decisionSelect); decisionSelect.value = m.decision_profile || "";
+    decisionLabel.append(decisionSelect); form.append(decisionLabel);
+    const modeLabel = el("label", "", "Decision mode"), modeSelect = el("select"); modeSelect.name = "decision_mode";
+    for (const [value, title] of [["off", "Off · no request"], ["shadow", "Shadow · compare only"], ["select", "Select · eligible tasks only"]]) {
+      const option = el("option", "", title); option.value = value; modeSelect.append(option);
+    }
+    modeSelect.value = m.decision_mode || (m.decision_profile ? "select" : "off"); modeLabel.append(modeSelect); form.append(modeLabel);
+    form.append(el("p", "missions-note", "Shadow keeps plan order. TypeSafe is an optional cloud service: enabling it sends the compact goal and eligible task summaries; the server needs TYPESAFE_API_KEY. Local profiles use their configured endpoint."));
     for (const [name, title, min, max] of [["attempt_minutes", "Minutes per run", 1, 360],
       ["max_turns", "Steps per run", 1, 200], ["max_attempts", "Total number of runs", Math.max(2, m.attempts.length + 1), 1000]]) {
       const label = el("label", "", title), input = el("input");
@@ -188,7 +223,7 @@ function renderMission(m) {
   if (m.tasks.length) panel.append(el("h3", "", "Plan and results"));
   if (m.plan_revisions?.length) {
     const revisions=el("details","mission-task");revisions.append(el("summary","","Task brief edit history"));
-    for(const change of m.plan_revisions){revisions.append(el("p","",`${new Date(change.at*1000).toLocaleString("en-GB")} · ${change.task} · ${change.reason}`),el("pre","",`Before: ${change.before.criteria.join("\n")}\n\nPo: ${change.after.criteria.join("\n")}`));}
+    for(const change of m.plan_revisions){revisions.append(el("p","",`${new Date(change.at*1000).toLocaleString("en-GB")} · ${change.task} · ${change.reason}`),el("pre","",`Before: ${change.before.criteria.join("\n")}\n\nAfter: ${change.after.criteria.join("\n")}`));}
     panel.append(revisions);
   }
   for (const task of m.tasks) {
@@ -199,6 +234,7 @@ function renderMission(m) {
     const list = el("ul"); list.append(...task.criteria.map(c => el("li", "", c))); card.append(list);
     if (task.feedback) card.append(el("p", "mission-feedback", task.feedback));
     if (task.review_summary) card.append(el("p", "", task.review_summary));
+    for (const check of task.review_checks || []) card.append(el("p", "missions-note", `${check.outcome || (check.passed ? "passed (legacy)" : "failed")} · ${check.issue || "unspecified"} · ${check.criterion}: ${check.evidence}`));
     if (["paused", "blocked"].includes(m.status) && !m.active_attempt && ["pending", "waiting"].includes(task.status)) {
       const form = el("form", "mission-revision");
       form.append(el("p", "missions-note", "Edit the task brief without overwriting history. For corporate execution, first pause the Driver. Original product goals remain preserved."));
@@ -297,6 +333,7 @@ function initMissions() {
       sources:$("#mission-sources").value, constraints:$("#mission-constraints").value,
       profile:$("#mission-profile").value, review_profile:$("#mission-review-profile").value,
       decision_profile:$("#mission-decision-profile").value,
+      decision_mode:$("#mission-decision-profile").value ? $("#mission-decision-mode").value : "off",
       days:Number($("#mission-days").value), max_attempts:Number($("#mission-attempts").value),
       attempt_minutes:Number($("#mission-minutes").value), max_turns:Number($("#mission-turns").value),
       auto_approve:$("#mission-auto").checked,
@@ -313,9 +350,13 @@ function initMissions() {
 
 function fillDecisionModels(id) {
   const select = $(id), previous = select.value;
+  populateDecisionModels(select);
+  select.value = previous;
+}
+function populateDecisionModels(select) {
   const none = el("option", "", "Plan order · no further model"); none.value = "";
   select.replaceChildren(none, ...state.data.profiles.filter(p => p.protocol === "chat_completions" && !p.oauth_provider).map(p => {
     const option = el("option", "", `${p.model} · decision pilot`); option.value = p.id; return option;
   }));
-  select.value = previous;
+  const cloud = el("option", "", "TypeSafe Jev · optional cloud (sends task summaries)"); cloud.value = "typesafe:jev-latest"; select.append(cloud);
 }

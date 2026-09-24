@@ -99,9 +99,9 @@ async function api(path, body) {
 }
 function bind(selector, event, fn) {
   $(selector).addEventListener(event, (e) => {
-    Promise.resolve()
-      .then(() => fn(e))
-      .catch((err) => toast(err.message, true));
+    // preventDefault and duplicate-submit guards must run during dispatch.
+    try { Promise.resolve(fn(e)).catch((err) => toast(err.message, true)); }
+    catch (err) { toast(err.message, true); }
   });
 }
 function project() {
@@ -900,6 +900,8 @@ async function addCompanyContext() {
 async function init() {
   icons();
   initMissions();
+  initDecisionLab();
+  initBrowserPilot();
   initProducts();
   initCompanies();
   initFlow();

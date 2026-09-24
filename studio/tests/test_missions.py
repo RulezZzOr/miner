@@ -19,7 +19,8 @@ def plan_task(key="one", deps=None):
 
 def report(status="done", criterion="File contains OK."):
     return {"status": status, "summary": "Content verified.", "artifacts": ["deliverable.txt"],
-            "checks": [{"criterion": criterion, "passed": True, "evidence": "read_file: OK"}]}
+            "checks": [{"criterion": criterion, "passed": True, "evidence": "read_file: OK",
+                        "outcome": "supported", "issue": "none", "needs_owner": False}]}
 
 
 class MissionTests(unittest.TestCase):
@@ -99,6 +100,8 @@ class MissionTests(unittest.TestCase):
         while self.current()["status"] == "verifying" and time.monotonic() < deadline:
             self.controller.tick()
             time.sleep(0.02)
+        if self.current()["status"] == "running" and not self.current()["active_attempt"]:
+            self.controller.tick()
         return self.current()
 
     def begin_build(self, tasks=None):
@@ -120,7 +123,7 @@ class MissionTests(unittest.TestCase):
         self.assertEqual([a["phase"] for a in m["attempts"]], ["plan", "build", "review", "final"])
         self.assertEqual([b["profile"] for b, _ in self.launched], ["coder", "coder", "reviewer", "reviewer"])
         self.assertEqual([meta["attempt_seconds"] for _, meta in self.launched],
-                         [300] + [m["attempt_minutes"] * 60] * 3)
+                         [300, m["attempt_minutes"] * 60, 480, 480])
         self.assertEqual(self.launched[0][0]["max_turns"], 8)
         self.assertEqual(len({a["id"] for a in m["attempts"]}), 4)
         self.assertEqual(len(m["evidence"]), 4)
@@ -135,7 +138,64 @@ class MissionTests(unittest.TestCase):
             self.controller.action({"id": self.key, "action": "accept"})
         self.controller.action({"id": self.key, "action": "recheck"})
         self.controller.tick()
+        deadline = time.monotonic() + 5
+        while not self.current()["active_attempt"] and time.monotonic() < deadline:
+            self.controller.tick()
+            time.sleep(0.02)
+        self.assertEqual(self.current()["attempts"][-1]["phase"], "build")
+        self.assertIn("Independent check", self.current()["tasks"][-1]["feedback"])
+
+    def test_functional_evidence_precedes_final_review_and_is_reused_for_acceptance(self):
+        self.begin_build()
+        self.finish(report())
+        m = self.finish(report("pass"))
+        self.assertEqual(m["attempts"][-1]["phase"], "final")
+        record = self.controller.verifications.verify(m)
+        prompt = self.launched[-1][0]["task"]
+        self.assertIn('FUNCTIONALITY:', prompt)
+        self.assertIn('"exit_code": 0', prompt)
+        self.assertIn(record["id"], prompt)
+        self.assertIsNone(m["final_report"])
+        m = self.finish(report("pass", "Product is readable."))
+        self.assertEqual(m["status"], "ready")
+        self.assertEqual(m["verification_id"], record["id"])
+
+    def test_review_handoff_excludes_unrelated_tasks_and_duplicate_history(self):
+        self.begin_build([plan_task(), plan_task("later", ["one"])])
+        m = self.current()
+        m["tasks"][1]["instructions"] = "UNRELATED_LATER_INSTRUCTIONS"
+        m["tasks"][1]["summary"] = "UNRELATED_LATER_SUMMARY"
+        m["tasks"][0]["instructions"] = "LONG_IMPLEMENTATION_INSTRUCTIONS"
+        self.controller.save(m)
+        self.finish(report())
+        prompt = self.launched[-1][0]["task"]
+        self.assertIn("ARCHITECTURE:", prompt)
+        self.assertIn("not code style or a line-by-line source audit", prompt)
+        self.assertNotIn("UNRELATED_LATER", prompt)
+        self.assertNotIn("LONG_IMPLEMENTATION_INSTRUCTIONS", prompt)
+
+    def test_source_change_during_final_review_cannot_pass(self):
+        self.begin_build()
+        self.finish(report())
+        self.finish(report("pass"))
+        (self.project / "deliverable.txt").write_text("OK changed")
+        m = self.finish(report("pass", "Product is readable."))
+        self.assertNotEqual(m["status"], "ready")
+        self.assertIsNone(m["final_report"])
+
+    def test_new_check_spec_requires_a_new_functional_review(self):
+        self.deliver()
+        m = self.controller.action({"id": self.key, "action": "set_checks",
+            "verification_checks": [{"argv": [sys.executable, "-c", "print('NEW SCENARIO')"]}]})
+        self.assertIsNone(m["final_report"])
+        deadline = time.monotonic() + 5
+        while not self.current()["active_attempt"] and time.monotonic() < deadline:
+            self.controller.tick()
+            time.sleep(0.02)
         self.assertEqual(self.current()["attempts"][-1]["phase"], "final")
+        self.assertIn("NEW SCENARIO", self.launched[-1][0]["task"])
+        with self.assertRaises(ValueError):
+            self.controller.action({"id": self.key, "action": "accept"})
 
     def test_plan_cannot_schedule_its_own_controller_report_as_product_work(self):
         m = self.start()

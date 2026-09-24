@@ -29,6 +29,8 @@ from pathlib import Path
 
 try:
     from .browser import open_browser
+    from .decision_lab import DecisionLab
+    from .browser_pilot import BrowserPilot
     from .companies import Companies
     from .deployments import Deployments
     from .missions import Missions
@@ -39,6 +41,8 @@ try:
     from .ssh_inventory import targets_for
 except ImportError:
     from browser import open_browser
+    from decision_lab import DecisionLab
+    from browser_pilot import BrowserPilot
     from companies import Companies
     from deployments import Deployments
     from missions import Missions
@@ -206,6 +210,8 @@ class Studio:
             self.runs[run["id"]] = run
         self.add_project(str(workspace))
         self.missions = Missions(self)
+        self.decision_lab = DecisionLab(self)
+        self.browser_pilot = BrowserPilot(self)
         self.products = Products(self)
         self.deployments = Deployments(self)
         self.companies = Companies(self)
@@ -549,10 +555,15 @@ class Studio:
         backend = profiles[profile].get("backend", "frontier")
         if backend == "codex" and mode != "react":
             raise Problem("ChatGPT via Codex is available only in single-agent mode.")
-        notes = self.project_notes(project)
+        bounded_review = bool(mission and mission.get("review_packet"))
+        if bounded_review and backend != "frontier":
+            raise Problem("This backend does not support bounded review evidence tools.")
+        notes = None if bounded_review else self.project_notes(project)
         ssh_targets = targets_for(self.config.resolve().parent, mission)
         with self.lock:
             # The current GUI supports one active task at a time.
+            if self.decision_lab.active() or self.browser_pilot.lock.locked():
+                raise Problem("A bounded lab experiment is using inference. Wait for it to finish.", 409)
             if self.missions.verifications.active():
                 raise Problem("Independent checks are in progress. Wait for them to complete.", 409)
             if any(r["status"] in ACTIVE for r in self.runs.values()):
@@ -590,6 +601,7 @@ class Studio:
                     "env_file": str(self.config.parent / ".env"),
                     "oauth_config_dir": str(self.data / "anthropic"),
                     "ssh_targets": ssh_targets,
+                    **({"review_objects": str(self.missions.versions.objects)} if bounded_review else {}),
                 },
             )
             self.runs[run_id] = run
@@ -732,7 +744,7 @@ class Studio:
                 status=status,
                 ended=time.time(),
                 exit_code=code,
-                **{k: result[k] for k in ("session_id", "reason", "usage") if k in result},
+                **{k: result[k] for k in ("session_id", "reason", "usage", "review_reads") if k in result},
             )
             if not cleaned:
                 run.update(status="failed", reason="Failed to terminate all subprocesses.")
@@ -907,6 +919,10 @@ class Handler(BaseHTTPRequestHandler):
                 result = self.studio.missions.verifications.get(q["id"])
             elif path == "/api/mission-trace":
                 result = {"events": self.studio.missions.trace(q["id"])}
+            elif path == "/api/decision-lab":
+                result = {"evaluations": self.studio.decision_lab.list(q["project"])}
+            elif path == "/api/decision-metrics":
+                result = self.studio.missions.decisions.metrics(q["id"])
             elif path == "/api/deployments":
                 result = {"deployments": self.studio.deployments.list(q.get("product"))}
             elif path == "/api/companies":
@@ -938,7 +954,7 @@ class Handler(BaseHTTPRequestHandler):
                         stream.seek(max(0, logfile.stat().st_size - 100000))
                         text = stream.read(100000).decode("utf-8", errors="replace")
                 result = {"text": text}
-            elif path in {"/", "/app.js", "/missions.js", "/products.js", "/preview.js", "/companies.js", "/help.js", "/office.js", "/office.css", "/style.css"}:
+            elif path in {"/", "/app.js", "/missions.js", "/products.js", "/preview.js", "/companies.js", "/help.js", "/office.js", "/decision-lab.js", "/browser-pilot.js", "/office.css", "/style.css"}:
                 target = STATIC / ("index.html" if path == "/" else path.lstrip("/"))
                 return self.send(
                     target.read_bytes(),
@@ -986,6 +1002,12 @@ class Handler(BaseHTTPRequestHandler):
             return self.studio.missions.create(body)
         if path == "/api/missions/action":
             return self.studio.missions.action(body)
+        if path == "/api/decision-lab":
+            return self.studio.decision_lab.start(body)
+        if path == "/api/decision-lab/export":
+            return self.studio.decision_lab.export(body["id"])
+        if path == "/api/browser-pilot":
+            return self.studio.browser_pilot.choose(body)
         if path == "/api/companies":
             return self.studio.companies.create(body)
         if path == "/api/companies/action":
