@@ -26,7 +26,7 @@ Each development team (Alpha, Beta, Gamma) includes frontend, backend, fullstack
 
 ```mermaid
 flowchart TD
-  Owner[Ty: goals and acceptance] --> CEO[CEO]
+  Owner[You: goals and acceptance] --> CEO[CEO]
   CEO --> COO[COO / operations]
   CEO --> Growth[Head of Sales & Marketing]
   CEO --> CTO[CTO / delivery]

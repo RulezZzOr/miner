@@ -4,6 +4,10 @@
 
 Local GUI built on top of the full FrontierAgent backend. Runs on `http://127.0.0.1:4317` and requires no frontend build, CDN, or cloud account.
 
+See the [complete feature catalog](docs/FEATURES.md) for tables covering the live
+dashboard, interactive [3D Office](docs/OFFICE.md), models, delivery, company loops,
+product maintenance and optional integrations, with examples and current limits.
+
 ## Launch
 
 Installation for **macOS, Linux, and Windows via WSL2**: [INSTALL.md](../INSTALL.md).
@@ -79,7 +83,7 @@ Switching project or model does not affect an already running task. The agent wo
 - Actual sessions and backend outputs: `<project>/.apodex/runs/<session-id>/`.
 - API keys are read from environment or `.env` for original TOML / in `frontier/`; GUI stores only the variable name.
 
-The server listens only on loopback. It checks Host, Origin, and token for modification requests. The editor does not allow paths outside the open project, symbolic links anywhere in the path, or `.env*` / `.git` / `.switch-agent`, regardless of case. Read and write operations use open directory descriptors and `O_NOFOLLOW`, so swapping a directory for a symlink between check and opening cannot bypass protection. These web API checks do not replace agent command isolation: **native backend runs with user permissions**, just like the terminal version.
+The server defaults to loopback; an explicit `--host` can select a concrete trusted LAN interface. It checks Host, Origin, and token for modification requests. The editor does not allow paths outside the open project, symbolic links anywhere in the path, or `.env*` / `.git` / `.switch-agent`, regardless of case. Read and write operations use open directory descriptors and `O_NOFOLLOW`, so swapping a directory for a symlink between check and opening cannot bypass protection. These web API checks do not replace agent command isolation: **native backend runs with user permissions**, just like the terminal version. There is no multi-user login; do not expose Studio to untrusted networks.
 
 Studio GUI currently runs one task at a time. Each native launch has its own stable working link under `.apodex/runtime/native/workspaces/<invocation>/workspace`; a separate CLI run does not overwrite it. Within team tasks, delegation remains functional. A successful process return alone does not mean a completed task: the GUI distinguishes confirmed completion, incomplete result, error, and cancellation.
 
@@ -98,8 +102,8 @@ node --test studio/tests/*.cjs
 
 Integration tests run an actual Frontier process against a deterministic local test API. They verify approval → tool → file → completion, stopping, history, and HTTP/editing boundaries. These are not tests of intelligence or real model quality.
 
-## Fixes for audit of 22 Sep 2026
+## Security and verification
 
-All seven confirmed findings have been fixed and regression-verified in the [audit report](../analysis/audit/AUDIT.md). The helper summary uses the protocol and configuration of the selected workflow in both modes. Model check without authentication sends no key from the environment. Codex output list iterates through all event pages up to the log size recorded at the start of reading.
+The published [delivery and security audit](../docs/AUDIT-2026-09-24.md) records verified safeguards, Office archive/XML fixes, dependency and publication checks, and remaining security boundaries. The helper summary uses the protocol and configuration of the selected workflow in both modes. Model check without authentication sends no key from the environment. Codex output list iterates through all event pages up to the log size recorded at the start of reading.
 
 Native process management regularly tracks descendants and re-captures their identity before Stop. This is not OS-level isolation of an intentionally evading program; such limitation would require a container or other system sandbox. Working links are separate; project files and installation cache may still be shared across different runs.

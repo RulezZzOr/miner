@@ -1,6 +1,6 @@
 # Company Builder & Driver
 
-Status: 2026-09-23, local version 0.4.0-alpha.3. The Company is a persistent layer built on top of the existing Execution Controller. It is not a verified replacement for the entire company management system.
+Reviewed against alpha.9 on 24 September 2026. The Company is a persistent layer built on top of the existing Execution Controller. It is not a verified replacement for the entire company management system. See the [feature catalog](FEATURES.md) for the dashboard, 3D Office and related product capabilities.
 
 ## Usage
 

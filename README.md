@@ -9,24 +9,36 @@ a browser interface, persistent project workflows and a Company Builder & Driver
 Question-mark help beside controls explains their purpose, use and a concrete example.
 Existing user-authored task briefs and history keep their original language.
 
-## What it does
+## Feature overview
 
-- Open directly to a live dashboard: running work, queued tasks, owner decisions and company status.
-- Assign a task from the dashboard with a project, department or model, instructions and completion criteria.
+Implemented capabilities in alpha.9. Optional adapters need their own setup; experimental
+features are labeled. The [complete feature catalog](studio/docs/FEATURES.md) includes
+usage examples, implementation references, verification and the limits of each area.
 
-- Edit project files, inspect outputs and follow real tool activity in a browser.
-- Use an OpenAI-compatible model endpoint, including a local Ollama server.
-- Run single-agent ReAct or Agent Team workflows.
-- Plan a project, execute tasks, request a separate model review and run explicit verification commands.
-- Check brief readiness, scale process to task impact and resume from a compact saved handoff.
-- Inspect a result card bound to actual checks and source hashes, with explicit freshness and limitations.
-- Append conflict-checked Markdown acceptance notes after delivery. See the [delivery workflow](studio/docs/DELIVERY_WORKFLOW.md).
-- Keep task dependencies, questions, evidence, attempt limits and recovery state in SQLite.
-- Organize projects and recurring work through Company Builder & Driver.
-- Follow work and blockers on a live dependency diagram or the interactive **3D Office**.
-- Select a department desk to inspect real status, the latest model run and its blockers.
-- Track product versions, stage changes in a working copy and manage optional local services and repair queues.
-- Keep project knowledge in ordinary Markdown files, starting with `PROJECT.md`.
+| Feature | What you can do | Guide |
+| --- | --- | --- |
+| **Live dashboard** | See active work, task queues, company status and decisions across projects, with freshness/offline indicators. | [Dashboard](studio/docs/DASHBOARD.md) |
+| **Quick task assignment** | Pick a project, company/department or standalone model; enter instructions and completion criteria; queue or start work. | [Task entry](studio/docs/DASHBOARD.md#give-an-assignment) |
+| **Interactive 3D Office** | Inspect occupied desks, departments, models and blockers; rotate, zoom, filter by company or use the accessible list. Movement follows recent recorded activity. | [3D Office](studio/docs/OFFICE.md) |
+| **Live dependency map** | Follow the current execution step, actual dependencies, verification, blockers and recent events. | [Visual monitoring](studio/docs/FEATURES.md#dashboard-and-visual-monitoring) |
+| **Browser workspace / IDE** | Browse project files, edit and save text, create files and inspect outputs. Conflicting edits are rejected. | [Workspace](studio/README.md#features) |
+| **Local models and optional accounts** | Configure Ollama/OpenAI-compatible endpoints; optionally connect the implemented Codex or Claude Console adapters. | [Models and accounts](studio/docs/FEATURES.md#models-agents-and-tools) |
+| **Single agent and Agent Team** | Run native ReAct or delegated team tasks, inspect tool events and stop the monitored process tree. | [Agent scope](studio/docs/FEATURES.md#models-agents-and-tools) |
+| **Managed AI Projects** | Turn a brief into a persistent plan, tasks, questions, execution, review and acceptance. | [AI Projects](studio/docs/LONG_RUNNING_PROJECTS.md) |
+| **Separate worker and reviewer** | Choose profiles for implementation and architecture/functionality review; failed checks return work for correction. | [Control loop](studio/docs/CONTROL_LOOP.md) |
+| **Approvals and owner decisions** | Answer Yes / No / custom input, revise conflicting briefs, pause work and choose explicit auto-approval settings. | [Delivery workflow](studio/docs/DELIVERY_WORKFLOW.md) |
+| **Verified result card** | Inspect actual command outcomes, test counts, output hashes, source freshness and acceptance limitations. | [Result evidence](studio/docs/DELIVERY_WORKFLOW.md#2-inspect-one-result-card) |
+| **Readiness, process modes and handoff** | Catch recognized brief conflicts, select Light/Standard/Sensitive handling and resume from a bounded saved handoff. | [Delivery workflow](studio/docs/DELIVERY_WORKFLOW.md) |
+| **Company Builder & Driver** | Manage project portfolios, departments, dependencies, priorities, recurring assignments, limits and Markdown reports. | [Company Driver](studio/docs/COMPANY_DRIVER.md) |
+| **30-role AI Build Company template** | Save and customize responsibilities, instructions, reviewers and project briefs. A role template does not launch 30 agents. | [Template](studio/templates/README.md) |
+| **Products and maintenance loops** | Keep permanent product criteria, queue changes, track accepted versions and optionally schedule maintenance. | [Products](studio/docs/PRODUCT_LIFECYCLE.md) |
+| **Versions, merge and recovery** | Work in a copy, check source conflicts, accept changes and preview/restore recorded content versions. | [Version boundaries](studio/docs/CONTROL_LOOP.md#isolation-and-versions) |
+| **Local deployment and repair queue** | Start an approved local service, check HTTP health, record incidents and optionally queue repairs or redeploy an older verified version. | [Local deployment](studio/docs/CONTROL_LOOP.md#local-deployment-and-fixes) |
+| **Markdown project knowledge** | Load `PROJECT.md`; append dated acceptance summaries, decisions and output references without overwriting concurrent edits. | [Project notes](studio/docs/MARKDOWN_NOTES.md) |
+| **Static web preview** | Create a starter page, preview saved HTML/CSS/JS, reload changed assets and switch to a 390 px mobile-width view. | [Preview](studio/docs/WEB_PREVIEW.md) |
+| **Decision experiments** | Try bounded task selection, idea/document/CRM-text judgments and a local browser-action fixture. These are experiments, not live CRM or general browser automation. | [Decision lab](studio/docs/DECISION_LAB.md) |
+| **Optional read-only SSH inventory** | Inspect explicitly configured hosts for approved missions, using key authentication and host-key verification. | [SSH setup](INSTALL.md#read-only-ssh-inventory-for-a-mission) |
+| **Help, audit and distribution** | Use contextual question-mark help, English UI, local verification and macOS/Linux/Windows-WSL2 source packages. GitHub Actions is not used. | [Full catalog](studio/docs/FEATURES.md) |
 
 The Company Driver currently shares **one worker slot** across managed tasks. A department is
 an instruction context, not an isolated service account. A role template is not a fleet of
@@ -97,7 +109,9 @@ still determine what is verified; they cannot prove properties they do not test.
 
 ## Documentation
 
+- [Complete feature catalog and capability boundaries](studio/docs/FEATURES.md)
 - [Dashboard and quick task assignment](studio/docs/DASHBOARD.md)
+- [Interactive 3D Office](studio/docs/OFFICE.md)
 - [Installation and platform limits](INSTALL.md)
 - [Studio features and optional accounts](studio/README.md)
 - [Company Builder & Driver](studio/docs/COMPANY_DRIVER.md)
@@ -111,9 +125,10 @@ still determine what is verified; they cannot prove properties they do not test.
 
 ## Validation of this snapshot
 
-The alpha.8 baseline passed 240 backend tests (one optional test skipped) and 92
-frontend checks on macOS and Linux. Alpha.9 adds attributed acceptance summaries,
-bounded output links and a Markdown-escaping regression. Release receipts identify
+The alpha.9 runtime passed 241 backend tests (one optional test skipped) and 92
+frontend checks on macOS and Linux. The [release includes verification receipts](https://github.com/RulezZzOr/miner/releases/tag/v0.4.0-alpha.9).
+Alpha.9 adds attributed acceptance summaries, bounded output links and a
+Markdown-escaping regression. Release receipts identify
 the exact tested revision and package hashes. Dashboard GUI checks cover queue submission, preserving task
 drafts during refresh, company status and navigation to the workspace. Bounded live-model
 workflows on Linux have exercised planning, file creation, independent review and acceptance.
