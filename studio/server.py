@@ -954,7 +954,7 @@ class Handler(BaseHTTPRequestHandler):
                         stream.seek(max(0, logfile.stat().st_size - 100000))
                         text = stream.read(100000).decode("utf-8", errors="replace")
                 result = {"text": text}
-            elif path in {"/", "/app.js", "/missions.js", "/products.js", "/preview.js", "/companies.js", "/help.js", "/office.js", "/decision-lab.js", "/browser-pilot.js", "/office.css", "/style.css"}:
+            elif path in {"/", "/app.js", "/missions.js", "/products.js", "/preview.js", "/companies.js", "/help.js", "/office.js", "/decision-lab.js", "/browser-pilot.js", "/office.css", "/style.css", "/dashboard.js", "/dashboard.css"}:
                 target = STATIC / ("index.html" if path == "/" else path.lstrip("/"))
                 return self.send(
                     target.read_bytes(),

@@ -2,7 +2,7 @@
 
 A self-hosted web IDE and workflow manager for building and maintaining digital products with AI agents.
 
-**Status: `0.4.0-alpha.4` · experimental · macOS / Linux / Windows via WSL2**
+**Status: `0.4.0-alpha.7` · experimental · macOS / Linux / Windows via WSL2**
 
 Miner is the repository name; the application is called **Switch Studio**. It provides
 a browser interface, persistent project workflows and a Company Builder & Driver. The interface, built-in instructions and Studio documentation are in English.
@@ -10,6 +10,9 @@ Question-mark help beside controls explains their purpose, use and a concrete ex
 Existing user-authored task briefs and history keep their original language.
 
 ## What it does
+
+- Open directly to a live dashboard: running work, queued tasks, owner decisions and company status.
+- Assign a task from the dashboard with a project, department or model, instructions and completion criteria.
 
 - Edit project files, inspect outputs and follow real tool activity in a browser.
 - Use an OpenAI-compatible model endpoint, including a local Ollama server.
@@ -44,7 +47,7 @@ sh setup-studio
 sh switch-studio --no-open
 ```
 
-Open **http://127.0.0.1:4317**. In **Models**, configure a reachable model endpoint and a model
+Open **http://127.0.0.1:4317**. In **More → Models**, configure a reachable model endpoint and a model
 that is actually available on it. The supplied model name is a placeholder; no model weights
 or paid provider account are included. The installer downloads Python 3.12 and locked dependencies.
 
@@ -91,6 +94,7 @@ still determine what is verified; they cannot prove properties they do not test.
 
 ## Documentation
 
+- [Dashboard and quick task assignment](studio/docs/DASHBOARD.md)
 - [Installation and platform limits](INSTALL.md)
 - [Studio features and optional accounts](studio/README.md)
 - [Company Builder & Driver](studio/docs/COMPANY_DRIVER.md)
@@ -103,11 +107,11 @@ still determine what is verified; they cannot prove properties they do not test.
 
 ## Validation of this snapshot
 
-The alpha.4 Studio backend suite ran 166 tests (165 passed, one optional test skipped);
-74 frontend checks passed. A clean macOS source-archive installation started the HTTP
-server, returned HTTP 200 and shut down gracefully. Bounded live-model workflows on
-Linux have exercised planning, file creation, model review and independent acceptance
-checks. These are scoped checks, not proof of unattended company operation.
+The alpha.7 Studio backend suite ran 225 tests (224 passed, one optional test skipped);
+89 frontend checks passed. Dashboard GUI checks cover queue submission, preserving task
+drafts during refresh, company status and navigation to the workspace. Bounded live-model
+workflows on Linux have exercised planning, file creation, independent review and acceptance.
+These are scoped checks, not proof of unattended company operation.
 No GitHub Actions run is claimed for this snapshot.
 
 ## License and origin
@@ -125,3 +129,13 @@ No credentials, local company records, agent transcripts or model weights are in
 ### Alpha.6: bounded reviews and decision experiments
 
 Reviews now use immutable evidence packets with a fixed read budget and typed outcomes. Optional task selection supports Off, Shadow and Select with stale-response rejection. **Decision lab** provides read-only idea scoring, document triage and CRM routing proposals, using a local chat profile or optional TypeSafe cloud, with saved Markdown reports. See [behavior, setup and limits](studio/docs/DECISION_LAB.md).
+
+### Alpha.7: dashboard first
+
+The home screen shows active agents, queued company assignments and items requiring attention
+across all projects. Add a task in place: select a project, company/department or standalone
+model, write the brief and define “Done when”. Company tasks inherit existing worker/reviewer
+and permission settings; paused Drivers keep new work queued. Standalone tasks start with
+normal tool approvals and do not include independent review. More options contains constraints,
+priority and verification commands or the standalone step limit. Refreshing never clears a draft.
+The Workspace, 3D Office and live map remain directly accessible; secondary tools are under More.

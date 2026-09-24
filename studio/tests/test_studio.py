@@ -203,7 +203,7 @@ class StudioTests(unittest.TestCase):
             with urllib.request.urlopen(base + "/") as response:
                 self.assertIn(b"Switch Studio", response.read())
                 self.assertIn("frame-ancestors 'none'", response.headers["Content-Security-Policy"])
-            for asset, marker in [("help.js", b"initStudioHelp"), ("office.js", b"officeModel"), ("office.css", b"office-world")]:
+            for asset, marker in [("help.js", b"initStudioHelp"), ("office.js", b"officeModel"), ("office.css", b"office-world"), ("dashboard.js", b"submitDashboardTask"), ("dashboard.css", b"dash-layout")]:
                 with urllib.request.urlopen(base + "/" + asset) as response:
                     self.assertIn(marker, response.read())
             for headers in [{"Host": "attacker.test"}, {"Origin": "https://attacker.test"}]:

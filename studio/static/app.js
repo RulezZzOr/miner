@@ -242,6 +242,7 @@ async function openFile(path, force = false) {
   if (state.project !== selectedProject || state.fileEpoch !== epoch) return;
   state.file = file;
   state.dirty = false;
+  if (typeof showDashboard === "function") showDashboard(false);
   $("#welcome").classList.add("hidden");
   $("#editor-pane").classList.remove("hidden");
   $("#save-file").classList.remove("hidden");
@@ -499,6 +500,7 @@ function updateRunControls() {
 async function selectRun(id) {
   const r = state.data.runs.find((r) => r.id === id);
   if (!r) return;
+  if (typeof showDashboard === "function") showDashboard(false);
   if (state.project !== r.project) {
     await selectProject(r.project);
     if (state.project !== r.project) return;
@@ -1107,7 +1109,9 @@ async function init() {
     }
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && !$("dialog[open]")) {
       e.preventDefault();
-      if (!$("#run-task").disabled) $("#task-form").requestSubmit();
+      if (document.body.classList.contains("dashboard-home")) {
+        if (!$("#dashboard-submit").disabled) $("#dashboard-task-form").requestSubmit();
+      } else if (!$("#run-task").disabled) $("#task-form").requestSubmit();
     }
   });
   window.addEventListener("beforeunload", (e) => {
@@ -1118,6 +1122,7 @@ async function init() {
   });
   updateRunControls();
   initApprovalInbox();
+  initDashboard();
   setInterval(async () => {
     if (state.polling) return;
     state.polling = true;

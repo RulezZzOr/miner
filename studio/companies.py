@@ -15,8 +15,8 @@ except ImportError:
     from missions import TERMINAL, number, strings, text
 
 DEPARTMENTS = {"operations": "Management and Operations", "delivery": "Development and Delivery",
-               "growth": "Sales and marketing", "finance": "Finance a administrativa",
-               "platform": "Infrastruktura a data"}
+               "growth": "Sales and marketing", "finance": "Finance and Administration",
+               "platform": "Infrastructure and Data"}
 
 
 class Companies:

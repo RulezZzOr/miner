@@ -104,7 +104,7 @@ function renderDriverCompany(c, data) {
   }
   panel.append(el("h3", "", "Department work and repetition"));
   for (const t of c.tasks) {
-    const row = el("div", "product-work-item");
+    const row = el("div", "product-work-item"); row.id = `company-task-${t.id}`; row.tabIndex = -1;
     row.append(el("strong", "", t.title), el("p", "missions-note", `${data.departments[t.department]} · ${companyStatus[t.status] || t.status} · priority ${t.priority}${t.enabled ? "" : " · disabled"}`));
     const detail = el("details"); detail.append(el("summary", "", "Task brief, criteria, and dependencies"),el("p","",t.goal));
     const criteria = el("ul"); criteria.append(...t.criteria.map(v=>el("li","",v))); detail.append(criteria);
