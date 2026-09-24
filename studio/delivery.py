@@ -1,4 +1,4 @@
-"""Evidence cards and provenance-only notes, derived from controller records.
+"""Evidence cards and attributed acceptance notes, derived from controller records.
 
 Notes never become a second task queue. They describe an accepted snapshot and
 explicitly make no deployment or external-service assertion.
@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import re
+from urllib.parse import quote
 
 try:
     from .verification import source_manifest, source_modes
@@ -63,20 +64,45 @@ def evidence_card(controller, m):
             "notes": m.get("notes_sync"), "limitations": limitations}
 
 
+def markdown_text(value):
+    """Render supplied text literally in generated Markdown, including link labels."""
+    value = str(value).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return re.sub(r"([\\`*_{}\[\]()#+.!|~-])", r"\\\1", value)
+
+
 def note_updates(controller, m, base):
     marker = "<!-- miner-acceptance:" + m["id"] + " -->"
     at = datetime.fromtimestamp(m["acceptance"]["at"], timezone.utc).isoformat()
-    # JSON quoting keeps supplied titles out of Markdown headings or HTML blocks.
-    title = json.dumps(m["title"], ensure_ascii=False).replace("<", "&lt;").replace(">", "&gt;")
+    title = markdown_text(json.dumps(m["title"], ensure_ascii=False))
     record = (f"\n\n{marker}\n### Accepted snapshot {m['id']}\n\n"
               f"- Recorded at: {at}\n- Title: {title}\n- Product version: `{m['version_id']}`\n"
               f"- Acceptance: {m['acceptance']['kind']}\n"
               f"- Independent check record: `{m.get('verification_id') or 'not recorded'}`\n"
               f"- Final review run: `{(m.get('final_report') or {}).get('run', 'not recorded')}`\n")
+    report = m.get("final_report") or {}
+    # A reviewed summary is still a model assessment. Preserve its attribution and
+    # scope, and quote it as data rather than turning it into new instructions.
+    summary = str(report.get("summary", "No review summary recorded.")).encode()[:2400].decode("utf-8", errors="ignore")
+    summary = markdown_text(summary)
+    description = "\n#### Accepted-change description\n\nReview assessment for this snapshot (not a live deployment claim):\n\n"
+    description += "\n".join("> " + line for line in summary.splitlines()) + "\n"
+    if len(str(report.get("summary", "")).encode()) > 2400:
+        description += "\nSummary excerpt truncated; the complete assessment is in the recorded final review.\n"
+    artifacts = report.get("verified_artifacts", [])
+    references = "\n#### Output references\n\n"
+    for item in artifacts[:24]:
+        # Paths and fragments are URL encoded; supplied names cannot inject Markdown.
+        label = markdown_text(item["path"].replace("\n", " ").replace("\r", " "))
+        references += f"- [{label}](../{quote(item['path'], safe='/')}) — accepted SHA-256 `{item['sha256']}`\n"
+    if len(artifacts) > 24:
+        references += f"- {len(artifacts) - 24} additional outputs are listed in the result card.\n"
+    if not artifacts:
+        references += "No output references were recorded.\n"
+    references += "\nLinks open the current files; the hashes above identify the accepted snapshot. Changed files require new verification.\n"
     values = {
-        "notes/NOTES.md": record + "- This records local acceptance, not deployment or live integration health. See the Studio result card for current evidence freshness.\n",
+        "notes/NOTES.md": record + description + references + "\nThis records local acceptance, not deployment or live integration health. Older entries are historical; compare the latest applicable snapshot with current source files. See the Studio result card for evidence freshness.\n",
         "notes/DECISIONS.md": record + "- Decision: accept this product snapshot. The original brief, revisions, owner decisions and pending work remain in Studio's database.\n",
-        "notes/SOURCES.md": record + f"- Provenance: Studio mission `{m['id']}`, immutable output hashes and controller check logs. Model statements are not independent proof.\n",
+        "notes/SOURCES.md": record + f"- Provenance: Studio mission `{m['id']}`, immutable output hashes and controller check logs. Model statements are not independent proof.\n" + references,
     }
     updates = {}
     for path, suffix in values.items():

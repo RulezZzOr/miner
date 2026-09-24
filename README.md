@@ -2,7 +2,7 @@
 
 A self-hosted web IDE and workflow manager for building and maintaining digital products with AI agents.
 
-**Status: `0.4.0-alpha.8` · experimental · macOS / Linux / Windows via WSL2**
+**Status: `0.4.0-alpha.9` · experimental · macOS / Linux / Windows via WSL2**
 
 Miner is the repository name; the application is called **Switch Studio**. It provides
 a browser interface, persistent project workflows and a Company Builder & Driver. The interface, built-in instructions and Studio documentation are in English.
@@ -106,12 +106,15 @@ still determine what is verified; they cannot prove properties they do not test.
 - [Markdown project notes](studio/docs/MARKDOWN_NOTES.md)
 - [Contributing and tests](CONTRIBUTING.md)
 - [Security and reporting](SECURITY.md)
+- [Delivery and security audit, 24 September 2026](docs/AUDIT-2026-09-24.md)
 - [Upstream provenance](frontier/SWITCH.md) and [third-party notices](THIRD_PARTY.md)
 
 ## Validation of this snapshot
 
-The alpha.7 Studio backend suite ran 225 tests (224 passed, one optional test skipped);
-90 frontend checks passed. Dashboard GUI checks cover queue submission, preserving task
+The alpha.8 baseline passed 240 backend tests (one optional test skipped) and 92
+frontend checks on macOS and Linux. Alpha.9 adds attributed acceptance summaries,
+bounded output links and a Markdown-escaping regression. Release receipts identify
+the exact tested revision and package hashes. Dashboard GUI checks cover queue submission, preserving task
 drafts during refresh, company status and navigation to the workspace. Bounded live-model
 workflows on Linux have exercised planning, file creation, independent review and acceptance.
 These are scoped checks, not proof of unattended company operation.

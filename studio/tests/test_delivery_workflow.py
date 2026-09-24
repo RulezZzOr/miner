@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from studio.tests import test_missions as helpers
 from studio.workflow import readiness, process_policy, handoff
-from studio.delivery import sync_notes
+from studio.delivery import sync_notes, note_updates
 from studio.test_evidence import test_count
 
 
@@ -86,6 +86,11 @@ class WorkflowTests(unittest.TestCase):
         m = self.controller.action({"id": self.key, "action": "accept"})
         self.assertEqual(m["notes_sync"]["status"], "complete")
         text = (self.project / "notes/NOTES.md").read_text()
+        self.assertIn("Accepted-change description", text)
+        self.assertIn("> Content verified\\.", text)
+        self.assertIn("[deliverable\\.txt](../deliverable.txt)", text)
+        self.assertIn(m["final_report"]["verified_artifacts"][0]["sha256"], text)
+        self.assertIn("not a live deployment claim", text)
         self.controller.tick()
         self.controller.action({"id": self.key, "action": "sync_notes"})
         self.assertEqual((self.project / "notes/NOTES.md").read_text(), text)
@@ -95,6 +100,23 @@ class WorkflowTests(unittest.TestCase):
         card = self.controller.delivery(self.key)
         self.assertEqual(card["freshness"], "stale")
         self.assertIn("unrelated.py", card["changed_files"])
+
+    def test_notes_quote_model_markup_and_bound_summary_and_output_references(self):
+        self.deliver()
+        m = self.controller.action({"id": self.key, "action": "accept"})
+        m["id"] = "new-acceptance-fixture"
+        m["final_report"]["summary"] = "![tracker](https://example.invalid/image)\n<script>bad</script>\n" + "ž" * 2000
+        m["final_report"]["verified_artifacts"] = [
+            {"path": "output [x](y)#.md", "sha256": "a" * 64} for _ in range(26)]
+        base = self.controller.versions.snapshot(self.project, label="Notes escaping fixture")
+        text = note_updates(self.controller, m, base)["notes/NOTES.md"]
+        self.assertNotIn("![tracker]", text)
+        self.assertNotIn("<script>", text)
+        self.assertIn("&lt;script&gt;", text)
+        self.assertIn("../output%20%5Bx%5D%28y%29%23.md", text)
+        self.assertIn("Summary excerpt truncated", text)
+        self.assertIn("2 additional outputs", text)
+        self.assertNotIn("ž" * 1200, text)
 
     def test_concurrent_notes_edit_is_preserved_and_acceptance_remains_recorded(self):
         self.deliver()

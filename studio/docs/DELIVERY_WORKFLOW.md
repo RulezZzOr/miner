@@ -37,11 +37,13 @@ test summaries fail. API checks can explicitly specify `kind: "test"` and
 `minimum_tests`. Ordinary non-test commands remain valid for document or build
 checks; do not label an ordinary file assertion as a test suite.
 
-`.github/workflows/verify.yml` runs the shipped backend and frontend suites,
+The prepared `.github/workflows/verify.yml` runs the shipped backend and frontend suites,
 publication credential checks, package manifest verification and a locked runtime
 dependency audit. The downloadable receipt identifies the exact GitHub commit.
 Repository branch protection must be configured separately if CI is to be required
 before merge. This application does not enable automatic merging.
+At this audit's publication, workflow upload is blocked by missing GitHub OAuth
+`workflow` scope. Local receipts do not represent an executed GitHub Actions run.
 
 ## 3. Resume using a compact handoff
 
@@ -60,7 +62,10 @@ not a claim that a particular model will finish faster.
 After acceptance, the controller appends a dated acceptance record to
 `notes/NOTES.md`, `notes/DECISIONS.md` and `notes/SOURCES.md`, and adds their index to
 `PROJECT.md` once. Existing text is preserved. The record identifies the snapshot,
-check record, review run and manual or verified acceptance. It never invents a
+check record, review run and manual or verified acceptance. Notes also include a
+bounded, explicitly attributed review summary and relative links to accepted
+outputs with their hashes. Links open current files; the hashes identify the
+historical accepted snapshot. Older entries remain visibly historical. It never invents a
 deployment, external-service status, architectural decision or new task queue.
 SQLite remains the task authority; deployed-state questions still require the
 project's actual authoritative host.
