@@ -108,7 +108,7 @@ still determine what is verified; they cannot prove properties they do not test.
 ## Validation of this snapshot
 
 The alpha.7 Studio backend suite ran 225 tests (224 passed, one optional test skipped);
-89 frontend checks passed. Dashboard GUI checks cover queue submission, preserving task
+90 frontend checks passed. Dashboard GUI checks cover queue submission, preserving task
 drafts during refresh, company status and navigation to the workspace. Bounded live-model
 workflows on Linux have exercised planning, file creation, independent review and acceptance.
 These are scoped checks, not proof of unattended company operation.

@@ -67,3 +67,12 @@ test('dashboard polling does not touch the task form and retains last snapshot o
  ctx.api=async()=>{throw new Error('Disconnected');};await ctx.loadDashboard();
  assert.match(ctx.$('#dashboard-sync').textContent,/Offline/);assert.equal(ctx.$('#dashboard-brief').value,values.brief);
 });
+test('home keeps the same approval inbox visible and preserves its draft across workspace navigation',()=>{
+ const {ctx}=fixture();let position='workspace';const draft={value:'Use staging only'};
+ const inbox={draft,before(anchor){assert.equal(anchor,marker);}},marker={after(node){assert.equal(node,inbox);position='workspace';}};
+ const base=ctx.$;
+ ctx.$=s=>s==='#approval-inbox'?inbox:s==='#dashboard-approval-slot'?{append(node){assert.equal(node,inbox);position='dashboard';}}:{...base(s),setAttribute(){},classList:{toggle(){}}};
+ ctx.document={createComment:()=>marker,body:{classList:{toggle(){}}}};
+ ctx.showDashboard(true);assert.equal(position,'dashboard');assert.equal(inbox.draft.value,'Use staging only');
+ ctx.showDashboard(false);assert.equal(position,'workspace');assert.equal(inbox.draft,draft);
+});

@@ -236,12 +236,14 @@ function approvalInboxItems(runs, missions) {
   return items;
 }
 function focusApprovalInbox() {
+  $("#dashboard-approval-slot")?.classList.add("show-empty");
   // Closing a dialog preserves its form DOM and drafts.
   $$("dialog[open]").forEach(dialog=>dialog.close());
   $("#approval-inbox").scrollIntoView({block:"nearest"});
   $("#approval-inbox").focus();
 }
 function approvalInboxBadges(count) {
+  $("#dashboard-approval-slot")?.classList.toggle("has-approvals", count > 0);
   $("#approval-jump").hidden = count === 0;
   $("#approval-count").textContent = String(count);
   $("#approval-total").textContent = String(count);

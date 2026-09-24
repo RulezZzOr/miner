@@ -1,9 +1,18 @@
 "use strict";
 // A read-only overview and a small composer over the existing task APIs.
 let dashboardData = null, dashboardLoading = false, dashboardSubmitting = false;
-let dashboardSnapshot = "", dashboardLastUpdated = null;
+let dashboardSnapshot = "", dashboardLastUpdated = null, dashboardInboxAnchor = null;
 const dashboardClosed = new Set(["done", "accepted", "cancelled", "expired", "rejected"]);
 function showDashboard(visible = true) {
+  const inbox = $("#approval-inbox");
+  if (inbox) {
+    if (!dashboardInboxAnchor) {
+      dashboardInboxAnchor = document.createComment("approval inbox workspace position");
+      inbox.before(dashboardInboxAnchor);
+    }
+    if (visible) $("#dashboard-approval-slot").append(inbox);
+    else dashboardInboxAnchor.after(inbox);
+  }
   document.body.classList.toggle("dashboard-home", visible);
   $("#dashboard-button").setAttribute("aria-pressed", String(visible));
   $("#dashboard-button").classList.toggle("primary", visible);

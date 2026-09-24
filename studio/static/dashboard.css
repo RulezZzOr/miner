@@ -59,3 +59,7 @@
 @media(max-width:760px) { .dashboard { padding:22px 14px 40px; } .dash-heading { align-items:flex-start; flex-direction:column; gap:14px; } .dash-sync { flex-direction:row; align-items:center; } .dash-layout { grid-template-columns:1fr; } .dash-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; } .dash-metric strong { font-size:27px; } .dash-form-pair { grid-template-columns:1fr; gap:0; } .top-actions .button { font-size:11px; } .dash-heading h1 { font-size:27px; } }
 
 .product-work-item:focus-visible { outline:2px solid var(--green); outline-offset:3px; }
+
+#dashboard-approval-slot { margin-bottom:12px; }
+#dashboard-approval-slot:not(.has-approvals):not(.show-empty) { display:none; }
+#dashboard-approval-slot .approval-inbox { border-radius:10px; }
