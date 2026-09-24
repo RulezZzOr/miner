@@ -37,13 +37,14 @@ test summaries fail. API checks can explicitly specify `kind: "test"` and
 `minimum_tests`. Ordinary non-test commands remain valid for document or build
 checks; do not label an ordinary file assertion as a test suite.
 
-The prepared `.github/workflows/verify.yml` runs the shipped backend and frontend suites,
-publication credential checks, package manifest verification and a locked runtime
-dependency audit. The downloadable receipt identifies the exact GitHub commit.
-Repository branch protection must be configured separately if CI is to be required
-before merge. This application does not enable automatic merging.
-At this audit's publication, workflow upload is blocked by missing GitHub OAuth
-`workflow` scope. Local receipts do not represent an executed GitHub Actions run.
+Run `frontier/.venv/bin/python scripts/ci_check.py` locally or on the operator's own
+server. It runs the shipped backend and frontend suites, publication credential
+checks and package manifest verification. The receipt identifies the exact Git
+commit, worktree state and tested archive hashes. Run the locked dependency audit
+as described in `docs/AUDIT-2026-09-24.md` before publication. A publication receipt
+must pass on the clean published commit; a dirty development run is not sufficient.
+GitHub Actions is intentionally not used or required. No `workflow` authorization
+is needed. This application does not enable automatic merging.
 
 ## 3. Resume using a compact handoff
 

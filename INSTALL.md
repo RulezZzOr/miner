@@ -88,8 +88,9 @@ frontier/.venv/bin/python scripts/smoke_release.py dist/switch-studio-0.4.0-alph
 Output is in `dist/`: three archives, file manifests, and `SHA256SUMS`.
 The smoke test extracts into a temporary directory with spaces, installs a clean environment,
 verifies HTTP startup and server shutdown. `--suite` adds integration and regression tests.
-The workflow `.github/workflows/studio-platforms.yml` prepares these checks for Ubuntu and macOS;
-mere existence of the workflow is not a successful CI run.
+Run `frontier/.venv/bin/python scripts/ci_check.py` in a Git checkout to collect
+local test results, publication checks and package hashes in `dist/ci-evidence/`.
+Run platform checks on the respective machine. GitHub Actions is not used or required.
 
 Current local verification is recorded in `analysis/platform-validation.json`
 in the development copy. Testing on Windows/WSL and other architectures requires the respective machine.

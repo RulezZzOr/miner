@@ -118,7 +118,8 @@ the exact tested revision and package hashes. Dashboard GUI checks cover queue s
 drafts during refresh, company status and navigation to the workspace. Bounded live-model
 workflows on Linux have exercised planning, file creation, independent review and acceptance.
 These are scoped checks, not proof of unattended company operation.
-No GitHub Actions run is claimed for this snapshot.
+Verification runs locally and on the operator's own server. GitHub Actions is not
+used or required; see [local verification](CONTRIBUTING.md#local-checks).
 
 ## License and origin
 
