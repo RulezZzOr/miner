@@ -59,6 +59,7 @@ usage examples, implementation references, verification and the limits of each a
 | **Verified result card** | Inspect actual command outcomes, test counts, output hashes, source freshness and acceptance limitations. | [Result evidence](studio/docs/DELIVERY_WORKFLOW.md#2-inspect-one-result-card) |
 | **Readiness, process modes and handoff** | Catch recognized brief conflicts, select Light/Standard/Sensitive handling and resume from a bounded saved handoff. | [Delivery workflow](studio/docs/DELIVERY_WORKFLOW.md) |
 | **Company Builder & Driver** | Manage project portfolios, departments, dependencies, priorities, recurring assignments, limits and Markdown reports. | [Company Driver](studio/docs/COMPANY_DRIVER.md) |
+| **24/7 operating model** | See how service uptime, the Driver loop, workers, review, persisted state and owner gates fit together. | [Company mind map](docs/MIND-MAP.md) |
 | **30-role AI Build Company template** | Save and customize responsibilities, instructions, reviewers and project briefs. A role template does not launch 30 agents. | [Template](studio/templates/README.md) |
 | **Products and maintenance loops** | Keep permanent product criteria, queue changes, track accepted versions and optionally schedule maintenance. | [Products](studio/docs/PRODUCT_LIFECYCLE.md) |
 | **Versions, merge and recovery** | Work in a copy, check source conflicts, accept changes and preview/restore recorded content versions. | [Version boundaries](studio/docs/CONTROL_LOOP.md#isolation-and-versions) |

@@ -267,6 +267,7 @@ class Studio:
             "max_output_tokens",
             "backend",
             "oauth_provider",
+            "reviewer_default",
         }
         with self.lock:
             runs = [

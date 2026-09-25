@@ -128,6 +128,16 @@ class StudioTests(unittest.TestCase):
             self.studio.kill_later(process)
         self.temp.cleanup()
 
+    def test_public_state_exposes_reviewer_role_metadata(self):
+        (self.studio.data / "models.json").write_text(json.dumps({
+            "reviewer": {"model": "review-model", "protocol": "chat_completions",
+                         "base_url": "http://127.0.0.1:1/v1", "auth": "none",
+                         "reviewer_default": True}
+        }))
+        profiles = self.studio.public_state()["profiles"]
+        reviewer = next(profile for profile in profiles if profile["id"] == "reviewer")
+        self.assertTrue(reviewer["reviewer_default"])
+
     def test_file_conflict_and_escape(self):
         (self.project / "a.txt").write_text("original")
         f = self.studio.read_file(self.pid, "a.txt")
