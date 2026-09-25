@@ -294,6 +294,18 @@ class StudioTests(unittest.TestCase):
             self.assertEqual(Path(approval['target']).resolve(), (self.project / path).resolve())
             self.studio.decide({'run': run['id'], 'approval': approval['id'], 'allow': True})
             self.wait_until(lambda: self.studio.runs[run['id']]['status'] not in {'running', 'waiting', 'stopping'})
+            self.assertTrue((self.studio.control_dir(run['id']) / 'run.json').exists())
+            self.assertTrue((self.studio.control_dir(run['id']) / 'processes.json').exists())
+            self.assertFalse((self.studio.run_dir(run['id']) / 'run.json').exists())
+            self.assertFalse((self.studio.run_dir(run['id']) / 'processes.json').exists())
+            (self.studio.run_dir(run['id']) / 'run.json').write_text(json.dumps({'id':'injected','status':'running'}))
+            restored = Studio(self.project, self.root / 'state', self.config)
+            try:
+                self.assertEqual(restored.runs[run['id']]['status'], self.studio.runs[run['id']]['status'])
+                self.assertNotIn('injected', restored.runs)
+            finally:
+                restored.missions.close(); restored.oauth.close()
+
             self.assertEqual(json.loads((self.project / path).read_text()), report)
             self.assertEqual(self.studio.runs[run['id']]['status'], 'completed')
             self.assertEqual(len(server.requests), 1)

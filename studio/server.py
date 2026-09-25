@@ -202,9 +202,13 @@ class Studio:
         self.oauth = OAuthConnections(self.data)
         self.projects = self.read_json(self.data / "projects.json", {})
         self.runs = {}
-        for path in self.data.glob("runs/*/run.json"):
+        for path in [*self.data.glob("runs/*/run.json"), *self.data.glob("run-control/*/run.json")]:
+            # A new worker may write arbitrary output names, including run.json.
+            # Never interpret its output as a legacy controller record.
+            if path.parent.parent.name == "runs" and (self.data / "run-control" / path.parent.name / "run.json").exists():
+                continue
             run = self.read_json(path, {})
-            if not run.get("id"):
+            if not run.get("id") or run["id"] != path.parent.name:
                 continue
             if run.get("status") in ACTIVE:
                 identities = self.read_json(path.parent / "processes.json", [])
@@ -515,6 +519,12 @@ class Studio:
             raise Problem("Unknown task.", 404)
         return self.data / "runs" / run_id
 
+    def control_dir(self, run_id):
+        """Recovery metadata is never mounted writable in an agent namespace."""
+        if self.runs[run_id].get("isolated_control"):
+            return self.data / "run-control" / run_id
+        return self.run_dir(run_id)  # Read and recover older task records.
+
     def project_notes(self, project):
         """Attach only the saved Markdown index; linked notes are read on demand."""
         root = self.project(project)
@@ -598,6 +608,7 @@ class Studio:
                 "created": time.time(),
                 "status": "running",
                 "auto_approve": bool(body.get("auto_approve", False)),
+                "isolated_control": True,
                 "backend": backend,
                 "oauth_provider": profiles[profile].get("oauth_provider"),
                 **({"project_notes": {k: notes[k] for k in ("path", "sha256")}} if notes else {}),
@@ -619,7 +630,9 @@ class Studio:
                 },
             )
             self.runs[run_id] = run
-            atomic_json(directory / "run.json", run)
+            control = self.control_dir(run_id)
+            control.mkdir(parents=True, mode=0o700)
+            atomic_json(control / "run.json", run)
             if ssh_targets:
                 self.inventory_brokers[run_id] = InventoryBroker(ssh_targets, directory / "inventory.sock")
             log = (directory / "console.log").open("wb")
@@ -640,13 +653,13 @@ class Studio:
                 broker = self.inventory_brokers.pop(run_id, None)
                 if broker: broker.close()
                 run.update(status="failed", ended=time.time())
-                atomic_json(directory / "run.json", run)
+                atomic_json(control / "run.json", run)
                 raise
             finally:
                 log.close()
             self.processes[run_id] = process
             try:
-                atomic_json(directory / "processes.json", self.process_tree(process).identities())
+                atomic_json(control / "processes.json", self.process_tree(process).identities())
                 (directory / "activated").touch()
             except Exception:
                 self.process_tree(process).finish()
@@ -655,7 +668,7 @@ class Studio:
                 broker = self.inventory_brokers.pop(run_id, None)
                 if broker: broker.close()
                 run.update(status="failed", ended=time.time(), reason="Cannot safely save worker identity.")
-                atomic_json(directory / "run.json", run)
+                atomic_json(control / "run.json", run)
                 raise
             process._studio_watcher = threading.Thread(
                 target=self.watch, args=(run_id, process), daemon=True
@@ -743,7 +756,7 @@ class Studio:
             tree.refresh()
             if time.monotonic() - last_checkpoint >= 1:
                 try:
-                    atomic_json(self.run_dir(run_id) / "processes.json", tree.identities())
+                    atomic_json(self.control_dir(run_id) / "processes.json", tree.identities())
                 except OSError as exc:
                     checkpoint_error = f"Cannot save process checkpoint: {exc}"
                     tree.finish()
@@ -773,7 +786,7 @@ class Studio:
             self.processes.pop(run_id, None)
             if checkpoint_error:
                 run.update(status="failed", reason=checkpoint_error)
-            atomic_json(self.run_dir(run_id) / "run.json", run)
+            atomic_json(self.control_dir(run_id) / "run.json", run)
 
     def stop(self, run_id):
         self.run_dir(run_id)
@@ -781,7 +794,7 @@ class Studio:
             process = self.processes.get(run_id)
             if process and self.runs[run_id]["status"] != "stopping":
                 self.runs[run_id]["status"] = "stopping"
-                atomic_json(self.run_dir(run_id) / "run.json", self.runs[run_id])
+                atomic_json(self.control_dir(run_id) / "run.json", self.runs[run_id])
                 self.process_tree(process).stop()
                 threading.Thread(target=self.kill_later, args=(process,), daemon=True).start()
         return {"ok": True}
