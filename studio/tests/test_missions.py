@@ -123,7 +123,7 @@ class MissionTests(unittest.TestCase):
         self.assertEqual([a["phase"] for a in m["attempts"]], ["plan", "build", "review", "final"])
         self.assertEqual([b["profile"] for b, _ in self.launched], ["coder", "coder", "reviewer", "reviewer"])
         self.assertEqual([meta["attempt_seconds"] for _, meta in self.launched],
-                         [300, m["attempt_minutes"] * 60, 480, 480])
+                         [300, m["attempt_minutes"] * 60, min(m["attempt_minutes"] * 60, 900), min(m["attempt_minutes"] * 60, 900)])
         self.assertEqual(self.launched[0][0]["max_turns"], 8)
         self.assertEqual(len({a["id"] for a in m["attempts"]}), 4)
         self.assertEqual(len(m["evidence"]), 4)

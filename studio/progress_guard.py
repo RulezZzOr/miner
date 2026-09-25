@@ -8,7 +8,7 @@ def phase_limits(phase, seconds, turns):
     if phase == 'plan':
         return min(seconds, 300), min(turns, 8)
     if phase in {'review', 'final'}:
-        return min(seconds, 480), min(turns, 6)
+        return min(seconds, 900), min(turns, 6)
     return seconds, turns
 
 
