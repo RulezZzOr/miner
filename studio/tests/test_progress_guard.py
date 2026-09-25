@@ -46,6 +46,12 @@ class GuardTests(unittest.TestCase):
         self.assertEqual(phase_limits('plan',60,3),(60,3))
         self.assertEqual(phase_limits('build',1200,40),(1200,40))
 
+    def test_review_and_final_allow_fifteen_minutes_without_expanding_shorter_budgets(self):
+        for phase in ('review', 'final'):
+            self.assertEqual(phase_limits(phase, 1200, 40), (900, 6))
+            self.assertEqual(phase_limits(phase, 900, 24), (900, 6))
+            self.assertEqual(phase_limits(phase, 60, 3), (60, 3))
+
     def test_plan_discovery_is_bounded_but_report_is_still_allowed(self):
         g = ProgressGuard('plan')
         for _ in range(3):
