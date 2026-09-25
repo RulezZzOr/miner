@@ -93,6 +93,7 @@ async function api(path, body) {
           body: JSON.stringify(body),
         },
   );
+  if (response.status === 401) { location.replace("/"); throw new Error("Sign in to Miner."); }
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || "Request failed.");
   return result;

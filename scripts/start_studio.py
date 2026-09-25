@@ -20,6 +20,7 @@ def configure(root: Path) -> bool:
 
 
 def main() -> None:
+    os.umask(0o077)
     if sys.platform not in {"darwin", "linux"}:
         raise SystemExit("Windows requires WSL2. Use Switch Studio Windows.cmd.")
     sys.path.insert(0, str(ROOT))

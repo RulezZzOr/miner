@@ -37,20 +37,38 @@ def main():
         time.sleep(0.05)
     if os.getppid() != parent:
         return 1
-    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1", **request.get("environment", {})}
-    process = subprocess.Popen(request["argv"], cwd=request["cwd"], env=env)
+    try:
+        from studio.isolation import isolated_command, clean_environment
+    except ImportError:
+        from isolation import isolated_command, clean_environment
+    environment = request.get('environment', {})
+    writable = [environment['SWITCH_DATA_DIR']] if environment.get('SWITCH_DATA_DIR') else []
+    status = directory.resolve() / 'child-status.json'
+    fd = os.open(status, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    os.close(fd)
+    child_argv = [sys.executable, str(Path(__file__).with_name('isolated_check.py').resolve()), str(status), json.dumps(request['argv'])]
+    command = isolated_command(child_argv, request['cwd'], writable=[*writable, status], environment=environment, protected=[request['controller_data']] if request.get('controller_data') else [])
+    process = subprocess.Popen(command, cwd=request['cwd'], env=clean_environment(os.environ))
     while process.poll() is None:
         if os.getppid() != parent:
             os.killpg(os.getpgrp(), signal.SIGKILL)
         time.sleep(0.05)
-    result = {"exit_code": process.returncode, "ended": time.time()}
+    code = process.returncode
+    try:
+        raw = json.loads(status.read_text())["exit_code"]
+        if isinstance(raw, int) and not isinstance(raw, bool) and code == (raw if raw >= 0 else 1):
+            code = raw
+    except (OSError, ValueError, KeyError, TypeError):
+        # No valid child outcome means the check cannot be reported as a success.
+        code = code or 1
+    result = {"exit_code": code, "sandbox_exit_code": process.returncode, "ended": time.time()}
     temporary = directory / "command-result.tmp"
     with temporary.open("w", encoding="utf-8") as stream:
         json.dump(result, stream)
         stream.flush()
         os.fsync(stream.fileno())
     temporary.replace(directory / "command-result.json")
-    return process.returncode if process.returncode >= 0 else 1
+    return code if code >= 0 else 1
 
 
 if __name__ == "__main__":

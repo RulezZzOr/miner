@@ -53,12 +53,12 @@ Implementation: [server.py](../server.py), [preview.py](../preview.py), [deliver
 | --- | --- | --- |
 | Model profiles | Add/select OpenAI-compatible endpoints, including Ollama; probe the endpoint's model list and configure context/output limits. | Optional endpoint configuration. No model weights, hardware performance guarantee or cloud account is bundled. |
 | Worker/reviewer selection | Select separate profiles for implementation and review. Example: local coder on one host and a thinking model on another. | Managed projects have separate review sessions; configure a different profile/model when independent-model review is required. Standalone work has no such cycle. |
-| Native single agent | Run a ReAct task against the selected project with tools and a main-agent step limit. | Implemented; approved native tools run with the service account's OS permissions. |
+| Native single agent | Run a ReAct task against the selected project with tools and a main-agent step limit. | Linux bubblewrap required; no unsafe fallback. Native macOS execution is disabled. |
 | Native Agent Team | Use backend delegation and inspect worker-creation events. | Implemented backend mode; the GUI does not implement arbitrary recursive department trees or a guaranteed 1 → 5 → 25 worker hierarchy. |
 | Files, shell and research | Use configured file read/write/search, shell and web tools in the applicable worker phase. | Tools are phase/configuration dependent; search/fetch providers may need separate setup. Review phases intentionally have a narrower tool set. |
 | Document readers | Extract supported PDF and Office content for agent work. | Reader dependencies are included by setup; format/scan handling has limits. Office ZIP expansion and chart XML have explicit security bounds. |
-| Optional ChatGPT/Codex account adapter | Use Studio's account controls with an installed local Codex CLI/App Server; forward supported approval requests to the GUI. | Optional single-agent adapter with its own runtime; not native Agent Team, and not a generic ChatGPT-token OpenAI API endpoint. Requires working provider login. |
-| Optional Claude Console adapter | Use the implemented Anthropic CLI account flow and native agent runtime. | Optional Console/API account path, not a promised Claude Pro/Max subscription adapter. Requires the relevant local CLI and credentials. |
+| Optional ChatGPT/Codex account adapter | Use Studio's account controls with an installed local Codex CLI/App Server; forward supported approval requests to the GUI. | Adapter retained, but execution is disabled pending an isolated credential broker. |
+| Optional Claude Console adapter | Use the implemented Anthropic CLI account flow and native agent runtime. | Adapter retained, but execution is disabled pending an isolated credential broker. |
 | Stop and cleanup | Stop the monitored process tree and record cancellation after cleanup; forced termination follows when necessary. | Implemented process management, not containment of intentionally hostile code. |
 | Tool approval controls | Approve individual actions or explicitly enable supported task/company auto-approval. | Auto-approval is off by default and separate from result acceptance; changing process mode does not grant permissions. |
 
@@ -136,7 +136,7 @@ Implementation: [decisions.py](../decisions.py), [decision_lab.py](../decision_l
 | Local release checks | Backend/frontend tests, publication signature checks and archive manifest verification; a separate locked dependency audit. GitHub Actions is intentionally disabled. |
 | Verified alpha.9 baseline | 241 backend tests passed, one optional test skipped, and 92 frontend checks passed on macOS and Linux. [Release receipts](https://github.com/RulezZzOr/miner/releases/tag/v0.4.0-alpha.9) identify tested source and archives. Windows/WSL2 end-to-end use is not established by these runs. |
 | Request and file safeguards | Host/Origin/request-token checks, protected paths, no-follow file access, conflict checks, bounded readers and explicit approval handling. |
-| Security boundary | Trusted single operator and trusted LAN/loopback. No multi-user login, RBAC or tenant isolation. Approved native commands have the host account's permissions. |
+| Security boundary | Single-owner login, TLS on LAN, private runtime files, Linux bubblewrap for workers/checks. No RBAC, network egress isolation or separate kernel. |
 | Audit and provenance | [Dated audit](../../docs/AUDIT-2026-09-24.md), [security policy](../../SECURITY.md), [third-party notices](../../THIRD_PARTY.md) and retained upstream attribution. |
 
 Not currently provided: ready-made CRM/Vapi/Buffer/banking integrations, autonomous

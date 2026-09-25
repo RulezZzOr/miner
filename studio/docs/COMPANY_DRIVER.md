@@ -48,7 +48,7 @@ After sleep, missed intervals are not recovered. After three controller errors, 
 - Pausing saves state before stopping subordinate work. Direct API access to an execution cannot bypass a paused company or its horizon. Upon resuming, only executions paused by the company are restored; earlier independent blocks remain.
 - Automatic acceptance uses the same verification of current artifacts and test results as manual verified acceptance. A model report alone is insufficient to prove success.
 - An external item has no executable execution. The owner records actual execution with proof or rejection. The button does not send, validate, or deploy anything.
-- A department is a working context. The native agent has user-level permissions, and instructions like "do not send" are not system sandboxed. Enable automatic tools only in environments where you grant such permissions; isolated accounts and network policies per department are not available.
+- A department is a working context. Workers use Linux bubblewrap isolation, but instructions like "do not send" are not enforced as a network policy. Enable automatic tools only in environments where you grant such permissions; isolated accounts and network policies per department are not available.
 
 ## What this version does not integrate
 

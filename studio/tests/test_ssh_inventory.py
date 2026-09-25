@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-from studio.ssh_inventory import SSHInventory, SECTIONS, execute, ssh_argv, targets_for
+from studio.ssh_inventory import SSHInventory, InventoryBroker, SECTIONS, execute, ssh_argv, targets_for
 from studio.ssh_probe import integration_names, project_files
 
 
@@ -118,3 +118,18 @@ class SSHInventoryTests(unittest.TestCase):
                 task.cancel()
                 with self.assertRaises(asyncio.CancelledError):await task
         asyncio.run(exercise())
+
+    def test_broker_only_allows_configured_typed_inventory(self):
+        import socket
+        broker=InventoryBroker([self.target], self.root/'inventory.sock')
+        self.addCleanup(broker.close)
+        def exchange(body):
+            with socket.socket(socket.AF_UNIX) as client:
+                client.connect(str(broker.path));client.sendall(json.dumps(body).encode()+b'\n')
+                return json.loads(client.recv(10000))
+        with patch('studio.ssh_inventory.execute',new_callable=AsyncMock,return_value={'version':1,'section':'system','data':{'hostname':'fixture'}}) as runner:
+            for request in [{'target':'other','section':'system'}, {'target':'cloud','section':'system','command':'cat secret'}, {'target':'cloud','section':'/etc/shadow'}]:
+                self.assertFalse(exchange(request)['ok'])
+            runner.assert_not_called()
+            self.assertTrue(exchange({'target':'cloud','section':'system'})['ok'])
+            runner.assert_awaited_once()

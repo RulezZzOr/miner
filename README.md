@@ -11,7 +11,7 @@ the files, reviews and checks behind the result.
 [Get started](#quick-start) · [Download](https://github.com/RulezZzOr/miner/releases) ·
 [Explore 64 capabilities](studio/docs/FEATURES.md) · [Security](SECURITY.md)
 
-**`0.4.0-alpha.9` · Experimental · macOS / Linux / Windows via WSL2**
+**`0.4.0-alpha.10` · Experimental · Secure execution on Linux / WSL2 · Browser UI on macOS, Linux and Windows**
 
 ![Switch Studio 3D Office showing department desks, task states and a selected task's model and progress](docs/media/office-3d.jpg)
 
@@ -88,10 +88,13 @@ Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and Git, t
 git clone https://github.com/RulezZzOr/miner.git
 cd miner
 sh setup-studio
-sh switch-studio --no-open
+mkdir -p "$HOME/miner-projects/pilot"
+sh switch-studio --no-open --cwd "$HOME/miner-projects/pilot"
 ```
 
-Open **http://127.0.0.1:4317**. In **More → Models**, configure a reachable model endpoint and a model
+On Ubuntu/Debian, install `bubblewrap` (`sudo apt install bubblewrap`) for secure execution.
+Open **http://127.0.0.1:4317** and sign in with the key in `.switch-agent/studio/access-key`.
+LAN access requires HTTPS; see [installation](INSTALL.md). In **More → Models**, configure a reachable model endpoint and a model
 that is actually available on it. The supplied model name is a placeholder; no model weights
 or paid provider account are included. The installer downloads Python 3.12 and locked dependencies.
 
@@ -152,9 +155,11 @@ context, tools and workload; this project does not claim a general throughput be
 
 ## Current boundaries
 
-- Native agent commands run with the host user's permissions. A working copy is not an OS sandbox.
-- The web server has no user login or per-user access control. Use loopback or a trusted private
-  network; do not expose it directly to the public internet.
+- Workers and verification commands require Linux bubblewrap and fail closed without it.
+  Network access remains enabled; this is not multi-tenant or separate-kernel isolation.
+- Owner sign-in is mandatory; LAN listeners require TLS. There is no per-user role management.
+- Native macOS and OAuth worker execution are disabled pending secure runtime adapters.
+  Use a Linux backend with local/API models and connect from any supported browser.
 - Tool approval and automatic result acceptance are separate settings. Limits count attempts,
   not a guaranteed monetary cap at a model provider.
 - CRM, email, banking, Vapi and Buffer are not connected out of the box. The optional SSH connector

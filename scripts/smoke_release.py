@@ -45,7 +45,11 @@ def smoke(archive: Path, suite: bool) -> None:
                 port = json.loads(saved.read_text())["port"]
                 with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=10) as response:
                     assert response.status == 200
-                    assert b"Switch Studio" in response.read()
+                    assert b"Sign in to Miner" in response.read()
+                key = (root / ".switch-agent/studio/access-key").read_text().strip()
+                request = urllib.request.Request(f"http://127.0.0.1:{port}/api/state", headers={"Authorization": "Bearer " + key})
+                with urllib.request.urlopen(request, timeout=10) as response:
+                    assert "token" in json.load(response)
             finally:
                 process.terminate()
                 try:

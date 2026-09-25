@@ -12,6 +12,12 @@ from pathlib import Path
 from studio.server import COMPANY_PATH, COMPANY_SOURCE, Handler, Problem, Studio
 
 
+def authenticated_open(studio, value):
+    req = value if isinstance(value, urllib.request.Request) else urllib.request.Request(value)
+    req.add_header('Authorization', 'Bearer '+(studio.data/'access-key').read_text().strip())
+    return urllib.request.urlopen(req)
+
+
 class CompanyTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -90,16 +96,16 @@ class CompanyTests(unittest.TestCase):
         worker.start()
         try:
             base = f"http://127.0.0.1:{server.server_port}"
-            with urllib.request.urlopen(base + "/api/templates/company?project=" + self.pid) as response:
+            with authenticated_open(self.studio, base + "/api/templates/company?project=" + self.pid) as response:
                 self.assertEqual(json.load(response)["template"]["role_count"], 30)
             request = urllib.request.Request(base + "/api/templates/company/install",
                 data=json.dumps({"project": self.pid}).encode(), headers={"Content-Type": "application/json"})
             with self.assertRaises(urllib.error.HTTPError) as caught:
-                urllib.request.urlopen(request)
+                authenticated_open(self.studio, request)
             self.assertEqual(caught.exception.code, 403)
             self.assertFalse((self.project / COMPANY_PATH).exists())
             request.add_header("X-Studio-Token", self.studio.token)
-            with urllib.request.urlopen(request) as response:
+            with authenticated_open(self.studio, request) as response:
                 self.assertEqual(json.load(response)["path"], COMPANY_PATH)
         finally:
             server.shutdown()
