@@ -38,7 +38,7 @@ class PreviewTests(unittest.TestCase):
         self.browser = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
 
     def post(self, path, body, token=True):
-        headers = {"Content-Type": "application/json"}
+        headers = {"Content-Type": "application/json", "Authorization": "Bearer " + (self.root / "state/access-key").read_text().strip()}
         if token:
             headers["X-Studio-Token"] = self.studio.token
         req = urllib.request.Request(self.base + path, json.dumps(body).encode(), headers)

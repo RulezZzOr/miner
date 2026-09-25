@@ -199,16 +199,21 @@ class StudioTests(unittest.TestCase):
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         base = f"http://127.0.0.1:{server.server_port}"
+        original_open = urllib.request.urlopen
+        def authenticated_open(value):
+            req = value if isinstance(value, urllib.request.Request) else urllib.request.Request(value)
+            req.add_header('Authorization', 'Bearer '+(self.studio.data/'access-key').read_text().strip())
+            return original_open(req)
         try:
-            with urllib.request.urlopen(base + "/") as response:
+            with authenticated_open(base + "/") as response:
                 self.assertIn(b"Switch Studio", response.read())
                 self.assertIn("frame-ancestors 'none'", response.headers["Content-Security-Policy"])
             for asset, marker in [("help.js", b"initStudioHelp"), ("office.js", b"officeModel"), ("office.css", b"office-world"), ("dashboard.js", b"submitDashboardTask"), ("dashboard.css", b"dash-layout")]:
-                with urllib.request.urlopen(base + "/" + asset) as response:
+                with authenticated_open(base + "/" + asset) as response:
                     self.assertIn(marker, response.read())
             for headers in [{"Host": "attacker.test"}, {"Origin": "https://attacker.test"}]:
                 with self.assertRaises(urllib.error.HTTPError) as ctx:
-                    urllib.request.urlopen(
+                    authenticated_open(
                         urllib.request.Request(base + "/api/state", headers=headers)
                     )
                 self.assertEqual(ctx.exception.code, 403)
@@ -216,7 +221,7 @@ class StudioTests(unittest.TestCase):
                 {"project": self.pid, "path": "safe.txt", "content": "ok", "revision": None}
             ).encode()
             with self.assertRaises(urllib.error.HTTPError) as ctx:
-                urllib.request.urlopen(
+                authenticated_open(
                     urllib.request.Request(
                         base + "/api/file",
                         data=payload,
@@ -224,7 +229,7 @@ class StudioTests(unittest.TestCase):
                     )
                 )
             self.assertEqual(ctx.exception.code, 403)
-            with urllib.request.urlopen(
+            with authenticated_open(
                 urllib.request.Request(
                     base + "/api/file",
                     data=payload,
@@ -236,7 +241,7 @@ class StudioTests(unittest.TestCase):
             ) as response:
                 self.assertEqual(response.status, 200)
             (self.project / "artifact.bin").write_bytes(b"\x00\xffstudio")
-            with urllib.request.urlopen(
+            with authenticated_open(
                 base + f"/api/download?project={self.pid}&path=artifact.bin"
             ) as response:
                 self.assertEqual(response.read(), b"\x00\xffstudio")

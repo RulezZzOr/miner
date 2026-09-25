@@ -101,6 +101,7 @@ class SSHInventory:
     def __init__(self, request):
         self.targets = {t['id']: t for t in request.get('ssh_targets', [])}
         self.workspace = Path(request['cwd']).resolve()
+        self.broker = request.get('inventory_broker')
 
     async def invoke(self, *, target, section):
         if target not in self.targets or section not in SECTIONS:
@@ -111,7 +112,18 @@ class SSHInventory:
         if not folder.resolve().is_relative_to(self.workspace):
             raise ValueError('Evidence directory escapes the workspace')
         folder.mkdir(parents=True, exist_ok=True)
-        result = await execute(t, section)
+        if self.broker:
+            reader, writer = await asyncio.wait_for(asyncio.open_unix_connection(self.broker, limit=300000), 5)
+            try:
+                writer.write(json.dumps({'target':target,'section':section}).encode()+b'\n')
+                await writer.drain()
+                reply = json.loads(await asyncio.wait_for(reader.readline(), 45))
+                if not reply.get('ok'): raise RuntimeError('Scoped SSH inventory failed')
+                result = reply['result']
+            finally:
+                writer.close(); await writer.wait_closed()
+        else:
+            result = await execute(t, section)
         result.update(target=target, host=t['host'], port=t['port'], user=t['user'],
                       observed_at=datetime.now(timezone.utc).isoformat(), mode='read-only')
         path = folder / f'{target}-{section}-{uuid.uuid4().hex[:12]}.json'
@@ -132,3 +144,35 @@ class SSHInventory:
             parameters={'type': 'object', 'properties': {'target': {'type': 'string', 'enum': list(self.targets)},
                 'section': {'type': 'string', 'enum': list(SECTIONS)}},
                 'required': ['target', 'section'], 'additionalProperties': False}, func=self.invoke)
+
+
+class InventoryBroker:
+    """Private per-run Unix capability. Keys and SSH subprocesses stay in the controller."""
+    def __init__(self, targets, path):
+        import socketserver
+        import threading
+        self.path = Path(path).resolve()
+        self.targets = {t['id']:t for t in targets}
+        owner = self
+        class Handler(socketserver.StreamRequestHandler):
+            def handle(self):
+                self.connection.settimeout(45)
+                try:
+                    raw = self.rfile.readline(2049)
+                    if len(raw)>2048: raise ValueError('Request too large')
+                    data = json.loads(raw)
+                    if set(data)!={'target','section'} or data['target'] not in owner.targets or data['section'] not in SECTIONS:
+                        raise ValueError('Inventory capability denied')
+                    result = asyncio.run(execute(owner.targets[data['target']], data['section']))
+                    payload = {'ok':True,'result':result}
+                except Exception:
+                    payload = {'ok':False,'error':'Scoped SSH inventory failed or request denied'}
+                self.wfile.write(json.dumps(payload).encode()+b'\n')
+        self.server = socketserver.UnixStreamServer(str(self.path), Handler)
+        os.chmod(self.path, 0o600)
+        self.thread = threading.Thread(target=self.server.serve_forever,kwargs={'poll_interval':0.1},daemon=True)
+        self.thread.start()
+
+    def close(self):
+        self.server.shutdown();self.server.server_close();self.thread.join(46)
+        self.path.unlink(missing_ok=True)

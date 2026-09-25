@@ -14,6 +14,13 @@ from studio.server import Handler, Studio, write_config
 from studio.tests.test_mission_integration import ProjectModel
 
 
+def authenticated_open(studio, value):
+    import urllib.request
+    req = value if isinstance(value, urllib.request.Request) else urllib.request.Request(value)
+    req.add_header('Authorization', 'Bearer '+(studio.data/'access-key').read_text().strip())
+    return urllib.request.urlopen(req)
+
+
 class CompanyDriverTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -270,17 +277,17 @@ class CompanyDriverTests(unittest.TestCase):
         self.addCleanup(server.server_close)
         self.addCleanup(server.shutdown)
         base=f"http://127.0.0.1:{server.server_port}"
-        with urllib.request.urlopen(base+"/api/companies") as response:
+        with authenticated_open(self.studio, base+"/api/companies") as response:
             self.assertEqual(json.load(response)["companies"][0]["name"],"Test Company")
         body=json.dumps({"id":self.c["id"],"revision":self.current()["revision"],"action":"start"}).encode()
         req=urllib.request.Request(base+"/api/companies/action",data=body,headers={"Content-Type":"application/json"})
         with self.assertRaises(urllib.error.HTTPError) as error:
-            urllib.request.urlopen(req)
+            authenticated_open(self.studio, req)
         self.assertEqual(error.exception.code,403)
         req.add_header("X-Studio-Token",self.studio.token)
-        with urllib.request.urlopen(req) as response:
+        with authenticated_open(self.studio, req) as response:
             self.assertEqual(json.load(response)["status"],"active")
-        with urllib.request.urlopen(base+"/companies.js") as response:
+        with authenticated_open(self.studio, base+"/companies.js") as response:
             self.assertIn(b"initCompanies",response.read())
 
 

@@ -32,6 +32,7 @@ def public_path(value):
 class PreviewManager:
     def __init__(self, studio, read_file, file_parent, problem):
         self.studio, self.read_file, self.file_parent, self.problem = studio, read_file, file_parent, problem
+        self.ssl_context = None
         self.lock = threading.RLock()
         self.session = None
 
@@ -97,6 +98,9 @@ class PreviewSession:
         self.studio_port = studio_port
         self.host = host
         self.server = ThreadingHTTPServer((host, 0), PreviewHandler)
+        self.scheme = "https" if manager.ssl_context else "http"
+        if manager.ssl_context:
+            self.server.socket = manager.ssl_context.wrap_socket(self.server.socket, server_side=True)
         self.server.daemon_threads = True
         self.server.session = self
         self.thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": .1}, daemon=True)
@@ -125,7 +129,7 @@ class PreviewSession:
             revision = self.revision
         route = urllib.parse.quote(PurePosixPath(self.entry).name)
         return {"running": True, "id": self.id, "project": self.project, "entry": self.entry,
-                "url": f"http://{self.host}:{self.server.server_port}/{route}?__studio_preview={self.token}",
+                "url": f"{self.scheme}://{self.host}:{self.server.server_port}/{route}?__studio_preview={self.token}",
                 "revision": revision}
 
     def close(self):
@@ -151,7 +155,7 @@ class PreviewHandler(BaseHTTPRequestHandler):
             "object-src 'none'; frame-src 'none'; worker-src 'none'; base-uri 'self'; form-action 'self'; "
             "sandbox allow-scripts allow-same-origin allow-forms; "
             f"frame-ancestors http://127.0.0.1:{self.server.session.studio_port} http://localhost:{self.server.session.studio_port} "
-            f"http://{self.server.session.host}:{self.server.session.studio_port}")
+            f"{self.server.session.scheme}://{self.server.session.host}:{self.server.session.studio_port}")
         for name, value in headers:
             self.send_header(name, value)
         self.end_headers()
@@ -180,7 +184,7 @@ class PreviewHandler(BaseHTTPRequestHandler):
                 if location.startswith("//"):
                     return self.respond(400, b"Invalid path")
                 return self.respond(303, headers=[("Location", location),
-                    ("Set-Cookie", f"{session.cookie_name}={session.token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800")])
+                    ("Set-Cookie", f"{session.cookie_name}={session.token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800" + ("; Secure" if session.scheme == "https" else ""))])
             cookie = SimpleCookie()
             cookie.load(self.headers.get("Cookie", ""))
             value = cookie.get(session.cookie_name)

@@ -14,6 +14,7 @@ import re
 import secrets
 import signal
 import stat
+import ssl
 import subprocess
 import sys
 import threading
@@ -28,6 +29,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 try:
+    from .access import Access, secure_runtime
     from .browser import open_browser
     from .decision_lab import DecisionLab
     from .browser_pilot import BrowserPilot
@@ -38,8 +40,9 @@ try:
     from .preview import PreviewManager
     from .process_tree import ProcessTree
     from .products import KINDS, Products
-    from .ssh_inventory import targets_for
+    from .ssh_inventory import targets_for, InventoryBroker
 except ImportError:
+    from access import Access, secure_runtime
     from browser import open_browser
     from decision_lab import DecisionLab
     from browser_pilot import BrowserPilot
@@ -50,7 +53,7 @@ except ImportError:
     from preview import PreviewManager
     from process_tree import ProcessTree
     from products import KINDS, Products
-    from ssh_inventory import targets_for
+    from ssh_inventory import targets_for, InventoryBroker
 
 ROOT = Path(__file__).resolve().parents[1]
 STATIC = Path(__file__).parent / "static"
@@ -80,7 +83,7 @@ class Problem(Exception):
 def atomic_json(path, data):
     tmp = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
     try:
-        with tmp.open("x", encoding="utf-8") as stream:
+        with os.fdopen(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), "w", encoding="utf-8") as stream:
             json.dump(data, stream, ensure_ascii=False, indent=2)
             stream.flush()
             os.fsync(stream.fileno())
@@ -189,11 +192,13 @@ def write_config(path, profiles, default):
 class Studio:
     def __init__(self, workspace=ROOT, state_dir=None, config=None):
         self.data = Path(state_dir or ROOT / ".switch-agent" / "studio")
-        self.data.mkdir(parents=True, exist_ok=True)
+        secure_runtime(self.data)
+        self.access = Access(self.data)
         self.config = Path(config or ROOT / "agent.toml")
         self.token = secrets.token_urlsafe(32)
         self.lock = threading.RLock()
         self.processes = {}
+        self.inventory_brokers = {}
         self.oauth = OAuthConnections(self.data)
         self.projects = self.read_json(self.data / "projects.json", {})
         self.runs = {}
@@ -555,6 +560,8 @@ class Studio:
         backend = profiles[profile].get("backend", "frontier")
         if backend == "codex" and mode != "react":
             raise Problem("ChatGPT via Codex is available only in single-agent mode.")
+        if backend == "codex" or profiles[profile].get("oauth_provider"):
+            raise Problem("OAuth execution is unavailable in the secure worker runtime. Select an API/local model.")
         bounded_review = bool(mission and mission.get("review_packet"))
         if bounded_review and backend != "frontier":
             raise Problem("This backend does not support bounded review evidence tools.")
@@ -604,13 +611,17 @@ class Studio:
                     "cwd": str(root),
                     "config": str(config),
                     "env_file": str(self.config.parent / ".env"),
+                    "controller_data": str(self.data.resolve()),
                     "oauth_config_dir": str(self.data / "anthropic"),
-                    "ssh_targets": ssh_targets,
+                    "ssh_targets": [{k:v for k,v in t.items() if k != "identity_file"} for t in ssh_targets],
+                    **({"inventory_broker": str((directory / "inventory.sock").resolve())} if ssh_targets else {}),
                     **({"review_objects": str(self.missions.versions.objects)} if bounded_review else {}),
                 },
             )
             self.runs[run_id] = run
             atomic_json(directory / "run.json", run)
+            if ssh_targets:
+                self.inventory_brokers[run_id] = InventoryBroker(ssh_targets, directory / "inventory.sock")
             log = (directory / "console.log").open("wb")
             try:
                 process = subprocess.Popen(
@@ -626,6 +637,8 @@ class Studio:
                     start_new_session=True,
                 )
             except OSError:
+                broker = self.inventory_brokers.pop(run_id, None)
+                if broker: broker.close()
                 run.update(status="failed", ended=time.time())
                 atomic_json(directory / "run.json", run)
                 raise
@@ -639,6 +652,8 @@ class Studio:
                 self.process_tree(process).finish()
                 process.wait(timeout=3)
                 self.processes.pop(run_id, None)
+                broker = self.inventory_brokers.pop(run_id, None)
+                if broker: broker.close()
                 run.update(status="failed", ended=time.time(), reason="Cannot safely save worker identity.")
                 atomic_json(directory / "run.json", run)
                 raise
@@ -737,6 +752,8 @@ class Studio:
             time.sleep(0.05)
         code = process.wait()
         cleaned = tree.finish()
+        broker = self.inventory_brokers.pop(run_id, None)
+        if broker: broker.close()
         with self.lock:
             run = self.runs[run_id]
             result = self.read_json(self.run_dir(run_id) / "result.json", {})
@@ -870,7 +887,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header(
             "Content-Security-Policy",
             "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; "
-            f"frame-src http://127.0.0.1:* http://localhost:* http://{self.server.server_address[0]}:*; "
+            f"frame-src http://127.0.0.1:* http://localhost:* http://{self.server.server_address[0]}:* https://{self.server.server_address[0]}:*; "
             "frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
         )
         self.end_headers()
@@ -878,12 +895,13 @@ class Handler(BaseHTTPRequestHandler):
 
     def check_origin(self, mutation=False):
         port = self.server.server_port
+        scheme = "https" if getattr(self.server, "tls", False) else "http"
         hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
         hosts.add(f"{self.server.server_address[0]}:{port}")
         if self.headers.get("Host") not in hosts:
             raise Problem("Unauthorized host.", 403)
         origin = self.headers.get("Origin")
-        if origin and origin not in {"http://" + h for h in hosts}:
+        if origin and origin not in {scheme + "://" + h for h in hosts}:
             raise Problem("Unauthorized request origin.", 403)
         if mutation and not secrets.compare_digest(
             self.headers.get("X-Studio-Token", ""), self.studio.token
@@ -898,10 +916,36 @@ class Handler(BaseHTTPRequestHandler):
 
     def handle_request(self, mutation):
         try:
-            self.check_origin(mutation)
+            self.check_origin(False)
             parsed = urllib.parse.urlsplit(self.path)
             q = {k: v[0] for k, v in urllib.parse.parse_qs(parsed.query).items()}
             path = parsed.path
+            if path == "/auth/login" and mutation:
+                if not self.headers.get("Content-Type", "").startswith("application/json"):
+                    raise Problem("JSON expected.", 415)
+                size = int(self.headers.get("Content-Length", 0))
+                if not 0 < size <= 1024:
+                    raise Problem("Invalid login request.", 400)
+                body = json.loads(self.rfile.read(size))
+                if not isinstance(body, dict):
+                    raise Problem("Invalid login request.", 400)
+                session, status = self.studio.access.login(body.get("key"), self.client_address[0])
+                if not session:
+                    return self.send({"error": "Authentication failed."}, status)
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", "2")
+                self.send_header("Cache-Control", "no-store")
+                secure = "; Secure" if getattr(self.server, "tls", False) else ""
+                self.send_header("Set-Cookie", "miner_session=" + session + "; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200" + secure)
+                self.end_headers(); self.wfile.write(b"{}")
+                return
+            if not self.studio.access.authenticated(self.headers):
+                if not mutation and path in {"/", "/login.js", "/login.css"}:
+                    target = STATIC / ("login.html" if path == "/" else path[1:])
+                    return self.send(target.read_bytes(), content_type=mimetypes.guess_type(target)[0] + "; charset=utf-8")
+                raise Problem("Sign in to Miner.", 401)
+            self.check_origin(mutation)
             if mutation:
                 if not self.headers.get("Content-Type", "").startswith("application/json"):
                     raise Problem("JSON expected.", 415)
@@ -1041,12 +1085,19 @@ def main():
     parser.add_argument("--port", type=int, default=4317)
     parser.add_argument("--host", type=ipaddress.IPv4Address, default="127.0.0.1",
                         help="IPv4 interface to listen on (use the server LAN IP for remote access)")
-    parser.add_argument("--cwd", type=Path, default=ROOT)
+    parser.add_argument("--cwd", type=Path, default=Path.home() / "miner-projects" / "default")
     parser.add_argument("--no-open", action="store_true")
+    parser.add_argument("--tls-cert", type=Path)
+    parser.add_argument("--tls-key", type=Path)
     args = parser.parse_args()
     host = str(args.host)
     if args.host.is_unspecified or args.host.is_multicast:
         parser.error("--host requires a concrete interface IPv4 address")
+    os.umask(0o077)
+    if not args.host.is_loopback and not (args.tls_cert and args.tls_key):
+        parser.error("LAN access requires --tls-cert and --tls-key; owner authentication is always enabled")
+    if bool(args.tls_cert) != bool(args.tls_key):
+        parser.error("Provide both TLS certificate and private key")
     state_dir = ROOT / ".switch-agent" / "studio"
     state_dir.mkdir(parents=True, exist_ok=True)
     instance_lock = (state_dir / "server.lock").open("a")
@@ -1057,7 +1108,7 @@ def main():
         port = saved.get("port", args.port)
         if not isinstance(port, int) or not 1 <= port <= 65535:
             raise SystemExit("Switch Studio is already running.") from None
-        url = f"http://{saved.get('host', '127.0.0.1')}:{port}"
+        url = f"{'https' if saved.get('tls') else 'http'}://{saved.get('host', '127.0.0.1')}:{port}"
         print(f"Switch Studio is already running: {url}")
         if not args.no_open:
             open_browser(url)
@@ -1066,10 +1117,19 @@ def main():
         server = ThreadingHTTPServer((host, args.port), Handler)
     except OSError as exc:
         raise SystemExit(f"Port {args.port} is unavailable: {exc}. Try --port 4318.") from None
+    server.tls = bool(args.tls_cert)
+    server.ssl_context = None
+    if server.tls:
+        server.ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        server.ssl_context.minimum_version = ssl.TLSVersion.TLSv1_2
+        server.ssl_context.load_cert_chain(args.tls_cert, args.tls_key)
+        server.socket = server.ssl_context.wrap_socket(server.socket, server_side=True)
+    args.cwd.mkdir(parents=True, exist_ok=True)
     server.studio = Studio(args.cwd)
+    server.studio.preview.ssl_context = server.ssl_context
     server.studio.missions.start()
-    atomic_json(state_dir / "server.json", {"host": host, "port": server.server_port, "pid": os.getpid()})
-    url = f"http://{host}:{server.server_port}"
+    atomic_json(state_dir / "server.json", {"host": host, "port": server.server_port, "pid": os.getpid(), "tls": server.tls})
+    url = f"{'https' if server.tls else 'http'}://{host}:{server.server_port}"
     print(f"Switch Studio: {url}", flush=True)
     if not args.no_open:
         open_browser(url)

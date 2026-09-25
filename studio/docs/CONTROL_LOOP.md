@@ -49,7 +49,7 @@ Without approved checks, the process waits. Manual acceptance has special confir
 
 ## Isolation and Versions
 
-A new execution gets a copy of the resources under `.switch-agent/studio/workspaces/<id>`. At acceptance, changes are compared against the baseline version and the original project. Unrelated owner edits remain; conflicts are rejected. This protects the standard workflow—not an OS sandbox. Native commands still retain user-level permissions.
+A new execution gets a copy of the resources under `.switch-agent/studio/workspaces/<id>`. At acceptance, changes are compared against the baseline version and the original project. Unrelated owner edits remain; conflicts are rejected. Working-copy protection is supplemented by mandatory Linux bubblewrap isolation. Network access and the host kernel remain shared; see ../../SECURITY.md.
 
 Content objects reside under `.switch-agent/studio/objects/`; version metadata and restore journal are stored in SQLite. Before restoration, a backup of the current tracked content is created. A write failure or interruption reverts to the previous state; a newer conflict during restoration requires owner intervention. Individual files are written atomically; the entire file set is not a single filesystem transaction.
 

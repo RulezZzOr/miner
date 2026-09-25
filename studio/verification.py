@@ -1,8 +1,8 @@
 """Controller-owned command evidence. Model reports cannot manufacture an exit code.
 
 Commands are approved through the owner API, run without a shell, and bind to a
-source manifest before and after execution. This is process management, not an OS
-sandbox; the native worker and checks still have the current user's permissions.
+source manifest before and after execution. Linux bubblewrap confines commands to
+the selected workspace and explicit runtime mounts; network access remains enabled.
 """
 from __future__ import annotations
 
@@ -191,7 +191,7 @@ class Verifications:
         # Stage the process before activation, so restart recovery knows its identity.
         directory = self.studio.data / "verifications" / record["id"] / spec["id"]
         directory.mkdir(parents=True)
-        request = {"argv": spec["argv"], "cwd": record["root"], "parent": os.getpid()}
+        request = {"argv": spec["argv"], "cwd": record["root"], "parent": os.getpid(), "controller_data": str(self.studio.data.resolve())}
         (directory / "request.json").write_text(json.dumps(request), encoding="utf-8")
         result = {**spec, "started": time.time(), "exit_code": None, "log": "", "bytes": 0}
         process = subprocess.Popen([sys.executable, "-u", str(Path(__file__).with_name("verification_worker.py")),

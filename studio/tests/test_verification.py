@@ -68,6 +68,16 @@ class VerificationTests(unittest.TestCase):
         self.assertEqual(check["wrapper_exit_code"], 1)
         self.assertEqual(check["signal"], "SIGTERM")
 
+    def test_explicit_exit_143_is_not_misreported_as_sigterm(self):
+        m = self.create(verification_checks=[{"argv": [sys.executable, "-c", "raise SystemExit(143)"]}])
+        key = self.controller.verifications.start(m)
+        deadline = time.monotonic() + 5
+        while self.controller.verifications.get(key)["status"] == "running" and time.monotonic() < deadline:
+            time.sleep(0.02)
+        check = self.controller.verifications.get(key)["checks"][0]
+        self.assertEqual(check["exit_code"], 143)
+        self.assertNotIn("signal", check)
+
     def test_wrapper_failure_cannot_turn_child_success_into_a_pass(self):
         (self.root / "command-result.json").write_text('{"exit_code": 0}')
         outcome = command_outcome(self.root, 1)

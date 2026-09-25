@@ -18,6 +18,7 @@ def definition(root=ROOT):
         "ProgramArguments": [str(root / "switch-studio"), "--no-open"],
         "WorkingDirectory": str(root),
         "RunAtLoad": True,
+        "Umask": 0o077,
         "KeepAlive": True,
         "ThrottleInterval": 15,
         "ExitTimeOut": 20,
@@ -28,6 +29,7 @@ def definition(root=ROOT):
 
 
 def main():
+    os.umask(0o077)
     parser = argparse.ArgumentParser(description="Switch Studio: macOS user service")
     parser.add_argument("action", choices=["enable", "disable", "status"])
     args = parser.parse_args()
@@ -60,7 +62,7 @@ def main():
             # A shell can start briefly before macOS denies the script path.
             import urllib.request
             try:
-                with urllib.request.urlopen("http://127.0.0.1:4317/api/state", timeout=1):
+                with urllib.request.urlopen("http://127.0.0.1:4317/", timeout=1):
                     print("Service is responding. The computer must remain powered on and awake.")
                     return
             except OSError:

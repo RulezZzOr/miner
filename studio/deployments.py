@@ -130,7 +130,7 @@ class Deployments:
                       "url": f"http://127.0.0.1:{port}", "processes": [], "health": [], "failures": 0,
                       "consecutive_passes": 0, "next_check": 0, "log": "", "recovery_count": recovery_count}
             self.save(record)
-            request = {"argv": argv, "cwd": str(root), "parent": os.getpid(),
+            request = {"argv": argv, "cwd": str(root), "parent": os.getpid(), "controller_data": str(self.studio.data.resolve()),
                        "environment": {"SWITCH_DATA_DIR": str(data_dir), "SWITCH_RELEASE_ID": version["id"]}}
             (directory / "request.json").write_text(json.dumps(request), encoding="utf-8")
             try:

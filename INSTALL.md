@@ -1,6 +1,6 @@
 # Switch Studio — macOS, Linux, and Windows
 
-Version `0.4.0-alpha.3`. A lightweight local web IDE with the same interface and backend.
+Version `0.4.0-alpha.10`. Earlier release archives do not include these security changes. A lightweight local web IDE with the same interface and backend.
 
 Packages contain source code; on first installation, `uv` downloads Python 3.12 and pinned
 dependencies. They do not include models, personal settings, or history. Internet access is required
@@ -8,7 +8,7 @@ for installation and a locally available model server for agent operation.
 
 | System | Run | Launch |
 |---|---|---|
-| macOS | Directly, Python matching the machine’s architecture | `Switch Studio.command` |
+| macOS | Browser connected to a Linux backend; native worker execution disabled | HTTPS server URL |
 | Linux | Directly, recommended default distribution: Ubuntu 24.04 | `./switch-studio` |
 | Windows 11 / Windows 10 with WSL2 | Backend in Linux, GUI in Windows browser | `Switch Studio Windows.cmd` |
 
@@ -35,10 +35,31 @@ Ctrl+C terminates the server and cleans up active tasks; closing the tab alone d
 For headless Linux: `./switch-studio --no-open`. From your local machine, you can use an SSH tunnel: `ssh -L 4317:127.0.0.1:4317 user@server`.
 The embedded web preview uses an additional dynamic local port, and a single tunnel to port 4317 does not forward it.
 
-Direct access on a trusted LAN: `./switch-studio --host 192.168.1.50 --port 4318 --no-open`.
-Open `http://192.168.1.50:4318`. Use the actual IP address of the server’s interface.
-The web preview on the LAN uses the same IP and its own dynamic port.
-Studio has no login; clients with access to this port can control agents and files.
+### Owner sign-in and secure LAN access
+
+All APIs require authentication, including on localhost. After first start, read the owner key
+from `.switch-agent/studio/access-key` on the server and paste it into the login screen.
+Do not send it in URLs, commit it, or share it with agents. Sessions expire after 12 hours;
+restarting clears sessions. To rotate the key, stop Studio, remove that file and restart.
+
+Linux execution requires working `bubblewrap` (Ubuntu/Debian: `sudo apt install bubblewrap`).
+Use a dedicated project directory outside the application, for example:
+`mkdir -p ~/miner-projects/pilot`, then `./switch-studio --cwd ~/miner-projects/pilot`.
+There is no unsandboxed fallback. Native macOS and OAuth workers are currently disabled;
+use local or API models on Linux. WSL2 must support bubblewrap namespaces.
+
+For direct LAN access, provision a certificate whose SAN matches the server IP or hostname,
+and keep its private key readable only by the service account. Start:
+
+```sh
+./switch-studio --host 192.168.1.50 --port 4318 --no-open \
+  --cwd "$HOME/miner-projects/pilot" \
+  --tls-cert /path/to/server.crt --tls-key /path/to/server.key
+```
+
+Open `https://192.168.1.50:4318`. A private/self-signed certificate needs explicit trust in
+your browser; verify its fingerprint through a trusted channel. Studio refuses plaintext
+LAN listeners. The separate preview port uses the same TLS certificate.
 
 ## Windows via WSL2
 

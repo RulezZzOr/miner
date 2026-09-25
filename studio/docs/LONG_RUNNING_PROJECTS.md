@@ -31,7 +31,7 @@ Closing the browser does not stop execution. Studio and the computer must remain
 - Blocking a specific task pauses its dependencies; independent work can continue. In full blocking, empty model cycles are not started.
 - Models for execution and review are selected separately. No automatic switch to another provider.
 - New executions work in a separate copy of the sources by default. Workers of this execution share its folder; the button **Open Working Version in Editor** opens it in Studio. The original project changes only upon acceptance. `/workspace` is an alias for file tools; the shell uses the physical working folder and relative paths.
-- The native planner has limited tools: reading and writing its own report only; it must not perform execution before plan confirmation. This is not an OS sandbox. For the Codex backend, phase rules are instructions, not the same tool filter.
+- The native planner has limited tools: reading and writing its own report only; it must not perform execution before plan confirmation. Tool phase rules are supplemented by Linux bubblewrap isolation. OAuth/Codex execution is currently disabled pending an isolated credential broker.
 - The report must be a real JSON file. The controller checks structure, dependencies, existence of product files, SHA-256, and coverage of criteria. Binary artifacts are supported up to 50 MB per file; text reports up to 2 MB.
 - New review session for each task and final model-based product assessment. Model reports are separate from actual exit codes and logs of the independent executor. Successful tests do not prove general product correctness.
 - Fixes after review: at most three failed rounds before blocking. Repeated faulty reports or operational errors incur delays and stop after three attempts.
@@ -85,7 +85,7 @@ Public reference materials may be looked up by the model using available tools. 
 
 The macOS service uses launchd, starts on login, and restarts the controller on crash. It does not allow public network access. On this Mac, attempting to run the service hit a system restriction on accessing the Documents folder; registration was removed and Studio was restarted normally. macOS protections were not altered. The installer now verifies the service response and removes registration on failure.
 
-For actual weekly operation, choose and set up a permanently available host. The Mac must not sleep; for Linux, a user systemd service with `Restart=on-failure` and running `switch-studio --no-open` is suitable. Remote access can be handled via an SSH tunnel to loopback port 4317. Cloud model logins and configurations must be verified in the service environment.
+For actual weekly operation, choose and set up a permanently available host. Use a Linux backend that does not sleep; a user systemd service with `Restart=on-failure` and running `switch-studio --no-open` is suitable. Remote access can be handled via an SSH tunnel to loopback port 4317. Cloud model logins and configurations must be verified in the service environment.
 
 ## What Is Verified and What Is Not Yet
 
