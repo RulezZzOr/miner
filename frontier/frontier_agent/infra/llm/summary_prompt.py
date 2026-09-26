@@ -1,3 +1,5 @@
+# Modified for Miner / Switch Studio, 2026-09-25: English-only compaction notes.
+# See frontier/SWITCH.md and THIRD_PARTY.md at the repository root.
 """Shared structured-summary prompt for message-history compaction."""
 
 from __future__ import annotations
@@ -67,6 +69,9 @@ read at the start of its next turn:
 ## Next steps suggested by current state
 <one or two lines>
 
+Write all reports, questions, summaries, notes and generated documentation in \
+English, regardless of the language of the input.
+
 Conversation to summarize:
 {conversation}"""
 
@@ -84,8 +89,9 @@ You are about to run out of context. Write a note to YOURSELF so you can pick \
 this task up after the conversation below is discarded.
 
 Write it first person, present tense, as your own continuing train of thought — \
-not a third-party report about someone else's work. Write it in the language the \
-conversation has been using. The next turn will see your most recent user \
+not a third-party report about someone else's work. Write all reports, \
+questions, summaries, notes and generated documentation in English, regardless \
+of the language of the input. The next turn will see your most recent user \
 messages and this note, and nothing else: every tool call and tool result below \
 will be gone.
 

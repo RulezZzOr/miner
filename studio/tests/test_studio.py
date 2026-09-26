@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import io
 import json
 import os
+import socket
+import subprocess
 import sys
 import tempfile
 import threading
@@ -16,7 +19,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
 
-from studio.server import Handler, Problem, Studio, write_config
+import studio.server
+from studio.server import ACTIVE, RESTART_REASON, Handler, Problem, Studio, read_project_file, write_config
+from studio.tests.sandbox_support import requires_sandbox
 
 
 class ModelHandler(BaseHTTPRequestHandler):
@@ -127,6 +132,16 @@ class StudioTests(unittest.TestCase):
         for process in list(self.studio.processes.values()):
             self.studio.kill_later(process)
         self.temp.cleanup()
+
+    def test_public_state_exposes_reviewer_role_metadata(self):
+        (self.studio.data / "models.json").write_text(json.dumps({
+            "reviewer": {"model": "review-model", "protocol": "chat_completions",
+                         "base_url": "http://127.0.0.1:1/v1", "auth": "none",
+                         "reviewer_default": True}
+        }))
+        profiles = self.studio.public_state()["profiles"]
+        reviewer = next(profile for profile in profiles if profile["id"] == "reviewer")
+        self.assertTrue(reviewer["reviewer_default"])
 
     def test_file_conflict_and_escape(self):
         (self.project / "a.txt").write_text("original")
@@ -276,6 +291,7 @@ class StudioTests(unittest.TestCase):
         )
         self.fail("Timed out. " + logs)
 
+    @requires_sandbox
     def test_real_mission_report_has_fixed_path_approval_and_stops_after_save(self):
         server = self.model_server()
         attempt = '1234567890abcdef'
@@ -316,6 +332,7 @@ class StudioTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
 
+    @requires_sandbox
     def test_real_worker_exposes_scoped_ssh_tool_and_saves_evidence_after_approval(self):
         server = self.model_server()
         server.tool_name = 'ssh_inventory'
@@ -335,7 +352,8 @@ class StudioTests(unittest.TestCase):
             with patch.dict(os.environ, {'PATH': str(binary) + os.pathsep + os.environ['PATH']}):
                 run = self.studio.launch({'project': self.pid, 'task': 'Inspect configured server.',
                     'profile': 'test', 'max_turns': 3, 'auto_approve': False},
-                    mission={'id': 'ssh-test', 'attempt': 'aabbccddeeff0011', 'phase': 'build', 'attempt_seconds': 60})
+                    # Room for one tool call beside the time the runner keeps for saving the report.
+                    mission={'id': 'ssh-test', 'attempt': 'aabbccddeeff0011', 'phase': 'build', 'attempt_seconds': 300})
                 approval = self.wait_until(lambda: self.studio.approvals(run['id']))[0]
                 self.assertEqual(approval['name'], 'ssh_inventory')
                 self.assertFalse(list(self.project.glob('company/ssh-evidence/*.json')))
@@ -350,6 +368,7 @@ class StudioTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
 
+    @requires_sandbox
     def test_standalone_file_tools_write_into_the_open_project(self):
         server = self.model_server()
         try:
@@ -371,6 +390,7 @@ class StudioTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
 
+    @requires_sandbox
     def test_real_runner_approval_artifact_and_completion(self):
         (self.project / "PROJECT.md").write_text("# PROJECT_NOTES_CONTEXT_OK\n[Decisions](notes/DECISIONS.md)\n")
         server = self.model_server()
@@ -441,9 +461,14 @@ class StudioTests(unittest.TestCase):
         index.write_text("# Updated index", encoding="utf-8")
         self.assertNotEqual(original["sha256"], self.studio.project_notes(self.pid)["sha256"])
         self.assertIn("My project", original["context"])
-        index.write_text("a" * 12001)
-        with self.assertRaisesRegex(Problem, "12,000"):
-            self.studio.project_notes(self.pid)
+        # An oversized guide never blocks launches: a bounded excerpt is attached instead.
+        index.write_text("# Guide\n" + "a" * 12001 + "TAIL_NOT_ATTACHED")
+        oversized = self.studio.project_notes(self.pid)
+        self.assertIn("over 12,000 bytes", oversized["context"])
+        self.assertNotIn("TAIL_NOT_ATTACHED", oversized["context"])
+        self.assertLess(len(oversized["context"].encode()), 14_500)
+        self.assertEqual(oversized["sha256"], studio.server.digest(index.read_bytes()))
+        self.assertIn("regardless of the language of the input", oversized["context"])
         index.write_bytes(b"\xff")
         with self.assertRaisesRegex(Problem, "UTF-8"):
             self.studio.project_notes(self.pid)
@@ -454,6 +479,7 @@ class StudioTests(unittest.TestCase):
         with self.assertRaises(Problem):
             self.studio.project_notes(self.pid)
 
+    @requires_sandbox
     def test_real_runner_cancel(self):
         server = self.model_server()
         server.block = True
@@ -472,6 +498,7 @@ class StudioTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
 
+    @requires_sandbox
     def test_declining_action_does_not_create_file(self):
         server = self.model_server()
         try:
@@ -491,6 +518,7 @@ class StudioTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
 
+    @requires_sandbox
     def test_provider_error_is_not_completed_even_if_cli_exits_zero(self):
         server = self.model_server()
         server.fail = True
@@ -508,6 +536,226 @@ class StudioTests(unittest.TestCase):
         finally:
             server.shutdown()
             server.server_close()
+
+    def control_fixture(self, run_id, **fields):
+        (self.studio.data / "runs" / run_id).mkdir(parents=True)
+        (self.studio.data / "run-control" / run_id).mkdir(parents=True)
+        self.studio.runs[run_id] = {"id": run_id, "project": self.pid, "status": "running",
+                                    "created": time.time(), "isolated_control": True, **fields}
+        return self.studio.data / "runs" / run_id
+
+    def test_launch_failure_after_registration_leaves_no_phantom_run(self):
+        (self.studio.data / "run-control").write_text("not a directory")
+        with self.assertRaises(Problem) as caught:
+            self.studio.launch({"project": self.pid, "task": "Anything", "profile": "test"})
+        self.assertEqual(caught.exception.status, 500)
+        self.assertNotIn(str(self.studio.data), str(caught.exception))
+        (run,) = self.studio.runs.values()
+        self.assertEqual((run["status"], run["failure_kind"]), ("failed", "setup"))
+        self.assertTrue(run["reason"].startswith("Cannot start the worker"))
+        self.assertFalse(any(r["status"] in ACTIVE for r in self.studio.runs.values()))
+        self.assertEqual(self.studio.processes, {})
+        # An active record without a supervised worker is ended by stop, not silently kept.
+        (self.studio.data / "run-control").unlink()
+        self.control_fixture("ghost")
+        self.assertEqual(self.studio.stop("ghost"), {"ok": True})
+        self.assertEqual(self.studio.runs["ghost"]["status"], "failed")
+
+    def test_public_state_returns_bounded_run_summaries(self):
+        self.studio.runs["big"] = {"id": "big", "project": self.pid, "status": "completed", "created": time.time(),
+                                   "task": "x" * 50000, "review_reads": ["evidence"] * 100,
+                                   "mission": {"id": "m", "attempt": "big", "phase": "build",
+                                               "review_packet": {"large": "y" * 10000}}}
+        run = self.studio.public_state()["runs"][0]
+        self.assertTrue(run["task_truncated"])
+        self.assertEqual(run["task"], "x" * 1000 + studio.server.RUN_SUMMARY_MORE)
+        self.assertEqual(run["mission"], {"id": "m", "attempt": "big", "phase": "build"})
+        self.assertNotIn("review_reads", run)
+        self.assertEqual(len(self.studio.events("big")["run"]["task"]), 50000)
+
+    def test_directory_reads_do_not_leak_descriptors(self):
+        (self.project / "folder").mkdir()
+        before = len(os.listdir("/dev/fd"))
+        for _ in range(20):
+            with self.assertRaises(Problem) as caught:
+                read_project_file(self.project, "folder", 1000)
+            self.assertEqual(caught.exception.status, 400)
+        self.assertLess(len(os.listdir("/dev/fd")), before + 5)
+        with self.assertRaises(Problem) as caught:
+            self.studio.save_file({"project": self.pid, "path": "folder", "content": "x", "revision": None})
+        self.assertEqual(caught.exception.status, 400)
+        gone = self.root / "gone"
+        gone.mkdir()
+        gone_id = self.studio.add_project(str(gone))["id"]
+        gone.rmdir()
+        with self.assertRaises(Problem) as caught:
+            self.studio.tree(gone_id)
+        self.assertEqual((caught.exception.status, str(caught.exception)), (404, "Project folder is missing."))
+
+    def test_probe_reads_provider_keys_without_changing_the_process_environment(self):
+        received = []
+
+        class Capture(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def do_GET(self):
+                received.append(self.headers.get("Authorization"))
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b'{"data":[{"id":"test"}, "not-an-object"]}')
+
+        http = ThreadingHTTPServer(("127.0.0.1", 0), Capture)
+        threading.Thread(target=http.serve_forever, daemon=True).start()
+        self.addCleanup(http.server_close)
+        self.addCleanup(http.shutdown)
+        env = self.config.parent / ".env"
+        env.write_text("STUDIO_PROBE_API_KEY=old-key\n")
+        base = {"model": "test", "protocol": "chat_completions", "auth": "env"}
+        self.studio.save_model({**base, "id": "keyed", "api_key_env": "STUDIO_PROBE_API_KEY",
+                                "base_url": f"http://127.0.0.1:{http.server_port}/v1"})
+        with patch.dict(os.environ):
+            os.environ.pop("STUDIO_PROBE_API_KEY", None)
+            self.assertTrue(self.studio.probe("keyed")["model_found"])
+            self.assertNotIn("STUDIO_PROBE_API_KEY", os.environ)
+            env.write_text("STUDIO_PROBE_API_KEY=rotated-key\n")
+            self.studio.probe("keyed")
+        self.assertEqual(received, ["Bearer old-key", "Bearer rotated-key"])
+        # A key goes only to its intended server, and never in clear text off this computer.
+        for extra in ({"api_key_env": "HOME", "base_url": "https://models.example.com/v1"},
+                      {"api_key_env": "STRIPE_API_KEY", "base_url": "https://collector.example/v1"},
+                      {"api_key_env": "OPENAI_API_KEY", "base_url": "https://collector.example/v1"},
+                      {"api_key_env": "STUDIO_PROBE_API_KEY", "base_url": "http://models.example.com/v1"},
+                      {"api_key_env": "STUDIO_PROBE_API_KEY", "base_url": "http://192.168.1.20:8080/v1"}):
+            with self.subTest(**extra), self.assertRaises(Problem):
+                self.studio.save_model({**base, "id": "leak", **extra})
+        self.studio.save_model({**base, "id": "openai", "api_key_env": "OPENAI_API_KEY",
+                                "base_url": "https://api.openai.com/v1"})
+        self.studio.save_model({**base, "id": "own", "api_key_env": "STUDIO_PROBE_API_KEY",
+                                "base_url": "https://models.example.com/v1"})
+
+    def test_saved_profiles_are_checked_again_before_a_key_is_sent(self):
+        lan = {"model": "test", "protocol": "chat_completions", "auth": "env",
+               "api_key_env": "LAN_API_KEY", "base_url": "http://192.168.1.20:8080/v1"}
+        write_config(self.config, {"test": lan}, "test")
+        # Plain http on a private network only for the exact target the owner declared in agent.toml.
+        self.studio.check_credential_target(self.studio.profiles()[0]["test"])
+        self.studio.save_model({**lan, "id": "same"})
+        with self.assertRaises(Problem):
+            self.studio.save_model({**lan, "id": "other", "base_url": "http://192.168.1.99:8080/v1"})
+        # A profile saved by an older release is refused where it would be used.
+        (self.studio.data / "models.json").write_text(json.dumps({"old": {
+            **lan, "api_key_env": "STRIPE_API_KEY", "base_url": "https://collector.example/v1"}}))
+        with patch.dict(os.environ, {"STRIPE_API_KEY": "SYNTHETIC_ONLY"}):
+            with self.assertRaises(Problem):
+                self.studio.probe("old")
+            with self.assertRaises(Problem):
+                self.studio.launch({"project": self.pid, "task": "Check the notes.", "profile": "old"})
+            self.assertEqual(self.studio.runs, {})
+            frame = {"query": "", "filtered": False, "visibleItems": ["Blue desk"]}
+            result = self.studio.browser_pilot.choose({"profile": "old", "frame": frame})
+        self.assertEqual(result["status"], "fallback")
+        self.assertIn("not allowed for this server", result["reason"])
+
+    def test_slow_download_completes_and_a_late_failure_never_splices_a_second_response(self):
+        """The connection timeout bounds each body slice, not the whole transfer."""
+        (self.project / "big.bin").write_bytes(b"x" * 6_000_000)
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        server.studio = self.studio
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        key = (self.studio.data / "access-key").read_text().strip()
+        with patch.object(Handler, "timeout", 1.0), socket.socket() as client:
+            client.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 262144)
+            client.connect(("127.0.0.1", server.server_port))
+            client.sendall(f"GET /api/download?project={self.pid}&path=big.bin HTTP/1.1\r\n"
+                           f"Host: 127.0.0.1:{server.server_port}\r\nAuthorization: Bearer {key}\r\n\r\n".encode())
+            started, data = time.monotonic(), b""
+            while chunk := client.recv(65536):
+                data += chunk
+                time.sleep(0.04)  # A steady reader at no more than about 1.6 MB/s.
+            elapsed = time.monotonic() - started
+        head, _, body = data.partition(b"\r\n\r\n")
+        self.assertTrue(head.startswith(b"HTTP/1.0 200"), head[:80])
+        self.assertGreater(elapsed, 1.0)  # The transfer outlived the timeout and still completed.
+        self.assertEqual(len(body), 6_000_000)
+        self.assertNotIn(b'"error"', body)
+        # A failure after the status line closes the connection; it never writes a second response.
+        handler = Handler.__new__(Handler)
+        handler.response_started, handler.wfile = True, io.BytesIO()
+        handler.fail("The request timed out.", 408)
+        self.assertTrue(handler.close_connection)
+        self.assertEqual(handler.wfile.getvalue(), b"")
+
+    def test_watch_copies_failure_kind_and_explains_crashes(self):
+        cases = [("incomplete", 0, {"status": "incomplete", "reason": "No report was saved.", "failure_kind": "no_report"}, "no_report"),
+                 ("crashed", 3, None, "crash"),
+                 ("unknown-kind", 0, {"status": "failed", "reason": "Synthetic.", "failure_kind": "invented"}, None)]
+        for run_id, code, result, kind in cases:
+            with self.subTest(run_id=run_id):
+                directory = self.control_fixture(run_id)
+                if result:
+                    (directory / "result.json").write_text(json.dumps(result))
+                process = subprocess.Popen([sys.executable, "-c", f"raise SystemExit({code})"], start_new_session=True)
+                self.studio.processes[run_id] = process
+                self.studio.watch(run_id, process)
+                run = self.studio.runs[run_id]
+                self.assertEqual(run.get("failure_kind"), kind)
+                self.assertTrue(run["reason"])
+                saved = json.loads((self.studio.control_dir(run_id) / "run.json").read_text())
+                self.assertEqual(saved["status"], run["status"])
+                self.assertNotIn(run_id, self.studio.processes)
+        self.assertEqual(self.studio.runs["incomplete"]["status"], "incomplete")
+        self.assertIn("exit code 3", self.studio.runs["crashed"]["reason"])
+
+    def test_controller_shutdown_and_restart_interrupt_runs_without_failing_them(self):
+        self.control_fixture("live")
+        process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"], start_new_session=True,
+                                   stderr=subprocess.DEVNULL)
+        self.studio.processes["live"] = process
+        self.studio.process_tree(process).grace = 0.3
+        watcher = threading.Thread(target=self.studio.watch, args=("live", process))
+        process._studio_watcher = watcher
+        watcher.start()
+        self.studio.stop("live", interrupted=True)
+        watcher.join(10)
+        run = self.studio.runs["live"]
+        self.assertEqual((run["status"], run["reason"], run["reason_kind"]),
+                         ("interrupted", RESTART_REASON, "controller_restart"))
+        # Records left active by a crash restore the same way; an owner stop stays a cancellation.
+        for run_id, status in (("crashed", "running"), ("owner-stop", "stopping")):
+            self.control_fixture(run_id)
+            control = self.studio.data / "run-control" / run_id
+            (control / "run.json").write_text(json.dumps({**self.studio.runs[run_id], "status": status}))
+            (control / "processes.json").write_text("[]")
+        restored = Studio(self.project, self.root / "state", self.config)
+        try:
+            self.assertEqual((restored.runs["crashed"]["status"], restored.runs["crashed"]["reason_kind"]),
+                             ("interrupted", "controller_restart"))
+            self.assertEqual(restored.runs["owner-stop"]["status"], "cancelled")
+            self.assertEqual(restored.runs["live"]["status"], "interrupted")
+        finally:
+            restored.missions.close()
+            restored.oauth.close()
+
+    def test_script_launch_imports_the_server_package_once_and_help_has_no_side_effects(self):
+        root = Path(studio.server.__file__).resolve().parents[1]
+        env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+        direct = subprocess.run([sys.executable, "-X", "importtime", str(root / "studio" / "server.py"), "--help"],
+                                cwd=self.root, env=env, capture_output=True, text=True, timeout=120)
+        self.assertEqual(direct.returncode, 0, direct.stderr[-2000:])
+        self.assertIn("switch-studio", direct.stdout)
+        imported = {line.rpartition("|")[2].strip() for line in direct.stderr.splitlines() if line.startswith("import time:")}
+        self.assertIn("studio.server", imported)
+        self.assertFalse({"server", "access", "missions"} & imported)  # No second, flat copy.
+        config = root / "agent.toml"
+        before = config.read_bytes() if config.exists() else None
+        launcher = subprocess.run([sys.executable, str(root / "scripts" / "start_studio.py"), "--help"],
+                                  cwd=self.root, env=env, capture_output=True, text=True, timeout=120)
+        self.assertEqual(launcher.returncode, 0, launcher.stderr[-2000:])
+        self.assertIn("--state-dir", launcher.stdout)
+        self.assertEqual(config.read_bytes() if config.exists() else None, before)
 
 
 if __name__ == "__main__":

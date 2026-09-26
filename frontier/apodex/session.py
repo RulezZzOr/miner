@@ -1,5 +1,3 @@
-# Modified for Miner / Switch Studio, 2026-09-23.
-# Changes from ApodexAI/FrontierAgent; see frontier/SWITCH.md and THIRD_PARTY.md at the repository root.
 """Interactive session: the REPL + a single agent run.
 
 Wires the LLM, the local coding tools, and the :class:`TerminalObserver`
@@ -481,6 +479,12 @@ class TerminalSession(TaskRunnerMixin):
         self.display_history = list(messages)
         self._persist()
 
+    async def _on_workflow_turn(self, turn: int, messages: list, metadata: dict) -> None:
+        """Per-turn checkpoint for native workflows. Their messages are the
+        workflow's internal transcript (system prompt, tool output), so the
+        session keeps its compact user/final-answer history and only persists."""
+        self._persist()
+
     # ── persistence (interrupt-safe resume) ───────────────────────────────
     def _enrich_task(self, task: str) -> str:
         profile = get_profile(self.mode)
@@ -596,8 +600,6 @@ class TerminalSession(TaskRunnerMixin):
         """Checkpoint session state so ``--resume <id>`` can continue it.
         A failed checkpoint stops further work and leaves the prior file intact."""
         try:
-            import json
-
             from apodex.todo import get_todos
 
             snapshot = getattr(self.r, "snapshot_state", None)

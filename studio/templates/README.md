@@ -38,7 +38,7 @@ flowchart TD
   Architect --> Platform[Sysadmin + Data & AI + DevOps + Security]
 ```
 
-The delivery process is **task brief → technical plan → execution → independent review → acceptance**. The handover report includes specific paths to outputs, performed checks, results, and limitations. The author does not confirm acceptance of their own work. For the first verification, use one small task involving roles CTO, PM, fullstack, and QA.
+The delivery process is **task brief → technical plan → execution → independent review → acceptance**. The handover report includes specific paths to outputs, performed checks, results, and limitations. The author does not confirm acceptance of their own work. Every role instruction and the operating rules also require English output: "Write all reports, questions, summaries, notes and generated documentation in English, regardless of the language of the input." For the first verification, use one small task involving roles CTO, PM, fullstack, and QA.
 
 ## What the Template Actually Activates
 

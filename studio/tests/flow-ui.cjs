@@ -34,3 +34,8 @@ test('connection loss is visible and never replaces evidence with a fake healthy
 test('verification phase can be active without a model worker',()=>{
  const r=model(mission({status:'verifying',phase:'final',active_attempt:null}));assert.equal(r.current.id,'@checks');assert.equal(r.current.status,'active');assert.equal(r.moving,true);
 });
+test('owner-rejected and guarded tool notes in English are obstacles; approvals are not',()=>{
+ for(const text of ['✗ rejected bash — stopping task (use [e] to redirect instead)','✗ write_file blocked: read the file first'])assert.equal(model(mission(),[{type:'note',time:998,text}]).tone,'blocked',text);
+ for(const text of ['✓ always allowing: bash ls','↳ redirecting bash: use staging'])assert.equal(model(mission(),[{type:'note',time:998,text}]).tone,'active',text);
+ assert.equal(ctx.isToolObstacle('The reviewer rejected the first draft'),false,'a plain mention of rejection is not a tool obstacle');
+});

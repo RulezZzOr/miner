@@ -28,15 +28,20 @@ def main() -> None:
         # Check real runtime imports before creating any configuration.
         import apodex.switch_cli  # noqa: F401
 
-        import studio.server  # noqa: F401
+        import studio.server
     except ImportError as exc:
         raise SystemExit(f"Runtime is incomplete: {exc}. Run ./setup-studio.") from exc
-    if configure(ROOT):
+    arguments = sys.argv[1:]
+    # Help has no side effects: it never creates agent.toml.
+    if not {"-h", "--help"} & set(arguments) and configure(ROOT):
         print("Created agent.toml. In Models, enter your server URL and model name.", flush=True)
-    if sys.argv[1:] == ["--check"]:
+    if arguments == ["--check"]:
         print(f"Runtime OK: {sys.platform}, Python {sys.version.split()[0]}")
         return
-    os.execv(sys.executable, [sys.executable, str(ROOT / "studio/server.py"), *sys.argv[1:]])
+    # Run the package module in this process. Executing studio/server.py as a script would
+    # import it twice, and errors raised through the second copy would bypass the handler.
+    sys.argv = ["switch-studio", *arguments]
+    raise SystemExit(studio.server.main())
 
 
 if __name__ == "__main__":

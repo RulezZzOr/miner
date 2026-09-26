@@ -5,6 +5,8 @@ This document describes the implementation; it is not confirmation of a week-lon
 
 Tool timeouts are capped at no more than one-third of the task attempt’s time limit (or the profile’s stricter limit). Some specialized tools have their own fixed minimum. The overall attempt limit is still enforced by the controller; repeated calls do not extend it. A one-time native shell is not a service manager: the test process must be terminated by the control script in the same call. A permanently running service is started by the deployment controller. Longer compilations require a corresponding attempt limit—not circumvention of the timeout via a background process.
 
+Model and tool timeouts are kept inside the attempt budget, so the controller's external stop is a last resort. When only a few turns or a small share of the time remain, the worker is told to save its report now. Each run records a status (`completed`, `incomplete`, `failed` or `cancelled`), a reason and a failure kind. A mission run that ends without a saved report is `incomplete`, never `completed`. An unavailable model endpoint is treated as transient and retried later without spending an attempt; time, turn, progress-guard and missing-report stops are recoverable within bounded limits.
+
 ```mermaid
 flowchart TD
   UI[GUI: task brief, questions, approved checks] --> M[Execution Controller]

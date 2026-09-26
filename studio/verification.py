@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import selectors
 import shlex
 import stat
@@ -28,8 +29,32 @@ except ImportError:
     from test_evidence import check_kind, test_count, git_revision
     from verification_worker import command_outcome
 
+# Version control, dependency caches and tool caches are not product source. Build
+# outputs such as dist/ or target/ stay included: a release may need to run them.
 IGNORED = {".git", ".venv", "node_modules", "__pycache__", ".pytest_cache", ".ruff_cache",
-           ".mypy_cache", ".switch-agent", ".apodex", ".DS_Store"}
+           ".mypy_cache", ".switch-agent", ".apodex", ".DS_Store", ".tox", ".nox", ".cache",
+           ".parcel-cache", ".turbo", ".gradle", ".next", ".nuxt", ".svelte-kit", ".terraform",
+           "htmlcov", ".coverage"}
+
+
+# Conventional virtual environment names: venv, .venv-py311, env, virtualenv, py311-venv, ...
+ENVIRONMENT_NAME = re.compile(r"^(?:\.?(?:venv|virtualenv|env)[\w.-]*|[\w.-]+[._-](?:venv|env))$", re.I)
+
+
+def environment_dir(path):
+    """A real Python virtual environment with a conventional name.
+
+    It needs the venv layout (pyvenv.cfg, an interpreter and site-packages), so a stray
+    pyvenv.cfg can never hide a source directory from the manifest, versions or review.
+    """
+    if not ENVIRONMENT_NAME.match(path.name) or not (path / "pyvenv.cfg").is_file():
+        return False
+    interpreter = any(os.path.lexists(path / name) for name in
+                      ("bin/python", "bin/python3", "Scripts/python.exe"))
+    packages = (path / "Lib" / "site-packages").is_dir() or any(
+        candidate.is_dir() for pattern in ("lib/python*/site-packages", "lib64/python*/site-packages")
+        for candidate in path.glob(pattern))
+    return interpreter and packages
 
 
 def source_manifest(root):
@@ -41,19 +66,24 @@ def source_manifest(root):
     root = Path(root)
     result, total = {}, 0
     for directory, dirs, files in os.walk(root, followlinks=False):
-        dirs[:] = sorted(d for d in dirs if d not in IGNORED and not d.casefold().startswith(".env"))
+        dirs[:] = sorted(d for d in dirs if d not in IGNORED and not d.casefold().startswith(".env")
+                         and not environment_dir(Path(directory) / d))
         for name in sorted(files + [d for d in dirs if (Path(directory) / d).is_symlink()]):
             path = Path(directory) / name
             rel = path.relative_to(root).as_posix()
             if name in IGNORED or name.casefold().startswith(".env") or name.startswith(".studio-") or rel.startswith("company/projects/"):
                 continue
             if path.is_symlink():
-                raise ValueError(f"Verification requires actual files, not a symlink: {rel}")
+                raise ValueError(f"Verification requires actual files, not a symlink: {rel}. "
+                                 "Replace the link with a regular file or remove it from the project.")
             info = path.stat()
+            if stat.S_ISFIFO(info.st_mode) or stat.S_ISSOCK(info.st_mode):
+                continue  # Pipes and sockets carry no source content; never open them.
             if not stat.S_ISREG(info.st_mode):
                 raise ValueError(f"Verification does not accept a special file: {rel}")
             if info.st_size > 50_000_000 or len(result) >= 20000:
-                raise ValueError("Source files exceeded verification limits (50 MB/file, 500 MB, 20,000 files).")
+                raise ValueError("Source files exceeded verification limits (50 MB/file, 500 MB, 20,000 files). "
+                                 "Keep large build outputs and data outside the project directory.")
             data = read_project_file(root, rel, min(50_000_000, 500_000_000 - total))
             total += len(data)
             result[rel] = hashlib.sha256(data).hexdigest()
@@ -197,7 +227,7 @@ class Verifications:
         process = subprocess.Popen([sys.executable, "-u", str(Path(__file__).with_name("verification_worker.py")),
                                     str(directory)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                    start_new_session=True)
-        tree = ProcessTree(process.pid, grace=0.5)
+        tree = ProcessTree(process.pid, grace=2)
         selector = selectors.DefaultSelector()
         try:
             record["processes"] = tree.identities()

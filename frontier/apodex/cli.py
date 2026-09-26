@@ -1,5 +1,3 @@
-# Modified for Miner / Switch Studio, 2026-09-23.
-# Changes from ApodexAI/FrontierAgent; see frontier/SWITCH.md and THIRD_PARTY.md at the repository root.
 """``apodex`` command-line entry point.
 
 Examples::
@@ -17,6 +15,7 @@ import asyncio
 import contextlib
 import logging
 import os
+import re
 import sys
 from collections.abc import MutableMapping
 from typing import TYPE_CHECKING
@@ -54,6 +53,38 @@ _LOG_NOTES = (
     ("leaked into <think>", "⟳ recovered a tool call from the model's thinking"),
     ("LLM reasoning runaway", "⟳ the model's reasoning ran long — recovering"),
 )
+# Switch: automatic model-call retries must be visible. A local model server
+# answering HTTP 503 "Loading model" is retried for up to about ten minutes
+# (see apodex/switch_cli.py); each failed attempt that call_llm logs becomes
+# one note, which Studio's runner turns into a run event.
+_LLM_RETRY_LOG = re.compile(
+    r"^(?P<what>LLM call error|LLM rate-limited 429|LLM call timed out|LLM stream stalled|"
+    r"Proxy-wrapped transient \d+)\b.*?"
+    r"turn=(?P<turn>\d+), attempt=(?P<n>\d+)/(?P<of>\d+)[^)]*\)(?::\s*(?P<detail>.+))?",
+    re.DOTALL,
+)
+_LLM_RETRY_LABELS = {
+    "LLM rate-limited 429": "rate limited (HTTP 429)",
+    "LLM call timed out": "no answer in time",
+    "LLM stream stalled": "response stream stalled",
+}
+_LLM_RETRY_ABANDONED = "Abandoning LLM retries"
+
+
+def _llm_retry_note(msg: str) -> tuple[tuple[str, str], str] | None:
+    """(dedupe key, note) for a model-call retry log line, else ``None``."""
+    if msg.startswith(_LLM_RETRY_ABANDONED):
+        return ("abandoned", msg), "■ model endpoint retries stopped: the next wait would cross the time limit"
+    match = _LLM_RETRY_LOG.match(msg)
+    if match is None:
+        return None
+    n, of = int(match["n"]), int(match["of"])
+    what = _LLM_RETRY_LABELS.get(match["what"], "endpoint unavailable")
+    detail = " ".join((match["detail"] or "").split())
+    if detail:
+        what += f": {detail[:160]}{'…' if len(detail) > 160 else ''}"
+    step = f"retrying (attempt {n + 1}/{of})" if n < of else "no retries left"
+    return (match["turn"], match["n"]), f"⟳ model call failed — {what} — {step}"
 
 
 class _EngineLogRouter(logging.Handler):
@@ -71,6 +102,8 @@ class _EngineLogRouter(logging.Handler):
         super().__init__(level=logging.WARNING)
         self._r = renderer
         self._file = file_handler
+        # One note per failed attempt: call_llm can log the same attempt twice.
+        self._last_retry: tuple[str, str] | None = None
         self.setFormatter(logging.Formatter(
             "%(asctime)s %(levelname)s %(name)s: %(message)s",
         ))
@@ -96,6 +129,11 @@ class _EngineLogRouter(logging.Handler):
                 with contextlib.suppress(Exception):
                     self._r.note(note)  # pyright: ignore[reportAttributeAccessIssue]
                 return
+        retry = _llm_retry_note(msg)
+        if retry is not None and retry[0] != self._last_retry:
+            self._last_retry = retry[0]
+            with contextlib.suppress(Exception):
+                self._r.note(retry[1])  # pyright: ignore[reportAttributeAccessIssue]
 
 
 def _route_engine_logs(renderer: object, session_id: str) -> None:

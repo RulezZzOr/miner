@@ -16,7 +16,7 @@ Use the rotate and zoom controls or drag the floor. **Reset camera** restores th
 
 Question-mark controls explain the purpose, usage and an example. Click them or use Enter/Space; Escape closes help and returns keyboard focus. Opening help does not submit a form or approve a tool.
 
-The interface and built-in templates are in English. Existing user-authored names, instructions, saved messages and history retain their original language.
+The interface, built-in templates and model prompts are in English. Agents are instructed to write all reports, questions, summaries, notes and generated documentation in English, regardless of the language of the input; write names, instructions and answers in English as well.
 
 ## Files and server location
 

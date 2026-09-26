@@ -2,6 +2,22 @@
 
 from __future__ import annotations
 
+if __name__ == "__main__":
+    # Always run as the package module studio.server. Running this file as __main__ would
+    # load it twice (versions.py imports studio.server), so a Problem raised through the
+    # second copy would escape the handler, and studio/trace.py would shadow stdlib trace.
+    import sys
+    from pathlib import Path
+
+    _root = str(Path(__file__).resolve().parents[1])
+    if not __package__:
+        sys.path[0] = _root
+    elif _root not in sys.path:
+        sys.path.insert(0, _root)
+    from studio.server import main
+
+    raise SystemExit(main())
+
 import argparse
 import errno
 import fcntl
@@ -13,6 +29,7 @@ import os
 import re
 import secrets
 import signal
+import sqlite3
 import stat
 import ssl
 import subprocess
@@ -20,12 +37,13 @@ import sys
 import threading
 import time
 import tomllib
+import traceback
 import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
 from contextlib import contextmanager
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 
 try:
@@ -41,6 +59,7 @@ try:
     from .process_tree import ProcessTree
     from .products import KINDS, Products
     from .ssh_inventory import targets_for, InventoryBroker
+    from .tls_server import CONNECTION_SECONDS, ThreadingTLSServer, write_body
 except ImportError:
     from access import Access, secure_runtime
     from browser import open_browser
@@ -54,8 +73,11 @@ except ImportError:
     from process_tree import ProcessTree
     from products import KINDS, Products
     from ssh_inventory import targets_for, InventoryBroker
+    from tls_server import CONNECTION_SECONDS, ThreadingTLSServer, write_body
 
 ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_STATE = ROOT / ".switch-agent" / "studio"
+VERSION = (Path(__file__).parent / "VERSION").read_text(encoding="utf-8").strip()
 STATIC = Path(__file__).parent / "static"
 COMPANY_SOURCE = Path(__file__).parent / "templates" / "ai-build-company.json"
 COMPANY_PATH = "company/ai-build-company.json"
@@ -71,7 +93,16 @@ EXCLUDED = {
     "dist",
 }
 MAX_FILE = 2_000_000
+NOTES_LIMIT = 12_000
+RUN_SUMMARY_TASK = 1_000
+# Visible even to a page that renders the summary as the brief; titles use only the first line.
+RUN_SUMMARY_MORE = "\n\n[Brief shortened to its first 1,000 characters in this view; the full brief is kept with the run.]"
 ACTIVE = {"running", "waiting", "stopping"}
+# failure_kind values a runner may report in result.json (run failure contract).
+FAILURE_KINDS = {"provider_unavailable", "time_limit", "max_turns", "progress_guard", "no_report", "crash", "setup", ""}
+RESTART_REASON = "Studio restarted during this run; the controller interrupted it, not the agent."
+ENGLISH_OUTPUT = ("Write all reports, questions, summaries, notes and generated documentation in English, "
+                  "regardless of the language of the input.")
 
 
 class Problem(Exception):
@@ -130,7 +161,10 @@ def file_parent(root, relative, *, create=False, directory=False):
     parts = Path(relative).parts
     if not parts and not directory:
         raise Problem("Invalid file path.")
-    fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    except FileNotFoundError:
+        raise Problem("Project folder is missing.", 404) from None
     try:
         for part in parts if directory else parts[:-1]:
             if create:
@@ -147,17 +181,30 @@ def file_parent(root, relative, *, create=False, directory=False):
             raise Problem("Symbolic links are not available in the editor.", 403) from None
         if exc.errno == errno.ENOENT:
             raise Problem("File or folder does not exist.", 404) from None
+        if exc.errno == errno.EISDIR:
+            raise Problem("The path is a folder, not a file.") from None
         raise
     finally:
         os.close(fd)
 
 
+def regular_stream(fd, mode):
+    """Wrap a descriptor only when it is a regular file; never leak it on rejection."""
+    try:
+        regular = stat.S_ISREG(os.fstat(fd).st_mode)
+    except OSError:
+        os.close(fd)
+        raise
+    if not regular:
+        os.close(fd)
+        raise Problem("The path is not a regular file.")
+    return os.fdopen(fd, mode)
+
+
 def read_project_file(root, relative, limit):
     with file_parent(root, relative) as (parent, name):
         fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
-        with os.fdopen(fd, "rb") as stream:
-            if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
-                raise Problem("The path is not a regular file.")
+        with regular_stream(fd, "rb") as stream:
             data = stream.read(limit + 1)
     if len(data) > limit:
         raise Problem(f"File exceeds the limit of {limit // 1_000_000} MB.")
@@ -180,6 +227,54 @@ def toml_value(value):
     raise Problem("Unsupported configuration value.")
 
 
+def check_project_root(path, data):
+    """An owner-selected project never contains or lies inside the controller state (data) or
+    the application, and is never the file-system root or a whole home folder."""
+    root = Path(path).expanduser().resolve()
+    data = Path(data).expanduser().resolve()
+    if (root == Path(root.anchor) or root.is_relative_to(data) or data.is_relative_to(root)
+            or root.is_relative_to(ROOT) or ROOT.is_relative_to(root)
+            or Path.home().resolve().is_relative_to(root)):
+        raise Problem("Choose a dedicated project folder outside Studio's application and state "
+                      "folders; a whole home folder or the file-system root is not allowed.")
+    return root
+
+
+# Well-known model provider key variables and the only hosts that may receive them. Any other
+# variable must be declared in agent.toml or be a dedicated STUDIO_<NAME>_API_KEY variable, so a
+# profile cannot send an unrelated secret (payments, DNS, search) to a host of its choice.
+PROVIDER_KEY_HOSTS = {
+    "OPENAI_API_KEY": {"api.openai.com"},
+    "ANTHROPIC_API_KEY": {"api.anthropic.com"},
+    "OPENROUTER_API_KEY": {"openrouter.ai"},
+    "GROQ_API_KEY": {"api.groq.com"},
+    "MISTRAL_API_KEY": {"api.mistral.ai"},
+    "DEEPSEEK_API_KEY": {"api.deepseek.com"},
+    "DASHSCOPE_API_KEY": {"dashscope.aliyuncs.com", "dashscope-intl.aliyuncs.com"},
+    "TOGETHER_API_KEY": {"api.together.xyz"},
+    "FIREWORKS_API_KEY": {"api.fireworks.ai"},
+    "GEMINI_API_KEY": {"generativelanguage.googleapis.com"},
+    "XAI_API_KEY": {"api.x.ai"},
+    "CEREBRAS_API_KEY": {"api.cerebras.ai"},
+    "PERPLEXITY_API_KEY": {"api.perplexity.ai"},
+    "MOONSHOT_API_KEY": {"api.moonshot.ai", "api.moonshot.cn"},
+    "NVIDIA_API_KEY": {"integrate.api.nvidia.com"},
+    "TYPESAFE_API_KEY": {"api.typesafe.ai"},
+}
+STUDIO_KEY = re.compile(r"STUDIO_[A-Z0-9_]{1,80}_API_(KEY|TOKEN)")
+
+
+def plaintext_host(name):
+    """The only hosts where an http:// model URL may carry an API key without an agent.toml
+    declaration: this computer. A private network is not trusted to keep a key secret."""
+    if name == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(name).is_loopback
+    except ValueError:
+        return False
+
+
 def write_config(path, profiles, default):
     text = f"default_profile = {toml_value(default)}\n"
     for name, profile in profiles.items():
@@ -191,7 +286,7 @@ def write_config(path, profiles, default):
 
 class Studio:
     def __init__(self, workspace=ROOT, state_dir=None, config=None):
-        self.data = Path(state_dir or ROOT / ".switch-agent" / "studio")
+        self.data = Path(state_dir or DEFAULT_STATE)
         secure_runtime(self.data)
         self.access = Access(self.data)
         self.config = Path(config or ROOT / "agent.toml")
@@ -214,7 +309,12 @@ class Studio:
                 identities = self.read_json(path.parent / "processes.json", [])
                 if not ProcessTree.recover(identities):
                     raise RuntimeError("Previous workers are still running; restoration has been stopped.")
-                run.update(status="interrupted", ended=time.time())
+                if run["status"] == "stopping" and not run.get("controller_stop"):
+                    run.update(status="cancelled", ended=time.time())  # The owner had stopped it.
+                else:
+                    # A restart is not the agent's failure: missions resume without a strike.
+                    run.update(status="interrupted", ended=time.time(), reason=RESTART_REASON,
+                               reason_kind="controller_restart")
                 atomic_json(path, run)
             self.runs[run["id"]] = run
         self.add_project(str(workspace))
@@ -232,6 +332,12 @@ class Studio:
             return json.loads(path.read_text())
         except (OSError, ValueError):
             return default
+
+    def register_project(self, path):
+        """Owner request path (POST /api/projects); controller-managed workspaces use add_project."""
+        if not isinstance(path, str) or not path.strip():
+            raise Problem("Enter the project folder path.")
+        return self.add_project(check_project_root(path, self.data))
 
     def add_project(self, path, *, name=None):
         root = Path(path).expanduser().resolve()
@@ -254,6 +360,18 @@ class Studio:
         extra = self.read_json(self.data / "models.json", {})
         return {**original.get("profiles", {}), **extra}, original.get("default_profile")
 
+    @staticmethod
+    def run_summary(run):
+        """Polled every few seconds: the full task and mission record stay in /api/events."""
+        summary = {k: v for k, v in run.items() if k not in {"task", "mission", "project_notes", "review_reads"}}
+        task = run.get("task", "")
+        summary["task"] = task[:RUN_SUMMARY_TASK]
+        if len(task) > RUN_SUMMARY_TASK:
+            summary.update(task=summary["task"] + RUN_SUMMARY_MORE, task_truncated=True)
+        if isinstance(run.get("mission"), dict):
+            summary["mission"] = {k: run["mission"].get(k) for k in ("id", "attempt", "phase")}
+        return summary
+
     def public_state(self):
         profiles, default = self.profiles()
         allowed = {
@@ -267,11 +385,12 @@ class Studio:
             "max_output_tokens",
             "backend",
             "oauth_provider",
+            "reviewer_default",
         }
         with self.lock:
             runs = [
-                dict(r)
-                for r in sorted(self.runs.values(), key=lambda r: r["created"], reverse=True)
+                self.run_summary(r)
+                for r in sorted(self.runs.values(), key=lambda r: r["created"], reverse=True)[:100]
             ]
         return {
             "token": self.token,
@@ -285,7 +404,7 @@ class Studio:
                 for k, v in profiles.items()
             ],
             "default_profile": default,
-            "runs": runs[:100],
+            "runs": runs,
         }
 
     def tree(self, project, relative=""):
@@ -343,9 +462,7 @@ class Studio:
                 created = True
             else:
                 created = False
-            with os.fdopen(fd, "r+b") as stream:
-                if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
-                    raise Problem("The path is not a regular file.")
+            with regular_stream(fd, "r+b") as stream:
                 if not created and expected != digest(stream.read(MAX_FILE + 1)):
                     raise Problem(
                         "File has changed meanwhile. Reload it to avoid overwriting external changes.",
@@ -422,6 +539,7 @@ class Studio:
             r"[A-Za-z_][A-Za-z0-9_]*", model.get("api_key_env", "")
         ):
             raise Problem("Enter the environment variable name for the API key.")
+        self.check_credential_target(model)
         with self.lock:
             extra = self.read_json(self.data / "models.json", {})
             extra[name] = model
@@ -473,6 +591,53 @@ class Studio:
             atomic_json(self.data / "models.json", extra)
         return {"ok": True}
 
+    def check_credential_target(self, model):
+        """Allow a key variable only for its intended model server, and never in clear text off
+        this computer unless the owner declared that exact target in agent.toml.
+
+        Checked on save, probe, launch and pilot use, so older models.json profiles are
+        validated again. This keeps profiles from exporting controller environment variables.
+        """
+        def target(profile):
+            url = urllib.parse.urlsplit(str(profile.get("base_url") or "https://api.openai.com/v1"))
+            return str(profile.get("api_key_env", "")), url.scheme, (url.hostname or "").lower()
+
+        if model.get("auth", "env") != "env" or not model.get("api_key_env"):
+            return  # No key is sent.
+        name, scheme, host = target(model)
+        try:
+            with self.config.open("rb") as stream:
+                owner = [p for p in tomllib.load(stream).get("profiles", {}).values() if isinstance(p, dict)]
+        except (OSError, tomllib.TOMLDecodeError):
+            owner = []
+        declared = {target(p) for p in owner if p.get("auth", "env") == "env"}
+        if (name, scheme, host) in declared:
+            return  # The owner configured exactly this key and server in agent.toml.
+        if not (name in {n for n, _, _ in declared} or STUDIO_KEY.fullmatch(name)
+                or host in PROVIDER_KEY_HOSTS.get(name, ())):
+            raise Problem("This API key variable is not allowed for this server. Use a provider key with "
+                          "its official host (for example OPENAI_API_KEY with api.openai.com), a dedicated "
+                          "STUDIO_<NAME>_API_KEY variable, or declare the variable in agent.toml.")
+        if scheme != "https" and not plaintext_host(host):
+            raise Problem("An API key is sent only over https:// or to this computer. For plain http on a "
+                          "private network, declare that exact profile in agent.toml.")
+
+    def provider_key(self, model):
+        """Resolve only the selected key. Never load .env files into the controller environment:
+        that would keep rotated keys stale and spread every secret to child processes."""
+        if model.get("auth", "env") == "none":
+            return "ollama"
+        self.check_credential_target(model)
+        from dotenv import dotenv_values
+
+        name = model.get("api_key_env", "")
+        # Same precedence as the worker: the process environment first, then the config .env.
+        for source in (os.environ, dotenv_values(self.config.parent / ".env"),
+                       dotenv_values(ROOT / "frontier" / ".env")):
+            if source.get(name):
+                return source[name]
+        raise Problem("Missing environment variable for the API key.")
+
     def probe(self, profile):
         profiles, _ = self.profiles()
         if profile not in profiles:
@@ -480,20 +645,9 @@ class Studio:
         model = profiles[profile]
         if model.get("protocol") not in {"chat_completions", "responses"}:
             raise Problem("The /models endpoint is available for compatible OpenAI and Ollama APIs.")
-        from dotenv import load_dotenv
-
-        load_dotenv(self.config.parent / ".env", override=False)
-        load_dotenv(ROOT / "frontier" / ".env", override=False)
-        from apodex.switch_cli import credential_for
-
-        try:
-            key = credential_for(model)
-        except ValueError:
-            raise Problem("Missing environment variable for the API key.") from None
+        key = self.provider_key(model)
         url = model.get("base_url", "https://api.openai.com/v1").rstrip("/") + "/models"
-        request = urllib.request.Request(
-            url, headers={"Authorization": "Bearer " + (key or "ollama")}
-        )
+        request = urllib.request.Request(url, headers={"Authorization": "Bearer " + key})
         started = time.monotonic()
 
         # Do not forward authorization credentials across redirects.
@@ -506,7 +660,10 @@ class Studio:
                 data = json.loads(response.read(MAX_FILE))
         except Exception as exc:
             raise Problem(f"Model server is unavailable ({type(exc).__name__}).", 502) from None
-        models = [item.get("id", "") for item in data.get("data", [])]
+        items = data.get("data") if isinstance(data, dict) else None
+        if not isinstance(items, list):
+            raise Problem("Model server returned an unexpected /models response.", 502)
+        models = [str(item.get("id", "")) for item in items if isinstance(item, dict)]
         return {
             "reachable": True,
             "model_found": model["model"] in models,
@@ -529,17 +686,24 @@ class Studio:
         """Attach only the saved Markdown index; linked notes are read on demand."""
         root = self.project(project)
         try:
-            raw = read_project_file(root, "PROJECT.md", 12_000)
+            raw = read_project_file(root, "PROJECT.md", MAX_FILE)
         except Problem as exc:
             if exc.status == 404:
                 return None
             if "exceeds the limit" in str(exc):
-                raise Problem("PROJECT.md should be a concise guide up to 12,000 bytes. Move details to linked MD files.") from None
+                raise Problem("PROJECT.md is over 2 MB. Keep it a concise guide and move details to linked MD files.") from None
             raise
         try:
             content = raw.decode("utf-8")
         except UnicodeDecodeError:
             raise Problem("PROJECT.md must be UTF-8 encoded text.") from None
+        excerpt = ""
+        if len(raw) > NOTES_LIMIT:
+            # An oversized guide must not block every launch: attach a bounded excerpt instead.
+            content = raw[:NOTES_LIMIT].decode("utf-8", errors="ignore")
+            excerpt = ("\n[PROJECT.md is over 12,000 bytes, so only its first 12,000 bytes are attached. "
+                       "Read the remaining sections from PROJECT.md when they are relevant. "
+                       "Keep the guide concise and move details to linked MD files.]")
         return {"path": "PROJECT.md", "sha256": digest(raw), "context":
             "\n\nProject notes — saved guide PROJECT.md:\n"
             f"Project root: {root}. Relative links below refer to this root.\n"
@@ -548,8 +712,9 @@ class Studio:
             "Notes and cited sources may be outdated; verify important conclusions. "
             "When project changes are enabled, record significant new decisions or insights "
             "with date, status, and evidence reference; planning and review must not extend their note scope by this. "
-            "Do not include passwords, tokens, or full conversation transcripts in notes.\n"
-            + json.dumps({"file": "PROJECT.md", "content": content}, ensure_ascii=False)}
+            "Do not include passwords, tokens, or full conversation transcripts in notes. "
+            + ENGLISH_OUTPUT + "\n"
+            + json.dumps({"file": "PROJECT.md", "content": content}, ensure_ascii=False) + excerpt}
 
     def launch(self, body, *, mission=None):
         project = body["project"]
@@ -572,6 +737,7 @@ class Studio:
             raise Problem("ChatGPT via Codex is available only in single-agent mode.")
         if backend == "codex" or profiles[profile].get("oauth_provider"):
             raise Problem("OAuth execution is unavailable in the secure worker runtime. Select an API/local model.")
+        self.check_credential_target(profiles[profile])  # The worker sends this key to base_url.
         bounded_review = bool(mission and mission.get("review_packet"))
         if bounded_review and backend != "frontier":
             raise Problem("This backend does not support bounded review evidence tools.")
@@ -594,9 +760,7 @@ class Studio:
             if run_id in self.runs:
                 raise Problem("This run has already been created.", 409)
             directory = self.data / "runs" / run_id
-            directory.mkdir(parents=True)
             config = directory / "agent.toml"
-            write_config(config, {profile: profiles[profile]}, profile)
             run = {
                 "id": run_id,
                 "project": project,
@@ -614,67 +778,84 @@ class Studio:
                 **({"project_notes": {k: notes[k] for k in ("path", "sha256")}} if notes else {}),
                 **({"mission": mission} if mission else {}),
             }
-            atomic_json(
-                directory / "request.json",
-                {
-                    **run,
-                    "task": task + (notes["context"] if notes else ""),
-                    "cwd": str(root),
-                    "config": str(config),
-                    "env_file": str(self.config.parent / ".env"),
-                    "controller_data": str(self.data.resolve()),
-                    "oauth_config_dir": str(self.data / "anthropic"),
-                    "ssh_targets": [{k:v for k,v in t.items() if k != "identity_file"} for t in ssh_targets],
-                    **({"inventory_broker": str((directory / "inventory.sock").resolve())} if ssh_targets else {}),
-                    **({"review_objects": str(self.missions.versions.objects)} if bounded_review else {}),
-                },
-            )
+            # Registered before any setup step, so every failure below ends the run with a
+            # reason instead of leaving a 'running' record without a supervised worker.
             self.runs[run_id] = run
-            control = self.control_dir(run_id)
-            control.mkdir(parents=True, mode=0o700)
-            atomic_json(control / "run.json", run)
-            if ssh_targets:
-                self.inventory_brokers[run_id] = InventoryBroker(ssh_targets, directory / "inventory.sock")
-            log = (directory / "console.log").open("wb")
+            process = None
             try:
-                process = subprocess.Popen(
-                    [
-                        sys.executable,
-                        "-u",
-                        str(ROOT / "studio" / "worker.py"),
-                        str(directory),
-                    ],
-                    cwd=ROOT,
-                    stdout=log,
-                    stderr=subprocess.STDOUT,
-                    start_new_session=True,
+                directory.mkdir(parents=True)
+                write_config(config, {profile: profiles[profile]}, profile)
+                broker = None
+                if ssh_targets:
+                    broker = self.inventory_brokers[run_id] = InventoryBroker(ssh_targets, directory / "inventory.sock")
+                atomic_json(
+                    directory / "request.json",
+                    {
+                        **run,
+                        "task": task + (notes["context"] if notes else ""),
+                        "cwd": str(root),
+                        "config": str(config),
+                        "env_file": str(self.config.parent / ".env"),
+                        "controller_data": str(self.data.resolve()),
+                        "oauth_config_dir": str(self.data / "anthropic"),
+                        "ssh_targets": [{k:v for k,v in t.items() if k != "identity_file"} for t in ssh_targets],
+                        **({"inventory_broker": str(broker.path)} if broker else {}),
+                        **({"review_objects": str(self.missions.versions.objects)} if bounded_review else {}),
+                    },
                 )
-            except OSError:
-                broker = self.inventory_brokers.pop(run_id, None)
-                if broker: broker.close()
-                run.update(status="failed", ended=time.time())
+                control = self.control_dir(run_id)
+                control.mkdir(parents=True, mode=0o700)
                 atomic_json(control / "run.json", run)
-                raise
-            finally:
-                log.close()
-            self.processes[run_id] = process
-            try:
+                with (directory / "console.log").open("wb") as log:
+                    process = subprocess.Popen(
+                        [
+                            sys.executable,
+                            "-u",
+                            str(ROOT / "studio" / "worker.py"),
+                            str(directory),
+                        ],
+                        cwd=ROOT,
+                        stdout=log,
+                        stderr=subprocess.STDOUT,
+                        start_new_session=True,
+                    )
+                self.processes[run_id] = process
                 atomic_json(control / "processes.json", self.process_tree(process).identities())
                 (directory / "activated").touch()
-            except Exception:
-                self.process_tree(process).finish()
-                process.wait(timeout=3)
-                self.processes.pop(run_id, None)
-                broker = self.inventory_brokers.pop(run_id, None)
-                if broker: broker.close()
-                run.update(status="failed", ended=time.time(), reason="Cannot safely save worker identity.")
-                atomic_json(control / "run.json", run)
-                raise
-            process._studio_watcher = threading.Thread(
-                target=self.watch, args=(run_id, process), daemon=True
-            )
-            process._studio_watcher.start()
+                process._studio_watcher = threading.Thread(
+                    target=self.watch, args=(run_id, process), daemon=True
+                )
+                process._studio_watcher.start()
+            except Exception as exc:
+                if process:
+                    reason = "Cannot safely save worker identity."
+                elif isinstance(exc, Problem):
+                    reason = f"Cannot start the worker: {exc}"
+                else:
+                    detail = exc.strerror if isinstance(exc, OSError) and exc.strerror else type(exc).__name__
+                    reason = f"Cannot start the worker: {detail}."
+                self.abort_launch(run_id, process, reason)
+                raise Problem(reason, 500) from None
         return dict(run)
+
+    def abort_launch(self, run_id, process, reason):
+        """End a run whose launch failed after registration; never leave a phantom 'running' run."""
+        if process:
+            self.process_tree(process).finish()
+            try:
+                process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                pass
+        self.processes.pop(run_id, None)
+        broker = self.inventory_brokers.pop(run_id, None)
+        if broker:
+            broker.close()
+        run = self.runs[run_id]
+        run.update(status="failed", ended=time.time(), reason=reason, failure_kind="setup")
+        try:
+            atomic_json(self.control_dir(run_id) / "run.json", run)
+        except OSError:
+            pass  # The in-memory record still ends the run; a restart forgets an unsaved launch.
 
     def events(self, run_id, offset=0):
         path = self.run_dir(run_id) / "events.jsonl"
@@ -762,7 +943,7 @@ class Studio:
                     tree.finish()
                     break
                 last_checkpoint = time.monotonic()
-            time.sleep(0.05)
+            time.sleep(0.2)  # ProcessTree rate-limits its own process-table scans.
         code = process.wait()
         cleaned = tree.finish()
         broker = self.inventory_brokers.pop(run_id, None)
@@ -770,34 +951,75 @@ class Studio:
         with self.lock:
             run = self.runs[run_id]
             result = self.read_json(self.run_dir(run_id) / "result.json", {})
+            if not isinstance(result, dict):
+                result = {}
             status = (
-                "cancelled"
+                "interrupted"
+                if run.get("controller_stop")
+                else "cancelled"
                 if run["status"] == "stopping"
                 else (result.get("status", "failed") if code == 0 else "failed")
             )
-            run.update(
-                status=status,
-                ended=time.time(),
-                exit_code=code,
+            final = {
+                **run,
+                "status": status,
+                "ended": time.time(),
+                "exit_code": code,
                 **{k: result[k] for k in ("session_id", "reason", "usage", "review_reads") if k in result},
-            )
+            }
+            if result.get("failure_kind") in FAILURE_KINDS:
+                final["failure_kind"] = result["failure_kind"]
+            if run.get("controller_stop"):
+                final.update(reason=RESTART_REASON, reason_kind="controller_restart")
+            elif status == "failed" and not final.get("reason"):
+                # The worker ended before its runner recorded why; keep the cause visible.
+                final["reason"] = f"Worker ended without a result (exit code {code}); see the run log."
+                final.setdefault("failure_kind", "crash")
             if not cleaned:
-                run.update(status="failed", reason="Failed to terminate all subprocesses.")
-            self.processes.pop(run_id, None)
+                final.update(status="failed", reason="Failed to terminate all subprocesses.")
             if checkpoint_error:
-                run.update(status="failed", reason=checkpoint_error)
-            atomic_json(self.control_dir(run_id) / "run.json", run)
+                final.update(status="failed", reason=checkpoint_error)
+            # Persist before publishing: whoever sees the final status in memory (missions, a
+            # restarted controller reading the disk) sees the same record.
+            try:
+                atomic_json(self.control_dir(run_id) / "run.json", final)
+            finally:
+                run.update(final)
+                self.processes.pop(run_id, None)
 
-    def stop(self, run_id):
+    def stop(self, run_id, *, interrupted=False):
+        """Stop a run. interrupted=True marks a controller shutdown, which is not a run failure."""
         self.run_dir(run_id)
         with self.lock:
+            run = self.runs[run_id]
             process = self.processes.get(run_id)
-            if process and self.runs[run_id]["status"] != "stopping":
-                self.runs[run_id]["status"] = "stopping"
-                atomic_json(self.control_dir(run_id) / "run.json", self.runs[run_id])
+            if process and run["status"] != "stopping":
+                run["status"] = "stopping"
+                if interrupted:
+                    run["controller_stop"] = True
+                atomic_json(self.control_dir(run_id) / "run.json", run)
                 self.process_tree(process).stop()
                 threading.Thread(target=self.kill_later, args=(process,), daemon=True).start()
+            elif not process and run["status"] in ACTIVE:
+                # No supervised worker exists, so nothing else would ever end this record.
+                run.update(status="failed", ended=time.time(),
+                           reason=run.get("reason") or "No worker process was attached to this run.")
+                try:
+                    atomic_json(self.control_dir(run_id) / "run.json", run)
+                except OSError:
+                    pass
         return {"ok": True}
+
+    def close(self):
+        """Controller shutdown: stop services, then interrupt live runs without a failure strike."""
+        self.preview.stop()
+        self.missions.close()
+        self.deployments.close()
+        self.oauth.close()
+        for run_id in list(self.processes):
+            self.stop(run_id, interrupted=True)
+        for process in list(self.processes.values()):
+            self.kill_later(process)
 
     def process_tree(self, process):
         with self.lock:
@@ -870,7 +1092,12 @@ class Studio:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "SwitchStudio/0.1"
+    server_version = "SwitchStudio/" + VERSION
+    # Bounds each request read and each response slice (write_body), so a stalled client cannot
+    # pin a thread and descriptor forever, while a slow but steady download still completes.
+    timeout = CONNECTION_SECONDS
+    body_pending = False
+    response_started = False
 
     @property
     def studio(self):
@@ -879,8 +1106,13 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
 
+    def send_response(self, code, message=None):
+        self.response_started = True
+        super().send_response(code, message)
+
     def send(
-        self, value, status=200, content_type="application/json; charset=utf-8", filename=None
+        self, value, status=200, content_type="application/json; charset=utf-8", filename=None,
+        headers=(),
     ):
         data = (
             json.dumps(value, ensure_ascii=False).encode()
@@ -903,8 +1135,74 @@ class Handler(BaseHTTPRequestHandler):
             f"frame-src http://127.0.0.1:* http://localhost:* http://{self.server.server_address[0]}:* https://{self.server.server_address[0]}:*; "
             "frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
         )
+        for name, header in headers:
+            self.send_header(name, header)
         self.end_headers()
-        self.wfile.write(data)
+        write_body(self.wfile, data)
+
+    def fail(self, message, status):
+        """Send an error response; the unread request body is drained first.
+
+        Once a response has started, a second one would be spliced into its body, so the
+        connection is only closed and the client sees a truncated transfer.
+        """
+        if self.response_started:
+            self.close_connection = True
+            return
+        self.drain()
+        try:
+            self.send({"error": message}, status)
+        except OSError:
+            self.close_connection = True  # The client is gone or stalled.
+
+    def drain(self):
+        """Read an unread POST body, bounded, so an early 401/403/413 is not lost to a TCP reset."""
+        if not self.body_pending:
+            return
+        self.body_pending = False
+        try:
+            size = int(self.headers.get("Content-Length", 0))
+        except ValueError:
+            size = 0
+        if not 0 < size <= 4 * MAX_FILE:
+            self.close_connection = True
+            return
+        try:
+            self.connection.settimeout(5)
+            while size > 0:
+                chunk = self.rfile.read(min(size, 65536))
+                if not chunk:
+                    break
+                size -= len(chunk)
+        except OSError:
+            self.close_connection = True
+
+    def read_json(self, limit, invalid="JSON object expected."):
+        if not self.headers.get("Content-Type", "").startswith("application/json"):
+            raise Problem("JSON expected.", 415)
+        length = self.headers.get("Content-Length")
+        if length is None:
+            raise Problem("Content-Length is required.", 411)
+        size = int(length)
+        if size <= 0:
+            raise Problem("Request body is empty.", 400)
+        if size > limit:
+            raise Problem("Request too large.", 413)
+        self.body_pending = False
+        body = json.loads(self.rfile.read(size))
+        if not isinstance(body, dict):
+            raise Problem(invalid, 400)
+        return body
+
+    def preview_host(self):
+        """Serve previews on the host name the owner uses, so the preview cookie stays same-site."""
+        host = self.server.server_address[0]
+        name = (self.headers.get("Host") or "").rpartition(":")[0]
+        return "localhost" if name == "localhost" and ipaddress.ip_address(host).is_loopback else host
+
+    def session_cookie(self, value, max_age):
+        secure = "; Secure" if getattr(self.server, "tls", False) else ""
+        return ("Set-Cookie", f"miner_session={value}; HttpOnly; SameSite=Strict; Path=/; Max-Age={max_age}" + secure)
 
     def check_origin(self, mutation=False):
         port = self.server.server_port
@@ -928,49 +1226,39 @@ class Handler(BaseHTTPRequestHandler):
         self.handle_request(True)
 
     def handle_request(self, mutation):
+        self.body_pending, self.response_started = mutation, False
         try:
             self.check_origin(False)
             parsed = urllib.parse.urlsplit(self.path)
             q = {k: v[0] for k, v in urllib.parse.parse_qs(parsed.query).items()}
             path = parsed.path
             if path == "/auth/login" and mutation:
-                if not self.headers.get("Content-Type", "").startswith("application/json"):
-                    raise Problem("JSON expected.", 415)
-                size = int(self.headers.get("Content-Length", 0))
-                if not 0 < size <= 1024:
-                    raise Problem("Invalid login request.", 400)
-                body = json.loads(self.rfile.read(size))
-                if not isinstance(body, dict):
-                    raise Problem("Invalid login request.", 400)
+                body = self.read_json(1024, "Invalid login request.")
                 session, status = self.studio.access.login(body.get("key"), self.client_address[0])
                 if not session:
-                    return self.send({"error": "Authentication failed."}, status)
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", "2")
-                self.send_header("Cache-Control", "no-store")
-                secure = "; Secure" if getattr(self.server, "tls", False) else ""
-                self.send_header("Set-Cookie", "miner_session=" + session + "; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200" + secure)
-                self.end_headers(); self.wfile.write(b"{}")
-                return
+                    message = ("Too many sign-in attempts. Wait one minute and try again."
+                               if status == 429 else "Access key was not accepted.")
+                    return self.send({"error": message}, status)
+                return self.send({}, headers=[self.session_cookie(session, 43200)])
             if not self.studio.access.authenticated(self.headers):
                 if not mutation and path in {"/", "/login.js", "/login.css"}:
                     target = STATIC / ("login.html" if path == "/" else path[1:])
                     return self.send(target.read_bytes(), content_type=mimetypes.guess_type(target)[0] + "; charset=utf-8")
-                raise Problem("Sign in to Miner.", 401)
+                raise Problem("Sign in to Switch Studio.", 401)
             self.check_origin(mutation)
             if mutation:
-                if not self.headers.get("Content-Type", "").startswith("application/json"):
-                    raise Problem("JSON expected.", 415)
-                size = int(self.headers.get("Content-Length", 0))
-                if not 0 < size <= MAX_FILE * 2:
-                    raise Problem("Request too large.", 413)
-                body = json.loads(self.rfile.read(size))
+                body = self.read_json(MAX_FILE * 2)
+                if path == "/auth/logout":
+                    everywhere = body.get("everywhere") is True
+                    self.studio.access.logout(self.headers, everywhere)
+                    if everywhere:
+                        self.studio.token = secrets.token_urlsafe(32)  # Stale pages must reload.
+                    return self.send({"ok": True}, headers=[self.session_cookie("", 0)])
                 result = self.post(path, body)
             elif path == "/api/state":
                 result = self.studio.public_state()
             elif path == "/api/preview":
-                result = self.studio.preview.status()
+                result = self.studio.preview.status(self.preview_host())
             elif path == "/api/templates/company":
                 result = self.studio.company_template(q["project"])
             elif path == "/api/missions":
@@ -1029,17 +1317,29 @@ class Handler(BaseHTTPRequestHandler):
                 raise Problem("Not found.", 404)
             self.send(result)
         except (BrokenPipeError, ConnectionResetError):
-            pass
+            self.close_connection = True
         except Problem as exc:
-            self.send({"error": str(exc)}, exc.status)
+            self.fail(str(exc), exc.status)
+        except sqlite3.OperationalError:
+            self.fail("Studio storage is busy. Retry in a moment.", 503)
         except (KeyError, ValueError, TypeError) as exc:
-            self.send({"error": f"Invalid request: {exc}"}, 400)
+            status = getattr(exc, "status", None)
+            if isinstance(status, int) and 400 <= status < 600:
+                self.fail(str(exc), status)  # Typed controller errors: conflicts, missing items, busy.
+            else:
+                self.fail(f"Invalid request: {exc}", 400)
+        except TimeoutError:
+            self.fail("The request timed out.", 408)
         except (OSError, RuntimeError) as exc:
-            self.send({"error": str(exc)}, 500)
+            self.fail(str(exc), 500)
+        except Exception:
+            traceback.print_exc(file=sys.stderr)
+            self.fail("Internal error; see the Studio log.", 500)
 
     def post(self, path, body):
         if path == "/api/preview/start":
-            return self.studio.preview.start(body, self.server.server_port, self.server.server_address[0])
+            return self.studio.preview.start(body, self.server.server_port, self.server.server_address[0],
+                                             self.preview_host())
         if path == "/api/preview/stop":
             if not isinstance(body.get("id"), str) or not body["id"]:
                 raise Problem("Preview identity missing.")
@@ -1057,7 +1357,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/oauth/disconnect":
             return self.studio.disconnect_model(body)
         if path == "/api/projects":
-            return self.studio.add_project(body["path"])
+            return self.studio.register_project(body.get("path"))
         if path == "/api/file":
             return self.studio.save_file(body)
         if path == "/api/templates/company/install":
@@ -1094,14 +1394,19 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Switch Studio — local agent IDE")
-    parser.add_argument("--port", type=int, default=4317)
+    parser = argparse.ArgumentParser(prog="switch-studio", description="Switch Studio: local agent IDE and controller.")
+    parser.add_argument("--port", type=int, help="TCP port to listen on (default: 4317; 0 picks a free port)")
     parser.add_argument("--host", type=ipaddress.IPv4Address, default="127.0.0.1",
-                        help="IPv4 interface to listen on (use the server LAN IP for remote access)")
-    parser.add_argument("--cwd", type=Path, default=Path.home() / "miner-projects" / "default")
-    parser.add_argument("--no-open", action="store_true")
-    parser.add_argument("--tls-cert", type=Path)
-    parser.add_argument("--tls-key", type=Path)
+                        help="IPv4 interface to listen on; use the server LAN IP for remote access, "
+                             "which requires --tls-cert and --tls-key (default: 127.0.0.1)")
+    parser.add_argument("--cwd", type=Path,
+                        help="project folder registered at start (default: ~/miner-projects/default)")
+    parser.add_argument("--state-dir", type=Path, default=DEFAULT_STATE,
+                        help="private controller state: owner access key, runs, workspaces "
+                             "(default: .switch-agent/studio inside the Studio folder)")
+    parser.add_argument("--no-open", action="store_true", help="do not open a browser window")
+    parser.add_argument("--tls-cert", type=Path, help="PEM certificate for HTTPS (LAN access)")
+    parser.add_argument("--tls-key", type=Path, help="PEM private key that belongs to --tls-cert")
     args = parser.parse_args()
     host = str(args.host)
     if args.host.is_unspecified or args.host.is_multicast:
@@ -1111,39 +1416,49 @@ def main():
         parser.error("LAN access requires --tls-cert and --tls-key; owner authentication is always enabled")
     if bool(args.tls_cert) != bool(args.tls_key):
         parser.error("Provide both TLS certificate and private key")
-    state_dir = ROOT / ".switch-agent" / "studio"
+    state_dir = args.state_dir.expanduser().absolute()
+    cwd = (args.cwd or Path.home() / "miner-projects" / "default").expanduser()
+    try:
+        cwd = check_project_root(cwd, state_dir)
+    except Problem as exc:
+        parser.error(f"--cwd {cwd}: {exc}")
     state_dir.mkdir(parents=True, exist_ok=True)
     instance_lock = (state_dir / "server.lock").open("a")
     try:
         fcntl.flock(instance_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
         saved = Studio.read_json(state_dir / "server.json", {})
-        port = saved.get("port", args.port)
+        port = saved.get("port", args.port or 4317)
         if not isinstance(port, int) or not 1 <= port <= 65535:
             raise SystemExit("Switch Studio is already running.") from None
         url = f"{'https' if saved.get('tls') else 'http'}://{saved.get('host', '127.0.0.1')}:{port}"
         print(f"Switch Studio is already running: {url}")
+        if (args.port is not None and args.port not in {0, port}) or (args.cwd is not None and str(cwd) != saved.get("cwd")):
+            print("Warning: the running instance keeps its own --port and --cwd. "
+                  "Stop it first to start with different settings.", file=sys.stderr)
         if not args.no_open:
             open_browser(url)
         return
     try:
-        server = ThreadingHTTPServer((host, args.port), Handler)
+        server = ThreadingTLSServer((host, 4317 if args.port is None else args.port), Handler)
     except OSError as exc:
-        raise SystemExit(f"Port {args.port} is unavailable: {exc}. Try --port 4318.") from None
+        raise SystemExit(f"Port {4317 if args.port is None else args.port} is unavailable: {exc}. Try --port 4318.") from None
     server.tls = bool(args.tls_cert)
-    server.ssl_context = None
     if server.tls:
+        # The listening socket stays plain: each handshake runs in its connection thread.
         server.ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         server.ssl_context.minimum_version = ssl.TLSVersion.TLSv1_2
         server.ssl_context.load_cert_chain(args.tls_cert, args.tls_key)
-        server.socket = server.ssl_context.wrap_socket(server.socket, server_side=True)
-    args.cwd.mkdir(parents=True, exist_ok=True)
-    server.studio = Studio(args.cwd)
+    cwd.mkdir(parents=True, exist_ok=True)
+    server.studio = Studio(cwd, state_dir)
     server.studio.preview.ssl_context = server.ssl_context
     server.studio.missions.start()
-    atomic_json(state_dir / "server.json", {"host": host, "port": server.server_port, "pid": os.getpid(), "tls": server.tls})
+    atomic_json(state_dir / "server.json", {"host": host, "port": server.server_port, "pid": os.getpid(),
+                                            "tls": server.tls, "cwd": str(cwd)})
     url = f"{'https' if server.tls else 'http'}://{host}:{server.server_port}"
-    print(f"Switch Studio: {url}", flush=True)
+    print(f"Switch Studio {VERSION}: {url}", flush=True)
+    print(f"Sign in with the owner access key stored in {state_dir / 'access-key'} "
+          "(read it on this computer; Studio never prints the key).", flush=True)
     if not args.no_open:
         open_browser(url)
     def terminate(_signum, _frame):
@@ -1155,16 +1470,5 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
-        server.studio.preview.stop()
-        server.studio.missions.close()
-        server.studio.deployments.close()
-        server.studio.oauth.close()
-        for run_id in list(server.studio.processes):
-            server.studio.stop(run_id)
-        for process in list(server.studio.processes.values()):
-            server.studio.kill_later(process)
+        server.studio.close()
         server.server_close()
-
-
-if __name__ == "__main__":
-    main()

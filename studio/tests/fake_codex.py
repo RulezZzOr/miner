@@ -29,7 +29,7 @@ for line in sys.stdin:
         result = {"thread": {"id": "test-thread"}}
     elif method == "turn/start":
         send({"id": message["id"], "result": {"turn": {"id": "test-turn"}}})
-        event("item/agentMessage/delta", delta="Pracuji…")
+        event("item/agentMessage/delta", delta="Working…")
         if scenario == "failure":
             event("turn/completed", turn={"id": "test-turn", "status": "failed"})
         elif scenario == "disconnect":

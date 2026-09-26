@@ -1,6 +1,6 @@
 # Feature catalog — Miner / Switch Studio
 
-Source-reviewed on 24 September 2026 against alpha.9. This catalog describes
+Source-reviewed on 24 September 2026 against alpha.9 and updated for the alpha.10 execution model. This catalog describes
 implemented application behavior, not a claim that every optional provider or
 external business system has been configured. The application is experimental.
 
@@ -23,7 +23,7 @@ has not been established. None of these labels guarantees the quality of a model
 | Office drill-down | Open a selected task's live map, run/approvals or company from the detail panel. | The view reads existing controller APIs; it neither schedules extra workers nor grants department permissions. |
 | Live dependency map | Show actual task dependencies, current phase, blockers, step details and recent events; “Find current step” locates the active work. | Implemented; a status visualization, not a neural-network graph or a simulation of imaginary work. |
 | Activity and run history | Read streamed output, available reasoning, tool calls, approvals, logs and output files; restore the visible history after reload. | Implemented; reasoning/usage availability depends on the selected backend. Finished process status is separate from verified acceptance. |
-| Contextual help | Question-mark controls explain purpose, use and an example; keyboard activation, Escape and focus return are supported. | English built-in UI/help; user-authored names and historic text retain their original language. Reduced-motion preferences are respected by Office. |
+| Contextual help | Question-mark controls explain purpose, use and an example; keyboard activation, Escape and focus return are supported. | English built-in UI/help. Prompts direct agents to write reports, questions, summaries, notes and documentation in English regardless of the input language. Reduced-motion preferences are respected by Office. |
 
 Guides: [Dashboard](DASHBOARD.md), [3D Office](OFFICE.md).
 Implementation: [dashboard.js](../static/dashboard.js), [office.js](../static/office.js),
@@ -79,7 +79,7 @@ Implementation: [runner.py](../runner.py), [oauth.py](../oauth.py),
 | Acceptance choices | Accept a verified delivery, or explicitly record manual acceptance when appropriate. | Manual acceptance is labeled; it does not become successful test evidence or qualify for automatic verified deployment. |
 | Compact handoff | Save goal excerpt, completed/pending steps, blockers, last verified command and file revisions before attempts. | Up to 4.5 KB for Light and 8 KB otherwise. Changed files are marked for rereading; omitted items are visible. |
 | Restart and pause recovery | Persist controller/attempt state, reconcile interrupted work and respect paused parent companies/products. | Tested controller mechanisms; not an exactly-once guarantee for arbitrary external side effects or verified seven-day autonomy. |
-| Source versions and merge | Stage managed work in a copy, save content/permission snapshots and reject conflicting merges. | An isolated working copy protects project edits; it is not an OS security sandbox. |
+| Source versions and merge | Stage managed work in a copy, save content/permission snapshots and reject conflicting merges. | The working copy protects project edits; OS-level isolation comes from the Linux bubblewrap sandbox that runs the workers. |
 | Restore and rollback preview | Preview recorded changes, back up current tracked content, restore a version or return to the pre-restore snapshot. | Credentials, dependencies and operational databases are outside the file restore; conflicts and unsupported file/folder swaps need intervention. |
 | Trace and budget history | Inspect phase changes, decisions, file changes, run duration, model identity and available usage; set attempt/time/horizon limits. | These limits are not a provider-wide monetary cap. Token estimates and provider-reported usage are distinct. |
 
@@ -96,7 +96,7 @@ Coverage: [delivery tests](../tests/test_delivery_workflow.py), [mission tests](
 | --- | --- | --- |
 | Company Builder | Define company goals, projects, departments, worker/reviewer profiles and operating limits. | Implemented; a department supplies work context, not a separate security identity. |
 | Company Driver | Schedule eligible assignments by priority/dependencies and coordinate independent work around blockers. | Shares one active worker slot with Studio. The company queue does not launch 30 parallel workers. |
-| Recurring work and bounded loops | Repeat accepted assignments at configured intervals, enforce horizon and execution/run reservations, pause on repeated controller errors. | Host and service must remain available. Missed intervals do not cause a catch-up flood; blocked work is not silently unblocked. |
+| Recurring work and bounded loops | Repeat accepted assignments at configured intervals, enforce horizon and execution/run reservations, pause on repeated controller errors. | Host and service must remain available. Missed intervals do not cause a catch-up flood. Blocked company work gets a bounded number of automatic recovery rounds, each recorded as a Driver event, before the owner is asked; nothing is unblocked silently. |
 | External owner items and reports | Record owner-performed external actions with evidence or rejection; download a portfolio/work/decision report as Markdown. | Recording an action does not send a message, make a payment or execute a deployment. |
 | 30-role AI Build Company template | Save editable role instructions across leadership/operations, growth, delivery and internal IT/data/AI; attach a project brief. | Organizational template only. Saving it neither starts agents nor connects a real company. |
 | Product cards and change queue | Keep product purpose, users and permanent criteria; queue fixes/features and track accepted versions. | Product types provide model context, not preinstalled stacks or guaranteed products. |
@@ -131,10 +131,10 @@ Implementation: [decisions.py](../decisions.py), [decision_lab.py](../decision_l
 | Feature | Current scope |
 | --- | --- |
 | Self-hosted web application | Python backend and browser UI without a frontend build or CDN. Local models do not require a cloud account. |
-| Platform packages | macOS, Linux and Windows via WSL2 source archives with launchers, manifests and SHA-256 checksums. No signed native installers or bundled model weights. |
+| Platform packages | macOS, Linux and Windows via WSL2 source archives with launchers, manifests and SHA-256 checksums. Agent execution needs the Linux (or WSL2) backend with bubblewrap; macOS runs the UI only. No signed native installers or bundled model weights. |
 | Persistence | SQLite stores projects, companies, products, decisions and verification state; files hold outputs, logs, content objects and Markdown knowledge. |
-| Local release checks | Backend/frontend tests, publication signature checks and archive manifest verification; a separate locked dependency audit. GitHub Actions is intentionally disabled. |
-| Verified alpha.9 baseline | 241 backend tests passed, one optional test skipped, and 92 frontend checks passed on macOS and Linux. [Release receipts](https://github.com/RulezZzOr/miner/releases/tag/v0.4.0-alpha.9) identify tested source and archives. Windows/WSL2 end-to-end use is not established by these runs. |
+| Local release checks | Backend/frontend tests, publication signature checks and archive manifest verification; a separate locked dependency audit. Sandbox-dependent tests run on Linux with bubblewrap and are skipped elsewhere. Release verification does not depend on hosted CI. |
+| Verified alpha.9 baseline | 241 backend tests passed, one optional test skipped, and 92 frontend checks passed on macOS and Linux. [Release receipts](https://github.com/RulezZzOr/miner/releases/tag/v0.4.0-alpha.9) identify tested source and archives. Since alpha.10, execution tests need Linux with bubblewrap. Windows/WSL2 end-to-end use is not established by these runs. |
 | Request and file safeguards | Host/Origin/request-token checks, protected paths, no-follow file access, conflict checks, bounded readers and explicit approval handling. |
 | Security boundary | Single-owner login, TLS on LAN, private runtime files, Linux bubblewrap for workers/checks. No RBAC, network egress isolation or separate kernel. |
 | Audit and provenance | [Dated audit](../../docs/AUDIT-2026-09-24.md), [security policy](../../SECURITY.md), [third-party notices](../../THIRD_PARTY.md) and retained upstream attribution. |

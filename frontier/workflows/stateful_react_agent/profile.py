@@ -1,5 +1,3 @@
-# Modified for Miner / Switch Studio, 2026-09-23.
-# Changes from ApodexAI/FrontierAgent; see frontier/SWITCH.md and THIRD_PARTY.md at the repository root.
 """Native profile loader and LLM builders for the stateful ReAct agent."""
 
 from __future__ import annotations

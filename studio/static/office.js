@@ -23,7 +23,7 @@ function officeItemStatus(m,run,log,now) {
   if(run && ["running","stopping"].includes(run.status)) {
     const recent=(log?.events||[]).reduce((latest,e)=>Math.max(latest,Number(e.time)||0),0);
     if(!recent || now-recent>180 || log?.loading)return "stale";
-    const lastIssue=(log?.events||[]).filter(e=>e.type==="error" || e.type==="note"&&/blocked:|denied:/i.test(e.text||"")).at(-1);
+    const lastIssue=(log?.events||[]).filter(e=>e.type==="error" || e.type==="note"&&isToolObstacle(e.text)).at(-1);
     if(lastIssue && recent-Number(lastIssue.time)<30)return "blocked";
     return ["review","final"].includes(officeRunPhase(m,run)) ? "review":"working";
   }
@@ -64,7 +64,7 @@ function officeModel(data,companyId="",logs={},now=Date.now()/1000) {
     attention:items.filter(i=>["blocked","waiting","stale"].includes(i.status)).length,
     done:items.filter(i=>i.status==="done").length};
 }
-const officeState={company:"",selected:null,department:null,data:null,model:null,logs:{},loading:false,epoch:0,lastSuccess:0,signature:"",angle:-28,tilt:55,zoom:1,layout:"3d",offline:false};
+const officeState={company:"",selected:null,department:null,data:null,model:null,logs:{},loading:false,epoch:0,lastSuccess:0,signature:"",angle:-28,tilt:55,zoom:1,layout:"3d",offline:false,warning:""};
 function officeBox(parent,x,y,z,w,d,h,color,cls="") {
   const box=el("div","office-box "+cls);box.setAttribute("aria-hidden","true");
   box.style.cssText=`--x:${x}px;--y:${y}px;--z:${z}px;--w:${w}px;--d:${d}px;--h:${h}px;--box-color:${color}`;
@@ -155,7 +155,8 @@ function renderOfficeDetail(){
   const actions=el("div","office-detail-actions");
   if(item.mission)actions.append(missionButton("Open live map",async()=>{$("#office-dialog").close();await showFlow(item.mission);}));
   if(item.run)actions.append(missionButton("Open run and approvals",async()=>{$("#office-dialog").close();await refreshState();await selectRun(item.run);focusApprovalInbox();}));
-  if(item.company)actions.append(missionButton("Open company",async()=>{$("#office-dialog").close();companySelection=item.company;await showCompanies();}));
+  // Same path as the dashboard: resets the company snapshot and refuses while a company form has unsaved changes.
+  if(item.company)actions.append(missionButton("Open company",async()=>{await dashboardOpenCompany(item.company);$("#office-dialog").close();}));
   panel.append(actions);
 }
 function renderOffice(data){
@@ -165,7 +166,7 @@ function renderOffice(data){
   if(signature!==officeState.signature){officeState.signature=signature;renderOfficeScene(model);}
   renderOfficeList();renderOfficeDetail();
   $("#office-empty-state").hidden=model.items.length>0;
-  $("#office-sync").textContent=officeState.offline?"Offline — last snapshot may be outdated.":`Live · updated ${new Date(officeState.lastSuccess*1000).toLocaleTimeString("en-GB")}`;
+  $("#office-sync").textContent=officeState.offline?"Offline — last snapshot may be outdated.":`Live · updated ${new Date(officeState.lastSuccess*1000).toLocaleTimeString("en-GB")}${officeState.warning?" · Controller warning: "+officeState.warning:""}`;
 }
 async function loadOffice(){
   if(!$("#office-dialog").open||officeState.loading)return;
@@ -173,7 +174,8 @@ async function loadOffice(){
   try{
     const [company,mission,stateData]=await Promise.all([api("/api/companies"),api("/api/missions"),api("/api/state")]);
     if(epoch!==officeState.epoch||!$("#office-dialog").open)return;
-    if(company.controller_error||mission.controller_error)throw new Error(company.controller_error||mission.controller_error);
+    // Controller errors are warnings: the data is still current and must stay visible.
+    officeState.warning=[company.controller_error,mission.controller_error].filter(Boolean).join(" · ");
     const data={companies:company.companies,missions:mission.missions,runs:stateData.runs};
     const active=stateData.runs.filter(r=>["running","waiting","stopping"].includes(r.status));
     const ids=new Set(active.map(r=>r.id));for(const key of Object.keys(officeState.logs))if(!ids.has(key))delete officeState.logs[key];

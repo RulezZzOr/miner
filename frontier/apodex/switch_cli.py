@@ -17,6 +17,31 @@ from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parents[1]
 
+# Local model servers (Ollama, llama.cpp) own one GPU and often one decode slot.
+LOCAL_LLM_TIMEOUT_S = 600
+# They answer HTTP 503 "Loading model" while weights (re)load, which can take
+# minutes. The agent loop keeps retrying transient provider errors with its
+# exponential backoff (2 s doubling, capped at 60 s): 15 attempts wait about
+# ten minutes in total before the call is reported as provider_unavailable.
+LOCAL_PROVIDER_RETRIES = 15
+LOCAL_PROVIDER_WAIT_S = 600
+# The single-slot admission wait counts against the logical-call deadline, and
+# the coordinator and sub-agents share that slot. Cover this call's own attempt,
+# the loading wait and up to two slow calls queued ahead of it.
+LOCAL_LOGICAL_CALL_S = LOCAL_LLM_TIMEOUT_S * 3 + LOCAL_PROVIDER_WAIT_S
+
+
+def is_local_model(model: dict[str, Any]) -> bool:
+    """Ollama and keyless OpenAI-compatible servers (llama.cpp) are local."""
+    return model.get("chat_dialect") == "ollama" or model.get("auth") == "none"
+
+
+def switch_version() -> str:
+    try:
+        return (ROOT.parent / "studio" / "VERSION").read_text().strip() or "unknown"
+    except OSError:
+        return "unknown"
+
 
 def credential_for(model: dict[str, Any]) -> str:
     """Resolve runtime/probe auth without ever reading a key for no-auth profiles."""
@@ -33,7 +58,9 @@ def credential_for(model: dict[str, Any]) -> str:
 def workflow_settings(source: dict[str, Any], model: dict[str, Any]) -> dict[str, Any]:
     """Copy upstream workflow capabilities, overriding only model/runtime limits."""
     result = json.loads(json.dumps(source))
-    protocol = model["protocol"]
+    protocol = model.get("protocol")
+    if not protocol:
+        raise ValueError("The model profile has no protocol")
     if protocol not in {"chat_completions", "responses", "anthropic", "bedrock"}:
         raise ValueError(f"Full workflow does not support protocol {protocol!r}")
     if model.get("tool_mode", "native") != "native":
@@ -85,10 +112,14 @@ def workflow_settings(source: dict[str, Any], model: dict[str, Any]) -> dict[str
             else model.get("thinking_format", "none")
         ),
         "thinking_in_history": model.get("thinking_in_history", False),
-        "llm_timeout_s": 600,
+        "llm_timeout_s": LOCAL_LLM_TIMEOUT_S,
         "reasoning_only_timeout_s": 600,
         "reasoning_only_max_tokens": max(64, output * 3 // 4),
     })
+    if is_local_model(model):
+        agent["logical_call_timeout_s"] = max(
+            float(agent.get("logical_call_timeout_s") or 0), LOCAL_LOGICAL_CALL_S,
+        )
     return result
 
 
@@ -98,8 +129,20 @@ def configure(path: Path, name: str | None = None) -> str:
     load_dotenv(ROOT / ".env", override=False)
     with path.open("rb") as stream:
         settings = tomllib.load(stream)
-    name = str(name or settings["default_profile"])
-    model = settings["profiles"][name]
+    profiles = settings.get("profiles") or {}
+    if not isinstance(profiles, dict) or not profiles:
+        raise ValueError(f"{path} defines no [profiles.<name>] model profiles")
+    name = str(name or settings.get("default_profile") or "")
+    if not name:
+        raise ValueError(f"{path} has no default_profile; pass --llm-profile <name>")
+    if name not in profiles:
+        raise ValueError(
+            f"Unknown model profile {name!r}; available: {', '.join(sorted(profiles))}"
+        )
+    model = profiles[name]
+    for required in ("protocol", "model"):
+        if not model.get(required):
+            raise ValueError(f"Model profile {name!r} is missing {required!r}")
     key = credential_for(model)
     os.environ.pop("SWITCH_ANTHROPIC_PROFILE", None)
     protocol = model["protocol"]
@@ -121,12 +164,18 @@ def configure(path: Path, name: str | None = None) -> str:
         # worker can read and extract the bounded page text itself.
         "SWITCH_RAW_WEB_FETCH": "1",
     })
+    # Every answer, report and note is English; the upstream reporter would
+    # otherwise detect the task language and force its output into it.
+    os.environ["LANGUAGE_DETECT_ENABLED"] = "false"
     if model.get("chat_dialect") == "ollama":
         # Local Ollama may have one decode slot and slow prompt prefill.
         # Queue here rather than repeatedly timing out inside the server.
         os.environ.setdefault("FRONTIER_AGENT_LLM_MAX_CONCURRENT", "1")
         os.environ.setdefault("FRONTIER_AGENT_LLM_FIRST_CHUNK_S", "600")
         os.environ.setdefault("FRONTIER_AGENT_LLM_STREAM_STALL_S", "600")
+    if is_local_model(model):
+        # Wait out a model (re)load instead of failing after about 30 seconds.
+        os.environ.setdefault("FRONTIER_AGENT_LLM_MIN_RETRIES", str(LOCAL_PROVIDER_RETRIES))
     digest = hashlib.sha256(json.dumps(model, sort_keys=True).encode()).hexdigest()[:20]
     cache = path.resolve().parent / ".switch-agent" / "frontier-profiles" / digest
     cache.mkdir(parents=True, exist_ok=True)
@@ -150,6 +199,10 @@ def main() -> None:
     parser.add_argument("--llm-profile")
     parser.add_argument("--config", type=Path, default=ROOT.parent / "agent.toml")
     args, remaining = parser.parse_known_args()
+    if "--version" in remaining:
+        from apodex import __version__
+        print(f"Switch {switch_version()} (FrontierAgent {__version__} fork)")
+        return
     if any(arg in remaining for arg in ("--help", "-h")):
         from apodex.cli import build_parser
         help_parser = build_parser()
@@ -159,11 +212,17 @@ def main() -> None:
         help_parser.add_argument("--config", help="path to model configuration TOML")
         help_parser.print_help()
         return
-    if not any(arg in remaining for arg in ("--help", "-h", "--version")):
-        try:
-            configure(args.config, args.llm_profile)
-        except (KeyError, ValueError, OSError) as exc:
-            raise SystemExit(f"Switch configuration error: {exc}") from exc
+    try:
+        configure(args.config, args.llm_profile)
+    except FileNotFoundError as exc:
+        raise SystemExit(
+            f"Switch configuration error: {exc.filename} does not exist. "
+            "Copy agent.example.toml to agent.toml or pass --config <path>."
+        ) from exc
+    except (ValueError, OSError, tomllib.TOMLDecodeError) as exc:
+        raise SystemExit(f"Switch configuration error: {exc}") from exc
+    except KeyError as exc:
+        raise SystemExit(f"Switch configuration error: missing setting {exc}") from exc
     sys.argv = ["switch", *remaining]
     from apodex.cli import main as upstream_main
     raise SystemExit(upstream_main())

@@ -18,3 +18,11 @@ test('empty task requires a concrete goal instead of launching an entire company
   assert.ok(result.startsWith('[AI Build Company:'));
   assert.ok(result.includes("If a specific goal is missing, request it first"));
 });
+test('authored prompts that ask for reports require English output', () => {
+  const directive = 'Write all reports, questions, summaries, notes and generated documentation in English, regardless of the language of the input.';
+  assert.ok(ctx.companyTaskContext('', 'company/ai-build-company.json').includes(directive));
+  const html = fs.readFileSync(path.join(__dirname, '../static/index.html'), 'utf8');
+  for (const [, prompt] of html.matchAll(/data-prompt="([^"]+)"/g)) assert.ok(prompt.includes(directive), prompt);
+  const companies = fs.readFileSync(path.join(__dirname, '../static/companies.js'), 'utf8');
+  assert.ok(companies.includes(directive), 'company preset goals');
+});

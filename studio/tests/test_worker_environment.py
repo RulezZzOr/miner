@@ -1,31 +1,39 @@
-"""Native file tools must use the installed runtime, not system Python."""
-import os
-from pathlib import Path
+"""Worker shells must use the installed runtime, not a system Python found on PATH.
+
+The worker PATH is the one isolated_command passes to bubblewrap; no other code
+path builds it.
+"""
 import subprocess
 import sys
 import tempfile
 import unittest
-import venv
+from pathlib import Path
+from unittest.mock import patch
 
-from studio.worker import worker_environment
+from studio.isolation import isolated_command
+from studio.tests.sandbox_support import requires_sandbox
 
 
 class WorkerEnvironmentTests(unittest.TestCase):
-    def test_system_service_path_cannot_hide_runtime_packages(self):
-        with tempfile.TemporaryDirectory(prefix="studio runtime ") as directory:
-            root = Path(directory) / "venv"
-            venv.EnvBuilder(with_pip=False).create(root)
-            bindir = root / ("Scripts" if os.name == "nt" else "bin")
-            python = bindir / ("python.exe" if os.name == "nt" else "python3")
-            site = subprocess.check_output([str(python), "-c", "import sysconfig; print(sysconfig.get_path('purelib'))"], text=True).strip()
-            Path(site, "studio_reader_dependency.py").write_text("VALUE = 'installed-runtime'\n")
-            original = {"PATH": os.defpath}
-            env = worker_environment(str(python), original)
-            command = "python" if os.name == "nt" else "python3"
-            output = subprocess.check_output([command, "-c", "import studio_reader_dependency as d; print(d.VALUE)"], env=env, text=True)
-            self.assertEqual(output.strip(), "installed-runtime")
-            self.assertEqual(original, {"PATH": os.defpath})
+    def test_sandbox_path_starts_with_the_unresolved_runtime_directory(self):
+        with tempfile.TemporaryDirectory() as project, \
+             patch('studio.isolation.sys.platform', 'linux'), \
+             patch('studio.isolation.shutil.which', return_value='/usr/bin/bwrap'):
+            cmd = isolated_command(['true'], project)
+        environment = {cmd[i + 1]: cmd[i + 2] for i, arg in enumerate(cmd) if arg == '--setenv'}
+        # Do not resolve the executable symlink: its directory identifies the venv.
+        self.assertEqual(environment['PATH'].split(':')[0], str(Path(sys.executable).parent))
+        self.assertEqual(environment['HOME'], '/home/worker')
+        self.assertNotIn('--setenv', cmd[cmd.index('--'):])
 
-    def test_missing_path_retains_platform_command_search(self):
-        env = worker_environment(sys.executable, {})
-        self.assertTrue(env["PATH"].endswith(os.pathsep + os.defpath))
+    @requires_sandbox
+    def test_python_on_worker_path_sees_runtime_packages(self):
+        with tempfile.TemporaryDirectory() as project:
+            code = 'import sys, psutil, yaml; print(sys.prefix)'
+            p = subprocess.run(isolated_command(['python3', '-c', code], project), capture_output=True, text=True, timeout=30)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertEqual(p.stdout.strip(), sys.prefix)
+
+
+if __name__ == '__main__':
+    unittest.main()

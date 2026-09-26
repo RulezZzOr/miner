@@ -14,15 +14,15 @@ async def test_native_source_creation_edit_and_overwrite_guard(tmp_path, monkeyp
     monkeypatch.setenv("APODEX_IN_NATIVE", "1")
     monkeypatch.setenv("FRONTIER_AGENT_WORKSPACE_DIR", str(workspace))
     monkeypatch.setenv("FRONTIER_AGENT_OUTPUTS_DIR", str(outputs))
-    body = "# Literal source: server.shutdown(), $(echo nope), `echo nope`\nČeský text\n"
+    body = "# Literal source: server.shutdown(), $(echo nope), `echo nope`\n\u010cesk\u00fd text\n"
     path = "/workspace/" + name
     await create_file.ainvoke({"path": path, "content": body})
     assert (workspace / name).read_text() == body
     with pytest.raises(RuntimeError, match="already exists"):
         await create_file.ainvoke({"path": path, "content": "replacement"})
     assert (workspace / name).read_text() == body
-    await create_file.ainvoke({"path": path, "ops": [{"replace_text": {"find": "Český", "replace": "Nový"}}]})
-    assert (workspace / name).read_text() == body.replace("Český", "Nový")
+    await create_file.ainvoke({"path": path, "ops": [{"replace_text": {"find": "\u010cesk\u00fd", "replace": "\u004eov\u00fd"}}]})
+    assert (workspace / name).read_text() == body.replace("\u010cesk\u00fd", "\u004eov\u00fd")
     await create_file.ainvoke({"path": path, "content": "replacement", "overwrite": True})
     assert (workspace / name).read_text() == "replacement"
 

@@ -128,10 +128,10 @@ class AuditTests(unittest.TestCase):
                     "id": "local",
                     "base_url": f"http://127.0.0.1:{http.server_port}/v1",
                     "auth": "env",
-                    "api_key_env": "SWITCH_FAKE_KEY",
+                    "api_key_env": "STUDIO_FAKE_API_KEY",
                 }
             )
-            with patch.dict(os.environ, {"SWITCH_FAKE_KEY": "SYNTHETIC_ONLY"}):
+            with patch.dict(os.environ, {"STUDIO_FAKE_API_KEY": "SYNTHETIC_ONLY"}):
                 self.studio.probe("local")
                 self.studio.save_model({"id": "local", "auth": "none"})
                 self.studio.probe("local")

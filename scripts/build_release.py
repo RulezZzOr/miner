@@ -15,8 +15,9 @@ TREES = (
     "studio", "scripts", "frontier/apodex", "frontier/frontier_agent", "frontier/plugins",
     "frontier/workflows", "frontier/benchmarks", "frontier/assets", "frontier/docs",
 )
+LAUNCHERS = ("setup-studio", "switch-studio", "switch-studio-service", "switch")
 FILES = (
-    "setup-studio", "switch-studio", "agent.example.toml", "INSTALL.md", "THIRD_PARTY.md", "LICENSE", "NOTICE",
+    *LAUNCHERS, "agent.example.toml", "INSTALL.md", "THIRD_PARTY.md", "LICENSE", "NOTICE",
     "SECURITY.md", "docs/AUDIT-2026-09-24.md",
     "frontier/pyproject.toml", "frontier/uv.lock", "frontier/LICENSE", "frontier/README.md",
     "frontier/SWITCH.md", "frontier/config/providers.yaml",
@@ -103,7 +104,7 @@ def build(root: Path, output: Path) -> list[Path]:
 
 
 def mode(name: str) -> int:
-    return 0o755 if name in {"setup-studio", "switch-studio"} or name.endswith((".sh", ".command")) else 0o644
+    return 0o755 if name in LAUNCHERS or name.endswith((".sh", ".command")) else 0o644
 
 
 if __name__ == "__main__":

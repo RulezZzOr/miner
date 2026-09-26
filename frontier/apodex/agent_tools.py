@@ -198,23 +198,94 @@ _READONLY_CMDS = frozenset({
 })
 # NOTE: deliberately NOT read-only: ``env`` (can exec an arbitrary command),
 # ``sort`` (``-o``/``--output`` writes a file), ``xargs`` (runs anything).
-# git subcommands that don't mutate the repo / working tree.
+# git subcommands that don't mutate the repo / working tree with any arguments.
+# ``config``, ``branch``, ``tag`` and ``remote`` are NOT here: they write with
+# a value or flag (``git config core.fsmonitor <cmd>`` runs code on the next
+# git call, ``git branch -D``, ``git remote set-url``). Their read-only shapes
+# are validated separately by ``_git_read_only_args``.
 _GIT_READONLY = frozenset({
-    "status", "diff", "log", "show", "branch", "rev-parse", "ls-files",
-    "remote", "blame", "describe", "tag", "config", "shortlog", "name-rev",
+    "status", "diff", "log", "show", "rev-parse", "ls-files",
+    "blame", "describe", "shortlog", "name-rev",
+})
+_GIT_CONFIG_READ_FLAGS = {"--get": 1, "--get-all": 1, "--get-regexp": 1, "--list": 0, "-l": 0}
+_GIT_LIST_FLAGS = frozenset({
+    "-a", "--all", "-r", "--remotes", "-v", "-vv", "--verbose", "--show-current",
+    "--no-color", "-l", "--list",
 })
 # Mutation/exec verbs + flags that veto auto-approve even under a read-only
-# leading program: redirects, command substitution, **background ``&``**,
-# write-capable ``find`` actions, package/exec verbs, etc. When in doubt the
-# command falls through to "confirm" (fail-safe), never silent auto-run.
+# leading program: redirects, command and process substitution (``<(cmd)``),
+# **background ``&``**, write-capable ``find`` actions, package/exec verbs,
+# file-writing or program-running options (``git diff --output``,
+# ``--ext-diff``, ``rg --pre`` / ``--hostname-bin`` / ``--search-zip``), etc.
+# When in doubt the command falls through to "confirm" (fail-safe), never
+# silent auto-run.
 _MUTATION_GUARD = re.compile(
-    r">>?|\$\(|`|(?<![&>])&(?!&)|"                       # redirect / subst / background &
+    r">>?|<\(|\$\(|`|(?<![&>])&(?!&)|"                  # redirect / subst / background &
     r"\b(rm|mv|cp|dd|mkfs|tee|truncate|chmod|chown|chgrp|ln|kill|pkill|"
     r"reboot|shutdown|install|pip|npm|pnpm|yarn|uv|apt|brew|make|sudo|"
     r"xargs|eval|exec|source|env|sort)\b|"               # exec-ish / write-capable
-    r"-exec(dir)?\b|-ok(dir)?\b|-delete\b|-f(print|printf|ls)\b",  # find write/exec actions
+    r"-exec(dir)?\b|-ok(dir)?\b|-delete\b|-f(print(f|0)?|ls)\b|"  # find write/exec actions
+    r"--output\b|--ext-diff\b|--exec-path\b|--pre(-glob)?\b|"     # write / run-program options
+    r"--hostname-bin\b|--search-zip\b|--compile\b|--set\b",
     re.IGNORECASE,
 )
+# The shell runs every line as its own command, so a newline (or a carriage
+# return) separates commands exactly like ``;``. Other control characters are
+# not word separators for the shell but are for ``str.split``; a command that
+# contains one is never classified as read-only.
+_BASH_SEPARATORS = re.compile(r"&&|\|\||\||;|\n|\r")
+_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+# Short-option letters that turn a read-only program into a writer or a
+# program runner, checked in every single-dash cluster (``tree -fo out``):
+# ``tree -o FILE`` / ``-R`` write listings, ``rg -z`` runs decompressors,
+# ``file -C`` compiles a magic file, ``date -s`` sets the clock.
+_WRITE_SHORT_FLAGS = {"tree": "oR", "rg": "z", "file": "C", "date": "s"}
+
+
+def _git_read_only_args(sub: str, args: list[str]) -> bool:
+    """Validate the read-only shapes of git subcommands that can also write."""
+    if sub == "config":
+        # Only ``--get NAME`` / ``--get-all NAME`` / ``--get-regexp RE`` /
+        # ``--list``; never a value, ``--file``, ``--global`` or an edit flag.
+        return bool(args) and args[0] in _GIT_CONFIG_READ_FLAGS and (
+            len(args) == 1 + _GIT_CONFIG_READ_FLAGS[args[0]]
+        ) and not any(a.startswith("-") for a in args[1:])
+    if sub in ("branch", "tag"):
+        # A bare name creates a branch/tag, so positionals are patterns only
+        # after an explicit ``--list``/``-l``; every other flag writes or is
+        # not needed for inspection.
+        flags = [a for a in args if a.startswith("-")]
+        listing = any(a in ("-l", "--list") for a in flags)
+        return all(a in _GIT_LIST_FLAGS for a in flags) and (listing or len(flags) == len(args))
+    if sub == "remote":
+        return args in ([], ["-v"], ["--verbose"]) or (
+            len(args) == 2 and args[0] == "get-url" and not args[1].startswith("-")
+        )
+    return sub in _GIT_READONLY
+
+
+def _hostname_sets(tok: str) -> bool:
+    """True for a ``hostname`` argument that sets the name: a positional NAME,
+    ``-F``/``-b`` in a short cluster, or ``--file``/``--boot`` (including the
+    unique abbreviations getopt_long accepts, such as ``--fil``)."""
+    if not tok.startswith("-"):
+        return True
+    if not tok.startswith("--"):
+        return bool(set(tok[1:]) & {"F", "b"})
+    name = tok[2:].split("=", 1)[0]
+    return bool(name) and ("file".startswith(name) or "boot".startswith(name))
+
+
+def _unsafe_arguments(prog: str, args: list[str]) -> bool:
+    """True when the arguments make an allowlisted program write or run code."""
+    letters = set(_WRITE_SHORT_FLAGS.get(prog, ""))
+    if any(a.startswith("-") and not a.startswith("--") and letters & set(a[1:]) for a in args):
+        return True
+    if prog == "uniq":  # ``uniq IN OUT`` overwrites OUT
+        return len([a for a in args if not a.startswith("-")]) > 1
+    if prog == "hostname":  # ``hostname NAME`` / ``-F FILE`` / ``--boot`` set the host name
+        return any(_hostname_sets(a) for a in args)
+    return False
 
 
 def is_mutating_tool(name: str, args: dict) -> bool:
@@ -231,20 +302,21 @@ def is_read_only_bash(cmd: str) -> bool:
     """True only when ``cmd`` is confidently read-only (auto-approvable).
 
     Allowlist of inspection programs across every ``&&``/``||``/``|``/``;``
-    segment, plus a guard that rejects redirections, command substitution, and
-    mutation verbs/flags. Anything uncertain → False (→ confirm), fail-safe.
+    and newline segment, plus a guard that rejects redirections, command and
+    process substitution, and mutation verbs/flags. Anything uncertain → False
+    (→ confirm), fail-safe.
     """
-    if not cmd or _MUTATION_GUARD.search(cmd):
+    if not cmd or _MUTATION_GUARD.search(cmd) or _CONTROL_CHARS.search(cmd):
         return False
-    for seg in re.split(r"&&|\|\||\||;", cmd):
+    for seg in _BASH_SEPARATORS.split(cmd):
         toks = seg.strip().split()
         if not toks:
             return False
         prog = os.path.basename(toks[0])
         if prog == "git":
-            if len(toks) < 2 or toks[1] not in _GIT_READONLY:
+            if len(toks) < 2 or not _git_read_only_args(toks[1], toks[2:]):
                 return False
-        elif prog not in _READONLY_CMDS:
+        elif prog not in _READONLY_CMDS or _unsafe_arguments(prog, toks[1:]):
             return False
     return True
 

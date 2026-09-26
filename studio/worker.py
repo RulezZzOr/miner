@@ -7,13 +7,15 @@ import time
 from pathlib import Path
 
 
-def worker_environment(executable, environ):
-    """Keep native tools on the runner's Python, even under systemd's PATH."""
-    env = dict(environ)
-    # Do not resolve the executable symlink: its directory identifies the venv.
-    bindir = str(Path(executable).absolute().parent)
-    env["PATH"] = bindir + os.pathsep + env.get("PATH", os.defpath)
-    return env
+def record_setup_failure(directory, exc):
+    """Leave the controller a reason when the worker fails before the runner starts."""
+    try:
+        outcome = {"status": "failed", "reason": f"Worker setup failed: {exc}"[:2000], "failure_kind": "setup"}
+        temporary = directory / "result.tmp"
+        temporary.write_text(json.dumps(outcome, ensure_ascii=False))
+        temporary.replace(directory / "result.json")
+    except OSError:
+        pass
 
 
 def main():
@@ -26,12 +28,33 @@ def main():
         time.sleep(0.05)
     if os.getppid() != parent:
         return 1
+    try:
+        command = prepare(directory)
+    except Exception as exc:
+        record_setup_failure(directory, exc)
+        raise
+    try:
+        os.execve(command[0], command, clean_environment(os.environ))
+    except OSError as exc:
+        record_setup_failure(directory, exc)
+        raise
+
+
+def clean_environment(environ):
+    try:
+        from studio.isolation import clean_environment as clean
+    except ImportError:
+        from isolation import clean_environment as clean
+    return clean(environ)
+
+
+def prepare(directory):
     request = json.loads((directory / "request.json").read_text())
     try:
-        from studio.isolation import isolated_command, clean_environment
+        from studio.isolation import isolated_command
         from studio.access import private_file
     except ImportError:
-        from isolation import isolated_command, clean_environment
+        from isolation import isolated_command
         from access import private_file
     if request.get("backend") == "codex" or request.get("oauth_provider"):
         raise RuntimeError("OAuth execution needs an isolated credential broker; host credential mounting is disabled. Select an API/local model.")
@@ -59,8 +82,9 @@ def main():
             if len(digest)!=64 or any(c not in '0123456789abcdef' for c in digest): raise ValueError('Invalid review object')
             (objects/digest).write_bytes((Path(request['review_objects'])/digest).read_bytes())
         request['review_objects']=str(objects);scoped.write_text(json.dumps(request));readonly.append(objects)
-    command = isolated_command(argv, request['cwd'], writable=[directory], readonly=readonly, protected=[request['controller_data']] if request.get('controller_data') else [])
-    os.execve(command[0], command, clean_environment(os.environ))
+    data = request.get('controller_data')
+    return isolated_command(argv, request['cwd'], writable=[directory], readonly=readonly,
+                            protected=[data] if data else [], managed_root=data)
 
 
 if __name__ == "__main__":

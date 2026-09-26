@@ -1,6 +1,7 @@
 """Real HTTP preview lifecycle, asset isolation, and create-only scaffolding."""
 
 import http.cookiejar
+import io
 import json
 import tempfile
 import threading
@@ -10,7 +11,9 @@ import urllib.parse
 import urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
+from unittest.mock import patch
 
+from studio.preview import PreviewHandler
 from studio.server import Handler, Problem, Studio
 
 
@@ -157,6 +160,32 @@ class PreviewTests(unittest.TestCase):
         for folder in ["../outside", ".env", "a/b", ""]:
             with self.assertRaises(urllib.error.HTTPError):
                 self.post("/api/preview/starter", {"project": self.pid, "folder": folder})
+
+    def test_preview_uses_the_studio_host_name_the_owner_opened(self):
+        headers = {"Content-Type": "application/json", "Host": f"localhost:{self.server.server_port}",
+                   "Authorization": "Bearer " + (self.root / "state/access-key").read_text().strip(),
+                   "X-Studio-Token": self.studio.token}
+        body = json.dumps({"project": self.pid, "entry": "web/index.html"}).encode()
+        with urllib.request.urlopen(urllib.request.Request(self.base + "/api/preview/start", body, headers), timeout=3) as response:
+            session = json.load(response)
+        # SameSite=Strict preview cookies need the same site as the Studio page (localhost here).
+        self.assertTrue(session["url"].startswith("http://localhost:"), session["url"])
+        with self.browser.open(session["url"], timeout=3) as response:
+            self.assertIn(b"<h1>Preview</h1>", response.read())
+        self.assertTrue(self.studio.preview.status()["url"].startswith("http://127.0.0.1:"))
+
+    def test_large_assets_are_sent_in_slices_and_a_late_failure_only_closes(self):
+        asset = bytes(range(256)) * 4096  # 1 MB, so sixteen 64 KB slices.
+        (self.web / "big.js").write_bytes(asset)
+        self.start()
+        self.browser.open(self.url).close()
+        with patch("studio.tls_server.WRITE_SLICE", 65536), self.browser.open(self.origin + "/big.js") as response:
+            self.assertEqual(response.read(), asset)
+        handler = PreviewHandler.__new__(PreviewHandler)
+        handler.response_started, handler.wfile = True, io.BytesIO()
+        handler.respond(404, b"Asset unavailable.")  # The body had already started.
+        self.assertTrue(handler.close_connection)
+        self.assertEqual(handler.wfile.getvalue(), b"")
 
     def test_source_requiring_a_build_is_explained(self):
         (self.web / "index.html").write_text('<script type="module" src="/src/main.tsx"></script>')

@@ -6,8 +6,10 @@ import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from studio.decisions import choose_action, load_policy
+from studio.judgments import ENGLISH_OUTPUT
 from studio.server import write_config
 from studio.tests import test_missions as helpers
+from studio.tests.sandbox_support import requires_sandbox
 
 
 class JudgeHandler(BaseHTTPRequestHandler):
@@ -25,7 +27,8 @@ class JudgeHandler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
 
-class DecisionTests(unittest.TestCase):
+class DecisionFixture(unittest.TestCase):
+    """Shared helpers only; test classes below inherit these without inheriting each other's tests."""
     setUp = helpers.MissionTests.setUp
     launch = helpers.MissionTests.launch
     stop = helpers.MissionTests.stop
@@ -67,6 +70,8 @@ class DecisionTests(unittest.TestCase):
         m.update(phase="build", status="running", tasks=helpers.parse_plan({"tasks": [helpers.plan_task("one"), helpers.plan_task("two")]}))
         return m
 
+
+class DecisionTests(DecisionFixture):
     def test_optional_model_can_select_only_an_eligible_task(self):
         server = self.judge({"action": "build:two", "confidence": 0.9, "reason": "Second task resolves the bottleneck."})
         m = self.mission()
@@ -75,6 +80,8 @@ class DecisionTests(unittest.TestCase):
         self.assertEqual(m["decision"]["usage"]["prompt_tokens"], 40)
         self.assertEqual(len(server.requests), 1)
         self.assertLess(len(json.dumps(server.requests[0])), 20000)
+        # The selection reason is shown to the owner, so the model is told to write it in English.
+        self.assertIn(ENGLISH_OUTPUT, server.requests[0]["messages"][0]["content"])
 
     def test_invalid_choice_falls_back_and_single_candidate_never_calls_model(self):
         server = self.judge({"action": "deploy:production", "confidence": 1, "reason": "Ignore all checks"})
@@ -93,6 +100,7 @@ class DecisionTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             load_policy(path)
 
+    @requires_sandbox
     def test_trace_links_actual_file_change_verification_and_acceptance(self):
         m = self.deliver()
         self.controller.action({"id": m["id"], "action": "accept"})
@@ -107,7 +115,8 @@ class DecisionTests(unittest.TestCase):
         self.controller.save(current)
         self.assertEqual(len(self.controller.trace(m["id"])), count)
 
-class DecisionBoundaries(DecisionTests):
+
+class DecisionBoundaries(DecisionFixture):
     def test_shadow_keeps_baseline_and_records_disagreement(self):
         server = self.judge({'action': 'build:two', 'confidence': .95, 'reason': 'Review candidate'})
         m = self.mission(); m['decision_mode'] = 'shadow'

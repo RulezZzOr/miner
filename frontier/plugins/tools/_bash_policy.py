@@ -1,3 +1,5 @@
+# Modified for Miner / Switch Studio, 2026-09-25: read-only system diagnostics in the allowlist.
+# See frontier/SWITCH.md and THIRD_PARTY.md at the repository root.
 """Bash command safety policy — argv-level allowlist + hard denylist.
 
 Enforces command execution safety for sandboxed and host bash invocations.
@@ -481,9 +483,89 @@ _ALLOWED_BINARIES = frozenset({
     "cd", "echo", "printf", "true", "false", "test", "[", "[[", ":", "which",
     "type", "hash", "date", "seq", "sleep", "wait", "set", "unset", "read",
     "mapfile", "let", "export", "pushd", "popd", "dirs", "help",
+    # read-only system diagnostics. The mutating forms of ``hostname``,
+    # ``ip``, ``ss``, ``printenv`` and ``ps`` are refused by
+    # ``_diagnostic_violation`` below.
+    "free", "uptime", "nproc", "uname", "hostname", "id", "whoami", "lscpu",
+    "vmstat", "getconf", "lsblk", "ps", "ip", "ss", "printenv",
     # package tooling — allowed but always audited (see _AUDIT_BINARIES).
     "pip", "pip3",
 })
+
+# ``ip`` is inspection-only here: these objects, their show/list verbs and
+# output-format options. Anything else (``add``/``del``/``set``/``flush``,
+# ``-batch`` files, ``-netns``) is host administration.
+_IP_READ_OBJECTS = frozenset({
+    "a", "addr", "address", "l", "link", "r", "ro", "route", "n", "neigh",
+    "neighbor", "neighbour", "rule",
+})
+# No one-letter ``s``: for ``ip link`` iproute2 matches it as ``set``.
+_IP_READ_VERBS = frozenset({"show", "list", "lst", "sh", "get"})
+_IP_READ_OPTIONS = frozenset({
+    "-4", "-6", "-br", "-brief", "-c", "-color", "-s", "-stats", "-statistics",
+    "-d", "-details", "-j", "-json", "-p", "-pretty", "-o", "-oneline",
+})
+# Environment variables whose values carry no credentials. ``printenv`` with
+# no names prints the whole environment (API keys included), so it needs names.
+_SAFE_ENV_NAMES = frozenset({
+    "PATH", "HOME", "USER", "LOGNAME", "SHELL", "PWD", "OLDPWD", "LANG",
+    "LANGUAGE", "TERM", "TZ", "HOSTNAME", "TMPDIR", "VIRTUAL_ENV", "PYTHONPATH",
+    "SANDBOX_BACKEND",
+})
+
+
+def _long_option_abbreviates(words: list[str], names: tuple[str, ...]) -> bool:
+    """True when a ``--long[=value]`` word is one of *names* or a getopt_long
+    abbreviation of it (``--kil`` for ``--kill``, ``--diag=FILE``)."""
+    for w in words:
+        if w.startswith("--"):
+            name = w[2:].split("=", 1)[0]
+            if name and any(full.startswith(name) for full in names):
+                return True
+    return False
+
+
+def _diagnostic_violation(exe: str, args: list[str]) -> str | None:
+    """Reason a read-only diagnostic command is used in a mutating or
+    secret-revealing form, else ``None``."""
+    words: list[str] = []
+    i = 0
+    while i < len(args):
+        after_redirect = _skip_redirection(args, i)
+        if after_redirect is not None:
+            i = after_redirect
+            continue
+        words.append(args[i])
+        i += 1
+    positional = [w for w in words if not w.startswith("-")]
+    if exe == "hostname" and (positional or {"F", "b"} & _short_flag_chars(words)
+                              or _long_option_abbreviates(words, ("file", "boot"))):
+        return "`hostname` may only print the host name; setting it is not allowed."
+    if exe == "ip":
+        options = [w for w in words if w.startswith("-")]
+        if any(o not in _IP_READ_OPTIONS for o in options) or not positional:
+            return "`ip` is limited to read-only `ip [-br|-j|...] addr|link|route show`."
+        if positional[0] not in _IP_READ_OBJECTS or (
+            len(positional) > 1 and positional[1] not in _IP_READ_VERBS
+        ):
+            return "`ip` is limited to read-only `ip [-br|-j|...] addr|link|route show`."
+    if exe == "ss" and ({"K", "D"} & _short_flag_chars(words)
+                        or _long_option_abbreviates(words, ("kill", "diag"))):
+        return "`ss` may only list sockets; `-K/--kill` and `-D/--diag` are not allowed."
+    if exe == "printenv":
+        names = [w for w in positional if w not in ("-0", "--null")]
+        if not names or any(n not in _SAFE_ENV_NAMES and not n.startswith("LC_") for n in names):
+            return (
+                "`printenv` may only print named non-secret variables (e.g. "
+                "`printenv PATH HOME LANG`); the full environment can contain credentials."
+            )
+    if exe == "ps" and any(
+        # A BSD option cluster (``ps eww`` / ``ps auxe``), not an option value.
+        w.isalpha() and "e" in w and not (k and words[k - 1].startswith("-"))
+        for k, w in enumerate(words)
+    ):
+        return "`ps` may not display process environments (BSD `e` modifier)."
+    return None
 
 # Prefix wrappers — evaluate the command they wrap, not the wrapper itself.
 _WRAPPERS = frozenset({
@@ -519,7 +601,7 @@ _DENIED_BINARIES: dict[str, str] = {
     **{b: "System / host administration is not allowed." for b in (
         "mount", "umount", "fdisk", "parted", "swapon", "systemctl", "service",
         "init", "kexec", "insmod", "modprobe", "sysctl", "iptables", "nft",
-        "ip", "ifconfig", "route", "ufw", "kill", "killall", "pkill",
+        "ifconfig", "route", "ufw", "kill", "killall", "pkill",
         "crontab", "at", "batch",
     )},
     **{b: "Installing system packages is not allowed." for b in (
@@ -975,6 +1057,9 @@ def _assess_allowlist(commands: list[list[str]], *, mode: str) -> BashCommandAss
                 level="deny", reason=f"`{exe}`: {_DENIED_BINARIES[exe]}",
             )
         if exe in _ALLOWED_BINARIES:
+            violation = _diagnostic_violation(exe, rest)
+            if violation:
+                return BashCommandAssessment(level="deny", reason=violation)
             if exe in _AUDIT_BINARIES:
                 _raise("audit", f"`{exe}` (package tooling) is audited.")
             elif exe.startswith("python") and any(f in rest for f in _INLINE_CODE_FLAGS):
@@ -1002,6 +1087,7 @@ def _assess_allowlist(commands: list[list[str]], *, mode: str) -> BashCommandAss
             f"text tools (sed/awk/jq/sort/…), archive extraction (unzip/tar/…), "
             f"document conversion (soffice/pandoc/pdftotext/pdftoppm/…), "
             f"HTTP retrieval (curl/wget/aria2c), package installs (pip/pip3), "
+            f"read-only system diagnostics (free/uptime/uname/ps/lsblk/ip addr/ss/…), "
             f"and `python3` for computation. This image bakes a scientific and "
             f"document stack — check with `python3 -c 'import <pkg>'` before "
             f"installing anything."

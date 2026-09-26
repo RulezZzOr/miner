@@ -1,5 +1,3 @@
-# Modified for Miner / Switch Studio, 2026-09-23.
-# Changes from ApodexAI/FrontierAgent; see frontier/SWITCH.md and THIRD_PARTY.md at the repository root.
 import asyncio
 import os
 import re
@@ -7,6 +5,7 @@ from typing import TYPE_CHECKING, Any
 
 from apodex.observers import TerminalObserver
 from apodex.profiles import get_profile
+from apodex.prompts import ENGLISH_OUTPUT_DIRECTIVE
 from frontier_agent.core.errors import LLMError
 from frontier_agent.core.loop_types import LoopConfig, LoopPolicy
 from frontier_agent.core.messages import Message, assistant_msg, text_of, user_msg
@@ -56,7 +55,71 @@ _LLM_CONFIGURATION_ERROR_RE = re.compile(
     r"connection refused|name or service not known|\bdns\b)",
     re.IGNORECASE,
 )
+# Switch: a model endpoint that is loading, overloaded, restarting or not
+# answering in time is a transient provider outage, not a failed task. Studio's
+# controller reads the ``Failure kind: provider_unavailable`` line and waits
+# for the provider without consuming an attempt, so only a failure that can
+# clear by itself may be classified that way. The explicit HTTP status decides
+# first; the phrases below apply only when there is none. Bare numbers and the
+# bare word "timeout" are not evidence: a 400 body such as "you requested 33268
+# tokens (... 500 in the completion)" or "invalid value for timeout" is a
+# deterministic request error.
+_HTTP_STATUS_RE = re.compile(
+    r"\b(?:error code|http(?:/\d(?:\.\d)?)?|status(?:[_ ]?code)?)\s*[:=]?\s*([1-5]\d\d)\b",
+    re.IGNORECASE,
+)
+# Errors that repeat on every retry whatever the status: quota and billing,
+# context overflow, a model or machine that cannot serve the request.
+_LLM_DETERMINISTIC_RE = re.compile(
+    r"insufficient[_ ]?(?:quota|balance)|exceeded your current quota|\bbilling\b|"
+    r"payment[_ ]required|credit balance|context[_ ]length|maximum context|context window|"
+    r"longer than the model|requires more system memory|"
+    r"model[_ -]?(?:not[_ -]?found|not[_ -]?supported|invalid)|no such model|unknown model|"
+    r"unsupported[_ ]model|not a valid model id|invalid[_ ]model[_ ]id",
+    re.IGNORECASE,
+)
+# An OpenAI-compatible gateway can wrap an upstream 5xx or timeout in a 400
+# envelope; ``call_llm`` retries those as transient (see _call.py).
+_PROXY_WRAPPED_TRANSIENT_RE = re.compile(r"bad_response_status_code|new_api_error", re.IGNORECASE)
+_PROVIDER_UNAVAILABLE_RE = re.compile(
+    r"rate[_ -]?limit|loading model|model is (?:still )?loading|service unavailable|"
+    r"temporarily unavailable|bad gateway|gateway time-?out|overloaded|"
+    r"connection (?:refused|reset|aborted|error)|all connection attempts failed|"
+    r"server disconnected|remote end closed|no route to host|network is unreachable|"
+    r"\b(?:apiconnectionerror|connecterror|connecttimeout|readtimeout|writetimeout|pooltimeout|"
+    r"apitimeouterror|timeouterror|remoteprotocolerror)\b|\btimed out\b",
+    re.IGNORECASE,
+)
+# ``call_llm`` stop reasons that mean the endpoint did not answer in time.
+_PROVIDER_UNAVAILABLE_REASONS = frozenset({"logical_call_deadline", "stream_stalled"})
 _PARTIAL_OUTPUT_LIMIT = 2000
+
+
+def llm_failure_kind(detail: str, reason: str = "", *, configuration: bool = False) -> str:
+    """Classify an LLM failure for the Studio controller (see studio/runner.py).
+
+    Returns ``time_limit``, ``setup`` (a deterministic error that a retry
+    cannot fix), ``provider_unavailable`` (an outage that can clear by itself)
+    or ``crash``.
+    """
+    if reason == "wall_deadline":
+        return "time_limit"
+    # ``non_transient`` is call_llm's verdict on a plain 400/401/403/404.
+    if configuration or reason == "non_transient" or _LLM_DETERMINISTIC_RE.search(detail):
+        return "setup"
+    status = _HTTP_STATUS_RE.search(detail)
+    if status:
+        code = int(status.group(1))
+        if code in (408, 429) or code >= 500:
+            return "provider_unavailable"
+        if code >= 400:
+            wrapped = code == 400 and _PROXY_WRAPPED_TRANSIENT_RE.search(detail)
+            return "provider_unavailable" if wrapped else "setup"
+    if reason in _PROVIDER_UNAVAILABLE_REASONS or _PROVIDER_UNAVAILABLE_RE.search(detail):
+        return "provider_unavailable"
+    if _LLM_CONFIGURATION_ERROR_RE.search(detail):
+        return "setup"
+    return "crash"
 
 # A top-level run is deliverable only when it reached a real terminal. Rescue
 # calls after resource/observer stops can preserve useful prose, but they do
@@ -146,6 +209,9 @@ class TaskRunnerMixin:
         async def _on_turn(
             self, turn: int, messages: list[Any], metadata: dict[str, Any],
         ) -> None: ...
+        async def _on_workflow_turn(
+            self, turn: int, messages: list[Any], metadata: dict[str, Any],
+        ) -> None: ...
         @staticmethod
         def _workflow_display_messages(
             task: str, steps: list[dict[str, Any]], final: str,
@@ -164,14 +230,16 @@ class TaskRunnerMixin:
         reason = reason.strip()
         partial = partial.strip()
         status = self.runtime_config_status()
-        is_configuration_error = bool(
-            status.errors or _LLM_CONFIGURATION_ERROR_RE.search(detail)
-        )
+        failure_kind = llm_failure_kind(detail, reason, configuration=bool(status.errors))
+        # A deterministic error (bad key, model, request or quota) is fixed in
+        # the configuration; an unavailable provider is not a settings problem.
+        is_configuration_error = failure_kind == "setup"
         kind = "LLM configuration error" if is_configuration_error else "LLM call failed"
         target = f"{status.provider}/{status.model or 'missing model'}"
         lines = [f"Provider/model: {target}"]
         if reason:
             lines.append(f"Reason: {reason}")
+        lines.append(f"Failure kind: {failure_kind}")
         if detail:
             lines.append(f"Provider response: {detail}")
         if is_configuration_error:
@@ -467,8 +535,12 @@ class TaskRunnerMixin:
             "profile": workflow_profile,
             "coding_workspace_root": self.cwd,
             "sdk_extra_observers": [observer, usage_observer, self.tracer],
-            "sdk_on_turn_complete": self._on_turn,
+            # Persist each workflow turn without replacing the session's compact
+            # user/final-answer history with the workflow's internal transcript.
+            "sdk_on_turn_complete": self._on_workflow_turn,
             "_studio_phase_instructions": os.environ.get("SWITCH_STUDIO_PHASE_INSTRUCTIONS", ""),
+            # Both workflows append this to their main system prompt.
+            "_sys_prompt_addendum": ENGLISH_OUTPUT_DIRECTIVE,
             # Stable across workflow executions; ``turn_index`` advances
             # within it. Workflows use this for upstream LLM session affinity.
             "session_id": self.session_id,
@@ -522,7 +594,15 @@ class TaskRunnerMixin:
             status = "interrupted"
         except Exception as exc:
             status = "error"
-            self.r.error(f"{profile.workflow} workflow failed: {exc}")
+            # Only a model-client error can mean the provider is unavailable;
+            # anything else in the workflow is a crash of this run.
+            provider_error = isinstance(exc, LLMError) or type(exc).__module__.split(".")[0] in {
+                "openai", "anthropic", "httpx", "httpcore"}
+            failure_kind = (llm_failure_kind(f"{type(exc).__name__}: {exc}")
+                            if provider_error else "crash")
+            self.r.error(
+                f"{profile.workflow} workflow failed: {exc}\nFailure kind: {failure_kind}"
+            )
         finally:
             inbox.detach()
             self.approver.inbox = None
@@ -637,7 +717,7 @@ class TaskRunnerMixin:
                 msgs.pop()
             msgs.append(user_msg(
                 "Provide your best final answer now based on everything "
-                "gathered, as plain text. Do not call any tools.",
+                f"gathered, as plain text. Do not call any tools. {ENGLISH_OUTPUT_DIRECTIVE}",
             ))
             resp = await asyncio.wait_for(self.llm.chat(msgs), timeout=120)
             text = _flatten(getattr(resp, "content", "")).strip()

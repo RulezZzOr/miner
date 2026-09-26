@@ -3,6 +3,7 @@
 **Company Builder & Driver:** companies, project portfolios, departments, dependencies, repeated tasks, and loops with limits. [Usage and boundaries](docs/COMPANY_DRIVER.md).
 
 Local GUI built on top of the full FrontierAgent backend. Runs on `http://127.0.0.1:4317` and requires no frontend build, CDN, or cloud account.
+Agent work (workers, checks, deployments) runs only on a Linux backend with bubblewrap; on macOS the server provides the UI only.
 
 See the [complete feature catalog](docs/FEATURES.md) for tables covering the live
 dashboard, interactive [3D Office](docs/OFFICE.md), models, delivery, company loops,
@@ -22,7 +23,7 @@ In the project root directory:
 ./switch-studio --no-open --port 4317
 ```
 
-On macOS, you can also double-click `Switch Studio.command`. The terminal window keeps the server running; Ctrl+C terminates the server and its active task. Closing the web tab alone does not interrupt the running task. First, use the **Stop** button if you want to terminate it.
+On macOS, you can also double-click `Switch Studio.command` to use the editor, models and configuration; tasks cannot execute on macOS because there is no unsandboxed fallback. The terminal window keeps the server running; Ctrl+C terminates the server and its active task. Closing the web tab alone does not interrupt the running task. First, use the **Stop** button if you want to terminate it.
 
 Uses `frontier/.venv`; missing environment is created automatically on first launch via `setup-studio`.
 Manual installation or update: `sh setup-studio` (requires `uv`). Installs the base runtime and document readers from the lockfile. `--all-extras` is intended for broader development environments.
@@ -60,7 +61,7 @@ Login is local: open the authorization link in a browser on the same machine whe
   subsequent executions with original criteria, history of accepted versions, and optional
   scheduled maintenance. Automatic continuation has its own limit and is disabled by default. [Usage and boundaries of product management](docs/PRODUCT_LIFECYCLE.md).
 
-- **Project notes in Markdown:** if the selected project has `PROJECT.md` in its root, Studio adds its saved content to the new task brief. A short guide with links to decisions, insights, and sources is sufficient; files are edited in your existing editor. [Rules and usage](docs/MARKDOWN_NOTES.md).
+- **Project notes in Markdown:** if the selected project has `PROJECT.md` in its root, Studio adds its saved content to the new task brief. A short guide with links to decisions, insights, and sources is sufficient; files are edited in your existing editor. Keep notes in English. [Rules and usage](docs/MARKDOWN_NOTES.md).
 
 - **Preview:** run a static HTML/CSS/JS website on a separate loopback port, click directly in Studio, mobile width 390 px, and auto-reload on saved changes. The **Create starter website** button saves a real `index.html` into a new folder. [Usage and boundaries of preview](docs/WEB_PREVIEW.md).
 - **AI Projects:** experimental long-running task brief, persistent plan and questions, recovery after restart, and separate worker/reviewer. [Usage and verified boundaries](docs/LONG_RUNNING_PROJECTS.md).
@@ -104,10 +105,10 @@ node --check studio/static/app.js
 node --test studio/tests/*.cjs
 ```
 
-Integration tests run an actual Frontier process against a deterministic local test API. They verify approval → tool → file → completion, stopping, history, and HTTP/editing boundaries. These are not tests of intelligence or real model quality.
+Integration tests run an actual Frontier process against a deterministic local test API. They verify approval → tool → file → completion, stopping, history, and HTTP/editing boundaries. These are not tests of intelligence or real model quality. Tests that start real workers, checks or deployments are marked `requires_sandbox` (`studio/tests/sandbox_support.py`): they run on Linux with working bubblewrap and are skipped with an explicit reason elsewhere, including macOS.
 
 ## Security and verification
 
 The published [delivery and security audit](../docs/AUDIT-2026-09-24.md) records verified safeguards, Office archive/XML fixes, dependency and publication checks, and remaining security boundaries. The helper summary uses the protocol and configuration of the selected workflow in both modes. Model check without authentication sends no key from the environment. Codex output list iterates through all event pages up to the log size recorded at the start of reading.
 
-Native process management regularly tracks descendants and re-captures their identity before Stop. Workers also have bubblewrap filesystem/process isolation. The selected project and read-only runtime code are shared explicitly; network access and the host kernel remain shared.
+Native process management regularly tracks descendants and re-captures their identity before Stop. Workers run inside bubblewrap filesystem/process isolation on Linux, with no unsandboxed fallback. The selected project (or its managed working copy) and read-only runtime code are shared explicitly; network access and the host kernel remain shared.

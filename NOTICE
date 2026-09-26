@@ -1,12 +1,16 @@
-Miner / Switch Studio
+Miner (Switch Studio)
+Copyright 2026 The Miner authors
 
-Includes modified FrontierAgent source from ApodexAI:
-https://github.com/ApodexAI/FrontierAgent
-Upstream base: 9e533db6f6c34d16037ee5ec964c479d0eb51cde
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
 
-Original notices and license texts are retained in frontier/.
-See THIRD_PARTY.md and frontier/SWITCH.md for attribution and modifications.
+It includes a modified copy of FrontierAgent by ApodexAI
+(https://github.com/ApodexAI/FrontierAgent, commit
+9e533db6f6c34d16037ee5ec964c479d0eb51cde), licensed under the Apache License,
+Version 2.0. The copy is in frontier/; its original license and notices are
+retained in frontier/LICENSE, and the modifications are listed in
+frontier/SWITCH.md. Upstream project names are retained for attribution only;
+this project is not affiliated with or endorsed by Apodex.
 
-The bundled FrontierChallenge component retains CC BY 4.0, not Apache-2.0.
-Original authors, citations and license: frontier/benchmarks/frontierchallenge/.
-Component-specific terms and source links: THIRD_PARTY.md.
+The bundled frontier/benchmarks/frontierchallenge/ component is licensed under
+Creative Commons Attribution 4.0 International; see its LICENSE and
+THIRD_PARTY.md. Pinned dependencies retain their own licenses.

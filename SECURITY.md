@@ -7,9 +7,13 @@ The key is generated in `.switch-agent/studio/access-key` with mode 0600. Runtim
 is private (0700); launchers use umask 077. See [installation](INSTALL.md) for sign-in.
 
 Workers, verification commands and managed services run inside Linux bubblewrap with
-private process, IPC and filesystem views and no capabilities. Only the chosen project,
-current attempt and explicitly selected immutable evidence are mounted. The controller's
-state, home credentials, SSH keys and inherited secret environment are not available.
+private process, IPC and filesystem views and no capabilities. Only the chosen project (or
+Studio's managed working copy or deployment release for it), the current attempt and explicitly
+selected immutable evidence are mounted. Verification commands run in the project or its managed
+working copy and can write only their own status file. The application directory, the
+home directory itself, `/` and the controller's state directory cannot be selected as a project.
+The rest of the controller's state, home credentials, SSH keys and inherited secret environment
+are not available.
 SSH inventory uses a typed, per-attempt broker; it accepts configured targets and read-only
 sections, never arbitrary commands. Missing sandbox support fails closed.
 
@@ -27,7 +31,8 @@ web pages and repository files can contain untrusted instructions.
 Main is protected against direct pushes, force pushes and deletion, with protection enforced
 for administrators. Changes go through pull requests; an external approving reviewer is not
 mandatory for this single-owner project. Dependabot alerts, secret scanning and push protection
-are enabled. GitHub Actions remains disabled; tests are run locally/on the dedicated Linux host.
+are enabled. Release verification does not depend on GitHub Actions; tests are run locally and
+on the dedicated Linux host, where the sandbox-dependent tests can execute.
 
 Never commit `agent.toml`, `.env`, SSH keys, `ssh-targets.json`, runtime directories or private
 agent outputs. Configure the read-only SSH inventory connector only for explicitly allowed

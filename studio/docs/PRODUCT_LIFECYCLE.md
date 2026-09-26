@@ -51,6 +51,6 @@ Local deployment now runs the approved service command on loopback, verifies HTT
 ## Verification
 
 - Tests: two versions, preservation of original criteria and history, rejection of modified results, restart, maintenance interval, execution limit, questions, pause, and transaction rollback on save error.
-- Integration: first delivery and subsequent change across eight real Frontier processes against a deterministic model API, writing `OK` → `OK-v2`, and two acceptances.
+- Integration: first delivery and subsequent change across eight real Frontier processes against a deterministic model API, writing `OK` → `OK-v2`, and two acceptances. It needs Linux with bubblewrap and is skipped on macOS.
 - Frontend: filled-out forms, delayed responses, concurrent changes, and workspace folder changes.
 - The live model was not verified by this test. A detailed record is in the development copy: `analysis/product-lifecycle-validation.json`.

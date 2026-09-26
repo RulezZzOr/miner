@@ -76,3 +76,29 @@ test('home keeps the same approval inbox visible and preserves its draft across 
  ctx.showDashboard(true);assert.equal(position,'dashboard');assert.equal(inbox.draft.value,'Use staging only');
  ctx.showDashboard(false);assert.equal(position,'workspace');assert.equal(inbox.draft,draft);
 });
+function routingFixture({runs=[],unavailable='',companies=[]}={}){
+ const nodes=new Map();
+ const node=()=>({value:'',textContent:'',disabled:false,hidden:false,dataset:{},options:[],selectedIndex:-1,
+  replaceChildren(...o){this.options=o;if(!o.some(x=>x.value===this.value))this.value='';}});
+ const ctx={Set,Date,JSON,state:{project:'project-a',data:{projects:[{id:'project-a',name:'A'}],default_profile:'gpt',runs,
+   profiles:[{id:'local',model:'coder'},{id:'gpt',model:'gpt',oauth_provider:'chatgpt',backend:'codex'}]}},
+  $:s=>{if(!nodes.has(s))nodes.set(s,node());return nodes.get(s);},el:(tag,cls,text)=>({tag,textContent:text,value:''}),
+  runnableProfiles:()=>ctx.state.data.profiles.filter(p=>!p.oauth_provider&&p.backend!=='codex'),executionUnavailable:()=>unavailable};
+ vm.createContext(ctx);vm.runInContext(source,ctx);vm.runInContext('dashboardData='+JSON.stringify({companies,departments:{delivery:'Delivery'}}),ctx);
+ // Selects in the double keep their assigned value.
+ for(const id of ['#dashboard-project','#dashboard-destination','#dashboard-who'])Object.defineProperty(ctx.$(id),'value',{get(){return this._v??'';},set(v){this._v=v;}});
+ return ctx;
+}
+test('standalone routing offers only runnable models and refuses while the worker slot is busy',()=>{
+ let ctx=routingFixture();ctx.dashboardRouting();
+ assert.deepEqual(Array.from(ctx.$('#dashboard-who').options,o=>o.value),['local']);assert.equal(ctx.$('#dashboard-submit').disabled,false);
+ ctx=routingFixture({runs:[{id:'r',status:'running'}]});ctx.dashboardRouting();
+ assert.equal(ctx.$('#dashboard-submit').disabled,true);assert.match(ctx.$('#dashboard-routing').textContent,/A worker is busy/);
+});
+test('unavailable execution blocks standalone runs but still allows queueing company work with a warning',()=>{
+ let ctx=routingFixture({unavailable:'Workers need Linux with bubblewrap.'});ctx.dashboardRouting();
+ assert.equal(ctx.$('#dashboard-submit').disabled,true);assert.match(ctx.$('#dashboard-routing').textContent,/unavailable on this host/);
+ ctx=routingFixture({unavailable:'Workers need Linux with bubblewrap.',runs:[{id:'r',status:'running'}],companies:[{...company,profile:'local',review_profile:'local'}]});ctx.dashboardRouting();
+ assert.equal(ctx.$('#dashboard-destination').value,'company-a');assert.equal(ctx.$('#dashboard-submit').disabled,false);
+ assert.match(ctx.$('#dashboard-routing').textContent,/queued work cannot run here/);
+});

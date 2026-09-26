@@ -17,10 +17,13 @@ try:
 except ImportError:
     from oauth import CodexRPC
 
+ENGLISH = ("Write all reports, questions, summaries, notes and generated documentation in English, "
+           "regardless of the language of the input.")
+
 
 def run(directory, rpc_factory=CodexRPC):
     request = json.loads((directory / "request.json").read_text())
-    outcome = {"status": "failed", "reason": "Codex ended without a result."}
+    outcome = {"status": "failed", "reason": "Codex ended without a result.", "failure_kind": "crash"}
     rpc = None
     thread_id = turn_id = None
     cancelled = threading.Event()
@@ -94,6 +97,7 @@ def run(directory, rpc_factory=CodexRPC):
         rpc = rpc_factory()
         account = rpc.request("account/read", {"refreshToken": False}).get("account") or {}
         if account.get("type") != "chatgpt":
+            outcome["failure_kind"] = "setup"
             raise RuntimeError("Log in to ChatGPT in the Models window. The API key does not replace this profile.")
         emit("started", model=request["model"], mode="codex")
         started = rpc.request(
@@ -106,7 +110,7 @@ def run(directory, rpc_factory=CodexRPC):
                 "approvalsReviewer": "user",
                 "sandbox": "workspace-write",
                 "ephemeral": True,
-                "developerInstructions": "You are working in Switch Studio. Complete the user's task in the provided project. Do not spawn sub-agents; this UI runs a single Codex agent.",
+                "developerInstructions": "You are working in Switch Studio. Complete the user's task in the provided project. Do not spawn sub-agents; this UI runs a single Codex agent. " + ENGLISH,
             },
         )
         thread_id = started["thread"]["id"]
@@ -181,6 +185,7 @@ def run(directory, rpc_factory=CodexRPC):
                         status, "failed"
                     ),
                     reason=str(status),
+                    failure_kind="" if status in {"completed", "interrupted"} else "crash",
                 )
                 emit(
                     "final" if status == "completed" else "error",
@@ -190,7 +195,7 @@ def run(directory, rpc_factory=CodexRPC):
                 )
                 break
     except KeyboardInterrupt:
-        outcome.update(status="cancelled", reason="Stopped by user or by Studio termination.")
+        outcome.update(status="cancelled", reason="Stopped by user or by Studio termination.", failure_kind="")
         if rpc and thread_id and turn_id:
             try:
                 rpc.request("turn/interrupt", {"threadId": thread_id, "turnId": turn_id}, timeout=2)

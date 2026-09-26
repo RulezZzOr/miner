@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from studio.test_evidence import test_count
 from scripts.build_release import build
-from scripts.security_scan import scan_files
+from scripts.security_scan import scan_files, scan_language, tracked_files
 
 
 def verify_archive(path):
@@ -48,11 +48,15 @@ def main():
             print(f"{name}: exit {result.returncode}, executed tests {count}", flush=True)
             if result.returncode or not count:
                 raise ValueError(name + " failed or did not execute tests. See its log.")
-        tracked = [p for p in subprocess.check_output(["git", "ls-files", "-z"], cwd=ROOT).decode().split("\0") if p]
+        tracked = tracked_files(ROOT)
         findings = scan_files(ROOT, tracked)
         receipt["credential_findings"] = findings
         if findings:
             raise ValueError("Publication credential scan found sensitive paths or signatures.")
+        language = scan_language(ROOT, tracked)
+        receipt["language_findings"] = language
+        if language:
+            raise ValueError("English-only scan found non-English text; see language_findings.")
         receipt["releases"] = [verify_archive(p) for p in build(ROOT, output / "releases")]
         final_commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
         final_dirty = bool(subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT))

@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import shlex
+import signal
 import socket
 import subprocess
 import sys
@@ -51,6 +52,10 @@ def settings(body):
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs):
         return None
+
+
+# Services get SIGTERM and time to flush their data before the sandbox is killed.
+STOP_GRACE_SECONDS = 10
 
 
 class Deployments:
@@ -136,7 +141,7 @@ class Deployments:
             try:
                 process = subprocess.Popen([sys.executable, "-u", str(Path(__file__).with_name("verification_worker.py")), str(directory)],
                                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
-                tree = ProcessTree(process.pid, grace=0.5)
+                tree = ProcessTree(process.pid, grace=STOP_GRACE_SECONDS, interrupt=signal.SIGTERM)
                 self.processes[key] = (process, tree)
                 record["processes"] = tree.identities()
                 self.save(record)
@@ -147,7 +152,7 @@ class Deployments:
                 (directory / "activated").touch()
             except Exception as exc:
                 if key in self.processes:
-                    self.stop(key, reason="Start selhal.")
+                    self.stop(key, reason=f"Start failed: {exc}"[:1000])
                 record.update(status="failed", desired="stopped", error=str(exc), processes=[], incident=uuid.uuid4().hex[:16])
                 self.save(record)
                 raise
@@ -199,7 +204,8 @@ class Deployments:
                                 for connection in process.net_connections(kind="inet"))
             if not owned:
                 raise RuntimeError("The deployment's own process is not yet listening on the port.")
-            opener = urllib.request.build_opener(NoRedirect)
+            # Loopback health probes must never be routed through an http_proxy.
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect)
             with opener.open(record["url"] + record["spec"]["health_path"], timeout=1) as response:
                 body = response.read(65536).decode("utf-8", errors="replace")
                 check.update(status=response.status, passed=response.status == record["spec"]["expected_status"]
@@ -283,5 +289,15 @@ class Deployments:
                     self.save(record)
 
     def close(self):
-        for key in list(self.processes):
-            self.stop(key, reason="Studio is shutting down.", keep_desired=True)
+        """Stop every service at once: shutdown takes one grace period, not one per service."""
+        with self.lock:
+            pairs = list(self.processes.items())
+        for _, (_, tree) in pairs:
+            tree.stop()  # SIGTERM to every payload now, so all grace periods run together
+        threads = [threading.Thread(target=self.stop, args=(key,), daemon=True, name="studio-deploy-stop",
+                                    kwargs={"reason": "Studio is shutting down.", "keep_desired": True})
+                   for key, _ in pairs]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()

@@ -1,5 +1,3 @@
-# Modified for Miner / Switch Studio, 2026-09-23.
-# Changes from ApodexAI/FrontierAgent; see frontier/SWITCH.md and THIRD_PARTY.md at the repository root.
 """Workspace-local mutable state for host-native execution.
 
 Native mode is the default for Linux host installations and the convenience
@@ -8,10 +6,95 @@ operating-system security boundary.
 """
 from __future__ import annotations
 
+import atexit
+import contextlib
 import os
+import time
 import uuid
 from collections.abc import MutableMapping
 from pathlib import Path
+
+try:
+    import fcntl
+except ImportError:  # no advisory locks (Windows): aliases are then never pruned
+    fcntl = None  # type: ignore[assignment]
+
+_ALIAS_OWNER = "owner.pid"
+# Descriptors of this process's owner files. Each one holds an exclusive
+# ``flock`` for the life of the invocation; the kernel releases it when the
+# process ends, however it ends.
+_HELD_OWNERS: dict[Path, int] = {}
+
+
+def _claim_alias(alias_dir: Path) -> None:
+    """Record this process as the owner of *alias_dir* and keep its lock."""
+    fd = os.open(alias_dir / _ALIAS_OWNER, os.O_RDWR | os.O_CREAT | os.O_TRUNC, 0o600)
+    if fcntl is not None:
+        # On a filesystem without flock the alias is then never pruned.
+        with contextlib.suppress(OSError):
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    os.write(fd, str(os.getpid()).encode())  # diagnostics only, never trusted
+    _HELD_OWNERS[alias_dir] = fd
+
+
+def _owner_alive(alias_dir: Path) -> bool:
+    """True while the invocation that created *alias_dir* may still run.
+
+    Liveness is the owner's ``flock``, not its PID. Locks hold across PID
+    namespaces, and PIDs do not: every sandboxed runner is PID 2 inside
+    ``bwrap --unshare-pid``. A PID check would keep the aliases of killed
+    attempts forever and would remove the alias of a live host session that a
+    sandboxed run cannot see. When the lock cannot be tested the alias is kept.
+    """
+    try:
+        fd = os.open(alias_dir / _ALIAS_OWNER, os.O_RDONLY)
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return True
+    try:
+        if fcntl is None:
+            return True
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:  # BlockingIOError: the owner still holds its lock
+        return True
+    finally:
+        os.close(fd)
+    return False
+
+
+def _remove_alias(alias_dir: Path) -> None:
+    """Remove one per-invocation alias directory. Only the symlink and the
+    owner file are deleted; a directory with any other content is kept."""
+    link = alias_dir / "workspace"
+    try:
+        if link.is_symlink():
+            link.unlink()
+        elif link.is_dir() and not any(link.iterdir()):
+            link.rmdir()
+        (alias_dir / _ALIAS_OWNER).unlink(missing_ok=True)
+        alias_dir.rmdir()
+    except OSError:
+        pass
+    fd = _HELD_OWNERS.pop(alias_dir, None)
+    if fd is not None:
+        os.close(fd)
+
+
+def _prune_stale_aliases(aliases: Path) -> None:
+    """Remove aliases left by invocations that were killed before cleanup."""
+    try:
+        candidates = list(aliases.iterdir())
+    except OSError:
+        return
+    for alias_dir in candidates:
+        try:
+            # A concurrent invocation may not have written its owner file yet.
+            fresh = time.time() - alias_dir.lstat().st_mtime < 60
+        except OSError:
+            continue
+        if not fresh and alias_dir.is_dir() and not alias_dir.is_symlink() and not _owner_alive(alias_dir):
+            _remove_alias(alias_dir)
 
 
 def prepare_native_runtime(
@@ -43,11 +126,17 @@ def prepare_native_runtime(
     for path in (
         home, cache, state, config, tmp, inputs, run_workspace, outputs, runs,
         dependencies,
-        python_overlay, workspace_link.parent,
+        python_overlay,
     ):
         path.mkdir(parents=True, exist_ok=True)
 
+    # Every invocation adds an alias; remove those whose process is gone, and
+    # this one when the process exits normally.
+    _prune_stale_aliases(workspace_link.parent.parent)
+    workspace_link.parent.mkdir(parents=True, exist_ok=True)
+    _claim_alias(workspace_link.parent)
     workspace_link.symlink_to(run_workspace, target_is_directory=True)
+    atexit.register(_remove_alias, workspace_link.parent)
 
     inherited_pythonpath = env.get("PYTHONPATH", "").strip()
     pythonpath = str(python_overlay)

@@ -120,23 +120,45 @@ def note_updates(controller, m, base):
     return updates
 
 
+# Documentation targets the acceptance notes would write.
+NOTE_TARGETS = (r"(?:the\s+)?(?:PROJECT\.md|notes/|notes\s+(?:files?|folder|directory)|(?:NOTES|DECISIONS|SOURCES)\.md|"
+                r"project\s+(?:files|notes|documentation|docs)|any\s+(?:other\s+)?files|(?:the\s+)?documentation|docs)")
+WRITE_RESTRICTION = re.compile(
+    r"\bwrite only\b|"
+    r"\b(?:do not|don['\u2019]t|must not|never|should not|shall not)\s+(?:edit|modify|change|write|update|touch|alter|append to|overwrite)\b.{0,60}" + NOTE_TARGETS + "|"
+    r"\b(?:leave|keep)\s+" + NOTE_TARGETS + r"\s+(?:unchanged|untouched|as is|read-only)|"
+    + NOTE_TARGETS + r"\s+(?:must|should|shall)\s+(?:remain|stay|be left)\s+(?:unchanged|untouched|as is)|"
+    r"\bno\s+(?:changes|edits|modifications|writes)\s+to\s+" + NOTE_TARGETS + "|"
+    r"\bwithout\s+(?:changing|modifying|editing|touching)\s+(?:any\s+)?(?:the\s+)?(?:project(?:'s)?\s+)?(?:files|repository|PROJECT\.md|notes|documentation)",
+    re.I)
+
+
+def notes_restricted(m):
+    """True when any part of the brief restricts writes to the notes or PROJECT.md."""
+    brief = " ".join([m.get("goal", ""), *m.get("criteria", []), m.get("constraints", "")])
+    return bool(WRITE_RESTRICTION.search(brief))
+
+
 def sync_notes(controller, m):
     """Journal once, apply with existing conflict checks, and atomically link completion."""
     if m["status"] != "accepted" or m.get("notes_sync", {}).get("status") == "complete":
         return
     root = controller.studio.project(m["project"])
-    scope = m.get("constraints", "")
-    if re.search(r"\bwrite only\b|do not (?:edit|modify|change|write).{0,60}(?:PROJECT\.md|notes/|project files|any files)|bez změn (?:souborů|projektu)", scope, re.I):
-        m["notes_sync"] = {"status": "restricted", "reason": "The explicit task constraints restrict documentation writes. Notes were not changed."}
+    if notes_restricted(m):
+        m["notes_sync"] = {"status": "restricted", "reason": "The task brief restricts documentation writes. Notes were not changed."}
         controller.save(m)
         return
     try:
         plan = m.get("notes_sync", {})
+        if plan.get("status") == "needs_attention":
+            # The saved plan was built from files that have changed since; a retry
+            # rebuilds it from the current files instead of repeating the conflict.
+            plan = {"rebuilds": plan.get("rebuilds", 0) + 1, "previous_error": plan.get("error", "")[:500]}
         if not plan.get("target"):
             base = controller.versions.snapshot(root, label="Before acceptance notes " + m["id"])
             updates = note_updates(controller, m, base)
             target = controller.versions.derive_notes(base, updates, "Acceptance notes " + m["id"])
-            plan = {"status": "pending", "base": base["id"], "target": target["id"], "paths": sorted(updates)}
+            plan = {**plan, "status": "pending", "base": base["id"], "target": target["id"], "paths": sorted(updates)}
             m["notes_sync"] = plan
             controller.save(m)
         base = controller.versions.get(plan["base"])

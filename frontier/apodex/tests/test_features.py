@@ -276,11 +276,26 @@ def test_gitignore_path_anchored_not_overpruned(tmp_path):
 
 
 # ── path localization (abs→rel avoids the ~50s sandbox slow path) ─────────
-def test_localize_absolute_path_inside_cwd(tmp_path):
+def test_localize_absolute_path_inside_cwd(tmp_path, monkeypatch):
+    monkeypatch.delenv("FRONTIER_AGENT_WORKSPACE_DIR", raising=False)
     cwd = str(tmp_path)
     (tmp_path / "sub").mkdir()
     abspath = str(tmp_path / "sub" / "f.py")
     out = localize_path_args("read_file", {"path": abspath}, cwd)
+    assert out is not None and out["path"] == "sub/f.py"
+
+
+def test_localize_keeps_read_file_absolute_in_a_separate_workspace(tmp_path, monkeypatch):
+    """Switch: a workflow reader runs in its session workspace, not in cwd."""
+    workspace = tmp_path / "session-workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("FRONTIER_AGENT_WORKSPACE_DIR", str(workspace))
+    abspath = str(tmp_path / "sub" / "f.py")
+    assert localize_path_args("read_file", {"path": abspath}, str(tmp_path)) is None
+    out = localize_path_args("grep_search", {"path": abspath}, str(tmp_path))
+    assert out is not None and out["path"] == "sub/f.py"
+    monkeypatch.setenv("FRONTIER_AGENT_WORKSPACE_DIR", str(tmp_path))
+    out = localize_path_args("read_file", {"path": abspath}, str(tmp_path))
     assert out is not None and out["path"] == "sub/f.py"
 
 
@@ -1010,10 +1025,11 @@ def test_coding_prompt_has_verify_and_act_directives(tmp_path):
     # Reinforce the schema-level bash `description` field so the model fills it
     # (shown at the approval prompt).
     assert "`description`" in p and "approval prompt" in p
-    # Explicit language directive (respond in the user's language) — both modes.
-    assert "SAME language" in p
-    from apodex.prompts import build_research_prompt
-    assert "SAME language" in build_research_prompt(str(tmp_path))
+    # Explicit language directive (Switch: English output) — both modes.
+    from apodex.prompts import ENGLISH_OUTPUT_DIRECTIVE, build_research_prompt
+    assert ENGLISH_OUTPUT_DIRECTIVE in p
+    assert ENGLISH_OUTPUT_DIRECTIVE in build_research_prompt(str(tmp_path))
+    assert "SAME language" not in p
 
 
 def test_engine_log_router_surfaces_only_recovery_notes(tmp_path):
@@ -1042,6 +1058,38 @@ def test_engine_log_router_surfaces_only_recovery_notes(tmp_path):
     fh.close()
     # both records were written to the log file
     assert "LeakedToolCallRetry" in (tmp_path / "engine.log").read_text()
+
+
+def test_engine_log_router_makes_model_call_retries_visible(tmp_path):
+    """Switch: a provider outage that call_llm retries is never silent."""
+    import logging
+
+    from apodex.cli import _EngineLogRouter
+
+    notes: list[str] = []
+
+    class _R:
+        def note(self, m):
+            notes.append(m)
+
+    fh = logging.FileHandler(str(tmp_path / "engine.log"), encoding="utf-8")
+    router = _EngineLogRouter(_R(), fh)
+
+    def rec(msg, *args):
+        return logging.LogRecord("frontier_agent", logging.WARNING, __file__, 1, msg, args, None)
+
+    loading = "Error code: 503 - {'error': {'message': 'Loading model'}}"
+    router.emit(rec("LLM call error (turn=%d, attempt=%d/%d): %s", 3, 1, 15, loading))
+    router.emit(rec("LLM call error (turn=%d, attempt=%d/%d): %s", 3, 1, 15, loading))
+    router.emit(rec("LLM rate-limited 429 (turn=%d, attempt=%d/%d, wait=%ds): %s", 3, 2, 15, 20, "slow down"))
+    router.emit(rec("LLM call timed out (turn=%d, attempt=%d/%d)", 3, 15, 15))
+    router.emit(rec("Abandoning LLM retries: backoff %ds would cross the %s", 60, "wall_deadline"))
+    fh.close()
+    assert len(notes) == 4, notes
+    assert "Loading model" in notes[0] and "retrying (attempt 2/15)" in notes[0]
+    assert "rate limited" in notes[1] and "attempt 3/15" in notes[1]
+    assert "no retries left" in notes[2]
+    assert "retries stopped" in notes[3]
 
 
 def test_engine_log_router_follows_active_run(tmp_path, monkeypatch):

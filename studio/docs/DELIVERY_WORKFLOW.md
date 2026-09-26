@@ -43,8 +43,9 @@ checks and package manifest verification. The receipt identifies the exact Git
 commit, worktree state and tested archive hashes. Run the locked dependency audit
 as described in `docs/AUDIT-2026-09-24.md` before publication. A publication receipt
 must pass on the clean published commit; a dirty development run is not sufficient.
-GitHub Actions is intentionally not used or required. No `workflow` authorization
-is needed. This application does not enable automatic merging.
+Release verification does not depend on hosted CI; run the suite on a Linux host with
+bubblewrap so that sandbox-dependent tests execute instead of being skipped. No `workflow`
+authorization is needed. This application does not enable automatic merging.
 
 ## 3. Resume using a compact handoff
 

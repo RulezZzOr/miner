@@ -51,3 +51,38 @@ test('all catalog entries have a purpose, usage and example', () => {
     for(const text of [purpose,how,example]) assert.ok(typeof text==='string' && text.trim().length>0);
   }
 });
+test('tool approval actions explain whether the run continues', () => {
+  assert.match(help('Allow').purpose, /specific pending tool action/);
+  assert.match(help('Skip and redirect').purpose, /run continues/);
+  assert.match(help('Reject and stop run').purpose, /stops the current run/);
+  assert.match(help('Reject and stop run').how, /may retry/);
+});
+test('recovery actions and session sign-in have their own help', () => {
+  assert.match(help('Retry now').purpose, /Resumes blocked work/);
+  assert.match(help('Answer and retry').purpose, /Resumes blocked work/);
+  assert.match(help('Requeue').purpose, /cancelled or expired company task/);
+  assert.match(help('Answer and retry').how, /recovery question .* resumes the work/);
+  assert.match(help('Save answer only').purpose, /agent's question without resuming/);
+  assert.match(help('Owner access key').purpose, /session expired/);
+  assert.doesNotMatch(help('Sign in and resume').purpose, /provider account/);
+});
+test('keyboard help uses F1 anywhere and ? only outside text entry', () => {
+  const control=(tag,type='')=>({isContentEditable:false,matches:s=>tag==='input'?!/input:not\(\[type=checkbox\]\)/.test(s)||['checkbox','radio','button','submit'].includes(type)?false:true:s.split(',').includes(tag)});
+  const key=(k,extra={})=>({key:k,ctrlKey:false,metaKey:false,altKey:false,...extra});
+  assert.equal(context.studioHelpKey(key('F1'),control('textarea')),true);
+  assert.equal(context.studioHelpKey(key('?'),control('button')),true);
+  assert.equal(context.studioHelpKey(key('?'),control('textarea')),false);
+  assert.equal(context.studioHelpKey(key('?'),control('input','text')),false);
+  assert.equal(context.studioHelpKey(key('?',{ctrlKey:true}),control('button')),false);
+  assert.equal(context.studioHelpKey(key('a'),control('button')),false);
+});
+test('the Run button keeps its help when its title explains why it is disabled', () => {
+  const html=fs.readFileSync(path.join(__dirname,'../static/index.html'),'utf8');
+  const label=(html.match(/<button id="run-task"[^>]*aria-label="([^"]+)"/)||[])[1];
+  assert.equal(label,'Run task','the Run button needs a stable accessible name');
+  for (const title of [null,'Workers need Linux with bubblewrap; this host can edit and review but not run agents.','A worker is busy. Wait for the current run or stop it.']) {
+    const attrs={'aria-label':label,title};
+    const found=context.studioHelpFor({id:'run-task',textContent:'Run ↑',getAttribute:k=>attrs[k]??null,matches:()=>false,closest:()=>null});
+    assert.equal(found.title,'Run task');assert.match(found.purpose,/^Starts the selected task/);
+  }
+});

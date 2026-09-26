@@ -11,6 +11,8 @@ notes/SOURCES.md       sources, verification date, and links to evidence
 
 In Miner, these files already exist and contain actual findings gathered so far. In another project, create your own `PROJECT.md` using a standard editor; names of referenced files are flexible. Do not copy Miner’s specific decisions into an unrelated project.
 
+Write notes in English. A good `PROJECT.md` states: "Write all reports, questions, summaries, notes and generated documentation in English, regardless of the language of the input." Keep the overview short and avoid long lists of files to read; the agent already receives it in its prompt.
+
 On each new run via Studio, the saved `PROJECT.md` from the selected project is attached to the task brief. This applies to both regular tasks and AI Projects experiments, and to both backends. Only the overview is sent to the model; the agent loads additional notes as needed. CLI runs outside Studio do not automatically use this new binding.
 
 The overview must be UTF-8 and at most 12,000 bytes to avoid unnecessarily bloating the context. Move larger content into referenced notes. A missing `PROJECT.md` has no effect; an invalid symlink, incorrect encoding, or oversized overview will reject the run with an error. The task brief shown in history is not overwritten; the actual sent context resides in `request.json` for the run, and its revision is recorded in `run.json` under `project_notes`.

@@ -16,8 +16,6 @@ import os
 import re
 import shutil
 import tempfile
-# Modified for Miner, 2026-09-24: reject XML entities and bound chart reads.
-import defusedxml.ElementTree as _ET
 import zipfile
 
 _GAP = 2          # data-island split threshold: >=2 consecutive blank rows/columns split a block (split condition diff > _GAP)
@@ -567,6 +565,15 @@ def _x_chart_lines(path):
     try:
         z = zipfile.ZipFile(path)
     except Exception:
+        return out
+    # Modified for Miner, 2026-09-24: reject XML entities and bound chart reads.
+    # Imported here: this bundle also reads plain text, and a python3 without
+    # defusedxml must only lose chart summaries, never every file read.
+    try:
+        import defusedxml.ElementTree as _ET
+    except ImportError:
+        if any(re.fullmatch(r"xl/charts/chart\d+\.xml", n) for n in z.namelist()):
+            out.setdefault("", []).append("Chart omitted: defusedxml unavailable")
         return out
     for name in z.namelist():
         if not re.fullmatch(r"xl/charts/chart\d+\.xml", name):

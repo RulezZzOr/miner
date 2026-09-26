@@ -1,5 +1,3 @@
-# Modified for Miner / Switch Studio, 2026-09-23.
-# Changes from ApodexAI/FrontierAgent; see frontier/SWITCH.md and THIRD_PARTY.md at the repository root.
 """Domain-neutral, config-driven ReAct loop.
 
 Workflow phases, terminal tools, and recovery policy are injected through
@@ -11,13 +9,13 @@ import asyncio
 import contextlib
 import inspect
 import logging
+import os
 import time
 import uuid
 from collections.abc import Awaitable, Callable, Coroutine
 from typing import Any
 
 from frontier_agent.core.llm import LLMClient
-from frontier_agent.core.runtime.checkpoint import CheckpointError
 from frontier_agent.core.loop_types import (
     AgentLoopResult,
     CompactionEvent,
@@ -40,6 +38,7 @@ from frontier_agent.core.messages import (
     tool_msg,
     user_msg,
 )
+from frontier_agent.core.runtime.checkpoint import CheckpointError
 from frontier_agent.core.runtime.loop.compact import (
     COMPACTION_SEQ_KEY,
     FORCE_COMPACTION_KEY,
@@ -88,6 +87,22 @@ logger = logging.getLogger(__name__)
 # ``max_turns + EXTRA_ATTEMPTS_BUFFER`` to prevent runaway rollback
 # loops (e.g. a flaky LLM that keeps emitting refusals/duplicates).
 EXTRA_ATTEMPTS_BUFFER = 200
+
+
+# Switch: a local model server (Ollama / llama.cpp) answers HTTP 503 "Loading
+# model" while it (re)loads weights, which can take minutes. The Switch launcher
+# sets this minimum for local profiles so transient provider errors keep the
+# default exponential backoff (capped at 60 s) for about ten minutes instead of
+# about 30 s. The logical-call and wall deadlines still bound every retry.
+_LLM_MIN_RETRIES_ENV = "FRONTIER_AGENT_LLM_MIN_RETRIES"
+
+
+def _llm_retry_budget(configured: int) -> int:
+    try:
+        minimum = int(os.environ.get(_LLM_MIN_RETRIES_ENV, "0").strip() or 0)
+    except ValueError:
+        minimum = 0
+    return max(configured, min(minimum, 40))
 
 
 # Signature: (turn_index, messages_snapshot, metadata) -> awaitable None.
@@ -543,7 +558,7 @@ async def _call_llm_with_callbacks(
 
     try:
         response = await call_llm(
-            llm_for_turn, messages_for_call, cfg.llm_timeout, cfg.max_llm_retries, turn,
+            llm_for_turn, messages_for_call, cfg.llm_timeout, _llm_retry_budget(cfg.max_llm_retries), turn,
             on_delta=_on_delta if stream_llm_tokens else None,
             retry_wait_fixed=cfg.retry_wait_fixed,
             runaway_state=metadata.setdefault(RUNAWAY_STATE_KEY, {}),
@@ -573,7 +588,9 @@ async def _call_llm_with_callbacks(
             "agent_loop: call_llm exhausted after turn=%d (reason=%s); ending with llm_error to preserve partial content: %s",
             turn, exhausted.reason, exhausted.last_exc,
         )
-        metadata["llm_error"] = str(exhausted.last_exc)
+        # Switch: ``str(TimeoutError())`` is empty; keep the exception type so
+        # the failure can still be classified (apodex.task_runner.llm_failure_kind).
+        metadata["llm_error"] = str(exhausted.last_exc) or type(exhausted.last_exc).__name__
         metadata["llm_error_reason"] = exhausted.reason
         return None, "llm_error", 0, 0, first_delta_at, llm_call_started, time.perf_counter(), call_id, current_attempt_id, current_attempt_index
 

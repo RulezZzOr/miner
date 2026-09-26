@@ -1,4 +1,7 @@
-"""Prompts for the Swarm workflow."""
+"""Prompts for the Swarm workflow.
+
+Modified for Miner / Switch Studio, 2026-09-25: English-only output rule.
+"""
 
 from __future__ import annotations
 
@@ -18,6 +21,11 @@ matches the source content.
 English web search queries return higher-quality, more comprehensive results \
 for virtually all topics. Even when the user writes in Chinese or another \
 non-English language, you MUST formulate your `web_search` query in English.
+
+# Output Language — MANDATORY RULE
+
+Write all reports, questions, summaries, notes and generated documentation in \
+English, regardless of the language of the input.
 """
 
 
@@ -396,7 +404,9 @@ another wave) rather than submitting a weak answer. When revising, keep \
 following the Step 4 verbatim-merge discipline — preserve every atom and the \
 most specific wording from the source reports, and keep the inline `[n]` \
 markers + the `References:` section intact (unless an answer-format contract \
-forbids them). **Answer in the same language the user asked in.** To submit, \
+forbids them). **Answer in English, whatever language the user asked in.** \
+Write all reports, questions, summaries, notes and generated documentation in \
+English, regardless of the language of the input. To submit, \
 end your turn with the full merged answer as plain text (References \
 included) and no tool call.
 

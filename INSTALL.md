@@ -1,6 +1,6 @@
 # Switch Studio — macOS, Linux, and Windows
 
-Version `0.4.0-alpha.10`. Earlier release archives do not include these security changes. A lightweight local web IDE with the same interface and backend.
+Version `0.4.0-alpha.11`. Earlier release archives do not include these security changes. A lightweight local web IDE with the same interface and backend.
 
 Packages contain source code; on first installation, `uv` downloads Python 3.12 and pinned
 dependencies. They do not include models, personal settings, or history. Internet access is required
@@ -26,6 +26,10 @@ The Windows variant requires **WSL2**; this version does not provide a native `.
    ```
 
 On macOS, you can also use `Setup Studio.command` followed by `Switch Studio.command`.
+A macOS host runs the Studio server and UI (files, editor, models, configuration), but it cannot
+execute workers, verification commands or deployments: secure execution is Linux + bubblewrap only
+and fails closed elsewhere. For agent work, run the backend on Linux (or WSL2) and open its URL
+from the Mac's browser.
 If your extraction tool did not preserve executability, use the commands above.
 The first run can invoke installation automatically if the virtual environment does not yet exist.
 Install `uv` beforehand; the launcher does not download or execute a remote installation script.
@@ -43,8 +47,14 @@ Do not send it in URLs, commit it, or share it with agents. Sessions expire afte
 restarting clears sessions. To rotate the key, stop Studio, remove that file and restart.
 
 Linux execution requires working `bubblewrap` (Ubuntu/Debian: `sudo apt install bubblewrap`).
-Use a dedicated project directory outside the application, for example:
+Use a dedicated project directory outside the application directory, for example:
 `mkdir -p ~/miner-projects/pilot`, then `./switch-studio --cwd ~/miner-projects/pilot`.
+A project cannot be `/`, your home directory itself, the application directory or Studio's state
+directory. Studio's own managed working copies (`.switch-agent/studio/workspaces/<id>`) and
+deployment releases (`.switch-agent/studio/deployments/<key>/release`) live under its state directory
+and run in the sandbox without extra setup. Verification commands run in the project or its managed
+working copy with only their own status file writable; the rest of the controller state stays hidden
+from workers.
 There is no unsandboxed fallback. Native macOS and OAuth workers are currently disabled;
 use local or API models on Linux. WSL2 must support bubblewrap namespaces.
 
@@ -52,12 +62,12 @@ For direct LAN access, provision a certificate whose SAN matches the server IP o
 and keep its private key readable only by the service account. Start:
 
 ```sh
-./switch-studio --host 192.168.1.50 --port 4318 --no-open \
+./switch-studio --host 192.0.2.50 --port 4318 --no-open \
   --cwd "$HOME/miner-projects/pilot" \
   --tls-cert /path/to/server.crt --tls-key /path/to/server.key
 ```
 
-Open `https://192.168.1.50:4318`. A private/self-signed certificate needs explicit trust in
+Open `https://192.0.2.50:4318`. A private/self-signed certificate needs explicit trust in
 your browser; verify its fingerprint through a trusted channel. Studio refuses plaintext
 LAN listeners. The separate preview port uses the same TLS certificate.
 
@@ -90,28 +100,32 @@ The installer creates `agent.toml` from the example **only if it is missing**. E
 In the GUI, open **Models**, enter the actual URL and model name; the placeholder `REPLACE_WITH_LOCAL_MODEL` is not a functional model. Internal addresses of this development machine are not embedded as default configuration in packages.
 
 Base dependencies and document readers are installed. Benchmarks, containerized services, cloud CLIs, and their accounts are not installed automatically.
-For optional OAuth connections, the CLI must be installed in the same environment as the backend (on Windows, inside WSL).
-End-to-end login on Windows and Linux still needs verification.
+The optional OAuth account adapters (Codex CLI, Anthropic CLI) are retained, but OAuth worker execution
+is disabled in the secure runtime until an isolated credential broker exists; use local or API models.
 
 Updates within the same directory: replace source files and run `sh setup-studio`.
 Do not delete `agent.toml`, `.switch-agent`, project directories, or their `.apodex` subdirectories.
 The installer does not remove previously added optional dependencies. A fresh directory will have new history;
 transferring history and secrets is not part of distribution packages.
-Background launchd setup remains a macOS-specific feature and is not a cross-OS service.
+Background launchd setup (`./switch-studio-service`) remains a macOS-specific feature that keeps the UI
+available; it does not enable agent execution on macOS. On Linux, run `switch-studio --no-open` as a
+user systemd service with `Restart=on-failure`.
 
 ## Building and verification
 
 ```sh
 frontier/.venv/bin/python scripts/build_release.py
-frontier/.venv/bin/python scripts/smoke_release.py dist/switch-studio-0.4.0-alpha.3-macos.zip --suite
+frontier/.venv/bin/python scripts/smoke_release.py dist/switch-studio-$(cat studio/VERSION)-linux.tar.gz --suite
 ```
 
 Output is in `dist/`: three archives, file manifests, and `SHA256SUMS`.
 The smoke test extracts into a temporary directory with spaces, installs a clean environment,
 verifies HTTP startup and server shutdown. `--suite` adds integration and regression tests.
+Tests that start workers, checks or deployments need Linux with working bubblewrap; on macOS they
+are reported as skipped, so run the full suite on the Linux backend.
 Run `frontier/.venv/bin/python scripts/ci_check.py` in a Git checkout to collect
 local test results, publication checks and package hashes in `dist/ci-evidence/`.
-Run platform checks on the respective machine. GitHub Actions is not used or required.
+Run platform checks on the respective machine. Release verification does not depend on hosted CI.
 
 Current local verification is recorded in `analysis/platform-validation.json`
 in the development copy. Testing on Windows/WSL and other architectures requires the respective machine.
@@ -145,5 +159,5 @@ Evidence is saved in `company/ssh-evidence/` inside the mission workspace with U
 timestamps. This grants only the connector's fixed inventory operations; it does
 not enable deployments, remote edits, restarts or unrestricted shell access.
 After changing this config, pause/resume the mission's Driver to start a worker
-with the new configuration. Studio and native tools still run as their OS user;
-this connector is not an OS sandbox for every other tool.
+with the new configuration. The connector runs in the controller as a typed broker;
+workers still run inside the bubblewrap sandbox and never receive the SSH key itself.

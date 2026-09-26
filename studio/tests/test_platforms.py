@@ -9,7 +9,7 @@ import unittest
 import zipfile
 from pathlib import Path
 
-from scripts.build_release import FILES, build, source_files
+from scripts.build_release import FILES, LAUNCHERS, ROOT, build, source_files
 from scripts.start_studio import configure
 
 
@@ -49,8 +49,9 @@ class PlatformTests(unittest.TestCase):
                 if archive.suffix == ".zip":
                     with zipfile.ZipFile(archive) as source:
                         payload = {name.split("/", 1)[1]: source.read(name) for name in source.namelist()}
-                        launch = source.getinfo("switch-studio-0.1.0-test/switch-studio")
-                        self.assertTrue((launch.external_attr >> 16) & 0o111)
+                        for launcher in LAUNCHERS:
+                            launch = source.getinfo("switch-studio-0.1.0-test/" + launcher)
+                            self.assertTrue((launch.external_attr >> 16) & 0o111, launcher)
                 else:
                     with tarfile.open(archive) as source:
                         payload = {p.name.split("/", 1)[1]: source.extractfile(p).read() for p in source.getmembers()}
@@ -65,3 +66,10 @@ class PlatformTests(unittest.TestCase):
             (root / "studio/leak.py").symlink_to(root / "agent.toml")
             with self.assertRaisesRegex(ValueError, "symlink"):
                 source_files(root)
+
+    def test_release_sources_exist_in_this_checkout(self):
+        # LICENSE/NOTICE were once listed but absent, so every release build failed.
+        names = {str(path.relative_to(ROOT)) for path in source_files(ROOT)}
+        self.assertTrue({"LICENSE", "NOTICE", "switch", "switch-studio-service"} <= names)
+        self.assertIn("Apache License", (ROOT / "LICENSE").read_text())
+        self.assertIn("frontier/SWITCH.md", (ROOT / "NOTICE").read_text())

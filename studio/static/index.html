@@ -64,6 +64,7 @@
         <span id="connection" class="connection"><i></i> Connected to Studio</span>
       </div>
     </header>
+    <div id="execution-banner" class="execution-banner" role="status" hidden></div>
     <div class="app-shell">
       <section id="dashboard" class="dashboard" aria-labelledby="dashboard-title">
         <div class="dash-heading"><div><span class="eyebrow">YOUR WORK, AT A GLANCE</span><h1 id="dashboard-title">Let's move things forward.</h1><p>Live work across your projects. One place to see progress and give direction.</p></div><div class="dash-sync"><button id="dashboard-new-task" class="button primary" type="button">New task +</button><span id="dashboard-sync" role="status">Connecting…</span><button id="dashboard-refresh" class="button small" type="button">Refresh dashboard</button></div></div>
@@ -193,7 +194,7 @@
           <div class="starter-grid">
             <button
               class="starter"
-              data-prompt="Explore this project. Describe its structure, main entry points, and how it runs. Do not make any changes yet."
+              data-prompt="Explore this project. Describe its structure, main entry points, and how it runs. Do not make any changes yet. Write all reports, questions, summaries, notes and generated documentation in English, regardless of the language of the input."
             >
               <span data-icon="search"></span
               ><strong>Get oriented in the project</strong
@@ -201,7 +202,7 @@
               ><span class="arrow">↗</span></button
             ><button
               class="starter"
-              data-prompt="Review code in this project. Find specific bugs and propose fixes. For each, specify the file and severity. Do not make any changes yet."
+              data-prompt="Review code in this project. Find specific bugs and propose fixes. For each, specify the file and severity. Do not make any changes yet. Write all reports, questions, summaries, notes and generated documentation in English, regardless of the language of the input."
             >
               <span data-icon="check"></span><strong>Check code</strong
               ><small>Bugs, their impact, and proposed fixes</small
@@ -227,7 +228,7 @@
             ></textarea>
           </div>
           <div class="editor-footer">
-            <span id="cursor-position">Row 1, column 1</span
+            <span id="cursor-position">Line 1, column 1</span
             ><span>UTF-8 <b>·</b> <span id="file-type">Text</span></span>
           </div>
         </section>
@@ -329,7 +330,7 @@
             <span><i></i> Runs on the Studio host</span
             ><button id="stop-task" type="button" class="button danger hidden">
               ■ Stop</button
-            ><button id="run-task" type="submit" class="button primary">
+            ><button id="run-task" type="submit" class="button primary" aria-label="Run task">
               Run <span>↑</span>
             </button>
           </div>
@@ -351,12 +352,12 @@
       <div id="flow-canvas" tabindex="0" aria-label="Dependency map, horizontally scrollable"></div>
       <div class="flow-bottom"><section id="flow-detail" aria-label="Step details"></section><section id="flow-activity" aria-label="Latest events"></section></div>
     </dialog>
-    <dialog id="project-dialog">
+    <dialog id="project-dialog" aria-labelledby="project-dialog-title">
       <form id="project-form">
         <div class="dialog-heading">
           <div>
             <span class="eyebrow">WORKSPACE</span>
-            <h2>Open project</h2>
+            <h2 id="project-dialog-title">Open project</h2>
           </div>
           <button
             type="button"
@@ -370,7 +371,7 @@
         <label
           >Project folder<input
             id="project-path"
-            placeholder="/home/user/projects/my-project"
+            placeholder="/path/to/project"
             required
         /></label>
         <div class="dialog-footer">
@@ -378,10 +379,10 @@
         </div>
       </form>
     </dialog>
-    <dialog id="file-dialog">
+    <dialog id="file-dialog" aria-labelledby="file-dialog-title">
       <form id="file-form">
         <div class="dialog-heading">
-          <h2>New file</h2>
+          <h2 id="file-dialog-title">New file</h2>
           <button
             type="button"
             class="icon-btn close-dialog"
@@ -442,7 +443,7 @@
           <label>Decision mode<select id="product-decision-mode"><option value="shadow">Shadow · compare without changing task order</option><option value="select">Select · choose among eligible tasks</option><option value="off">Off · no model request</option></select></label>
           <div class="mission-limits"><label>Days for execution<input id="product-days" type="number" min="1" max="30" value="7" required /></label><label>Runs for execution<input id="product-attempts" type="number" min="2" max="1000" value="30" required /></label><label>Minutes for run<input id="product-minutes" type="number" min="1" max="360" value="30" required /></label><label>Steps per run<input id="product-turns" type="number" min="1" max="200" value="40" required /></label></div>
           <label class="mission-permission"><input id="product-auto" type="checkbox" /> Enable tools without individual approval for executions of this product</label>
-          <p class="missions-note">Product type helps define the task brief; it is not a guarantee of delivery. Deployment and access to external services must be prepared separately. The native agent operates with the user’s permissions. Run limits are not a monetary budget.</p>
+          <p class="missions-note">Product type helps define the task brief; it is not a guarantee of delivery. Deployment and access to external services must be prepared separately. Workers run in a Linux bubblewrap sandbox limited to the working copy; hosts without bubblewrap can edit and review but not run agents. Run limits are not a monetary budget.</p>
           <button class="button primary" type="submit">Create product</button>
         </form>
       </details>
@@ -467,7 +468,7 @@ Form validates required fields."></textarea></label>
           <label>Decision mode<select id="mission-decision-mode"><option value="shadow">Shadow · compare without changing task order</option><option value="select">Select · choose among eligible tasks</option><option value="off">Off · no model request</option></select></label>
           <div class="mission-limits"><label>Day limit<input id="mission-days" type="number" min="1" max="30" value="7" required /></label><label>Total runs<input id="mission-attempts" type="number" min="2" max="1000" value="100" required /></label><label>Minutes for run<input id="mission-minutes" type="number" min="1" max="360" value="30" required /></label><label>Steps per run<input id="mission-turns" type="number" min="1" max="200" value="40" required /></label></div>
           <label class="mission-permission"><input id="mission-auto" type="checkbox" /> Enable actions without individual approval</label>
-          <p class="missions-note">Without this option, workers wait for tool approval in Studio. The native backend has this user’s permissions; roles are not sandboxed. Run limits are not a monetary budget. Only use models whose consumption you wish to allow.</p>
+          <p class="missions-note">Without this option, workers wait for tool approval in Studio. Workers run in a Linux bubblewrap sandbox limited to the working copy; roles are work contexts, not separate accounts. Run limits are not a monetary budget. Only use models whose consumption you wish to allow.</p>
           <div class="dialog-footer"><button class="button primary" type="submit">Save task brief</button></div>
         </form>
       </details>
@@ -502,31 +503,32 @@ Form validates required fields."></textarea></label>
         <button id="company-install" class="button primary">Save to project</button>
       </div>
     </dialog>
-    <dialog id="models-dialog" class="wide-dialog">
+    <dialog id="models-dialog" class="wide-dialog" aria-labelledby="models-dialog-title">
       <div class="dialog-heading">
         <div>
           <span class="eyebrow">CONNECTIONS</span>
-          <h2>Your models</h2>
+          <h2 id="models-dialog-title">Your models</h2>
         </div>
         <button class="icon-btn close-dialog" aria-label="Close">×</button>
       </div>
       <p>
-        Internal models work independently. You can optionally add a cloud account.
+        Workers and reviewers use API or local models configured below.
       </p>
-      <section class="oauth-section" aria-label="Optional Account Connections">
+      <section class="oauth-section" aria-label="Account connections" aria-describedby="oauth-unavailable">
         <div class="oauth-heading">
-          <strong>Accounts · Optional</strong><span>No API Key Copying Required</span>
+          <strong>Accounts · not available for workers</strong><span>OAuth sign-in</span>
         </div>
+        <p id="oauth-unavailable" class="small-note">ChatGPT (Codex) and Claude Console accounts are not available in the secure worker runtime. Studio cannot run workers or reviews with them; use an API or local model instead. Existing account profiles can still be removed.</p>
         <div class="oauth-actions">
-          <button class="button" id="oauth-chatgpt">+ ChatGPT</button>
-          <button class="button" id="oauth-claude">+ Claude Console</button>
+          <button class="button" id="oauth-chatgpt" disabled title="Not available in the secure worker runtime">+ ChatGPT</button>
+          <button class="button" id="oauth-claude" disabled title="Not available in the secure worker runtime">+ Claude Console</button>
         </div>
         <div id="oauth-panel" class="hidden">
           <p id="oauth-description"></p>
           <p id="oauth-status" role="status" aria-live="polite"></p>
           <div class="oauth-actions">
             <button class="button" id="oauth-login">
-              Log in in Browser
+              Log in via browser
             </button>
             <a
               id="oauth-link"
@@ -536,7 +538,7 @@ Form validates required fields."></textarea></label>
               >Open Login ↗</a
             >
             <button class="button hidden" id="oauth-cancel">
-              Log Out
+              Cancel login
             </button>
             <button class="button subtle" id="oauth-refresh">
               Refresh Status
@@ -592,7 +594,7 @@ Form validates required fields."></textarea></label>
             >API URL<input
               name="base_url"
               required
-              placeholder="http://localhost:11434/v1" /></label
+              placeholder="http://127.0.0.1:11434/v1" /></label
           ><label
             >Model Name<input name="model" required placeholder="qwen3.8:27b"
           /></label>
@@ -674,9 +676,9 @@ Form validates required fields."></textarea></label>
       <aside class="office-side"><section id="office-detail" class="office-detail" aria-label="Selected task details"></section><div class="office-roster-heading"><h3 id="office-roster-title">All work</h3><button id="office-clear-filter" class="button small" hidden>All departments</button></div><div id="office-roster" class="office-roster" aria-label="All office tasks"></div></aside></div>
       <footer class="office-footer"><p>One seat represents a recorded task, not an extra worker. Up to four priority tasks appear per department; the list contains all tasks. Movement requires recent run activity. The Company Driver currently shares one worker slot.</p><span id="office-sync" class="office-sync" role="status">Connecting…</span></footer>
     </dialog>
-    <dialog id="help-dialog">
+    <dialog id="help-dialog" aria-labelledby="help-dialog-title">
       <div class="dialog-heading">
-        <h2>Start with Three Steps</h2>
+        <h2 id="help-dialog-title">Start with three steps</h2>
         <button class="icon-btn close-dialog" aria-label="Close">×</button>
       </div>
       <ol class="help-steps">
@@ -694,10 +696,21 @@ Form validates required fields."></textarea></label>
         </li>
       </ol>
       <p class="small-note">
-        Native commands run with your permissions. The GUI allows only one task at a time.
-        Files are not saved automatically. Team mode on Qwen does not yet have verified reliable completion;
-        nested separations are not yet implemented.
+        Agent commands run in a Linux bubblewrap sandbox limited to the project working copy; hosts
+        without bubblewrap (for example macOS) can edit and review but not run agents. The GUI allows
+        only one task at a time. Files are not saved automatically. Team mode on Qwen does not yet have
+        verified reliable completion; deeper delegation levels are not supported yet.
       </p>
+      <p class="small-note">Press F1, or ? on a button, to open help for the focused control.</p>
+    </dialog>
+    <dialog id="session-dialog" aria-labelledby="session-title" aria-describedby="session-message">
+      <form id="session-form">
+        <div class="dialog-heading"><div><span class="eyebrow">SESSION EXPIRED</span><h2 id="session-title">Sign in again</h2></div></div>
+        <p id="session-message">Your Studio session ended, for example after a server restart. This page and your unsaved drafts stay open; updates are paused until you sign in.</p>
+        <label>Owner access key<input id="session-key" type="password" autocomplete="current-password" required /></label>
+        <p id="session-error" class="mission-feedback" role="alert"></p>
+        <div class="dialog-footer"><a class="button" href="/" target="_blank" rel="noopener noreferrer">Sign in in a new tab ↗</a><button class="button primary" type="submit">Sign in and resume</button></div>
+      </form>
     </dialog>
     <div id="toast" role="status" class="toast hidden"></div>
   </body>

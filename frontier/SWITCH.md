@@ -39,4 +39,46 @@ Private runtime state, local configurations and development session logs are exc
 The Office reader now bounds ZIP expansion before parsing OOXML documents and
 uses `defusedxml` for direct chart XML reads, with a 2 MB chart-member limit.
 `defusedxml` is part of the locked Studio runtime. These changes preserve upstream
-attribution and do not turn native model execution into an operating-system sandbox.
+attribution; they are not an operating-system sandbox. Since 0.4.0-alpha.10, Studio runs
+this backend's workers only inside a Linux bubblewrap sandbox (`studio/isolation.py`),
+with no unsandboxed fallback on other platforms.
+
+## Miner audit remediation (2026-09-25)
+
+- `apodex/agent_tools.py`: `git config`, `branch`, `tag` and `remote` are auto-approved only
+  in explicit read-only forms (`--get`/`--list`, listing flags, `remote -v`/`get-url`).
+  Writes such as `git config core.fsmonitor`, `branch -D`, `remote set-url`, file-writing
+  options (`--output`, `find -fprint0`, `tree -o`/`-R`, `file -C`) and program-running
+  options (`--ext-diff`, `rg --pre`/`--hostname-bin`/`-z`) now need confirmation. Every
+  newline-separated line and every process substitution (`<(cmd)`) is checked as its own
+  command.
+- `plugins/tools/_bash_policy.py`: the enforced shell allowlist accepts read-only system
+  diagnostics (`free`, `uptime`, `nproc`, `uname`, `hostname`, `id`, `whoami`, `lscpu`,
+  `vmstat`, `getconf`, `lsblk`, `ps`, `ip addr|link|route show`, `ss`, `printenv NAME`).
+  Their mutating or secret-revealing forms stay denied, including getopt_long abbreviations
+  (`ss --kil`, `hostname --fil=`) and `ip link s` (read by iproute2 as `set`).
+- `plugins/tools/_reader_xlsx.py` and `read_file.py`: `defusedxml` is imported only for chart
+  XML, and native mode runs the reader with the running interpreter, so a `python3` without
+  optional packages cannot break plain-text reads.
+- `plugins/tools/web_fetch_aligned.py`: direct fetches convert only HTML responses; JSON, text
+  and Markdown are returned unchanged, and pages without a main article fall back to
+  tag-stripped text. Extraction runs off the event loop.
+- `apodex/switch_cli.py` and `frontier_agent/core/runtime/loop/agent_loop.py`: local profiles
+  (Ollama, or `auth = "none"`) keep retrying transient provider errors such as HTTP 503
+  "Loading model" for about ten minutes (`FRONTIER_AGENT_LLM_MIN_RETRIES`), with a
+  logical-call deadline that covers a single shared decode slot. Every failed attempt is shown
+  as a note (`apodex/cli.py`), which Studio records as a run event. Unknown profiles and missing
+  settings produce clear errors, and `--version` reports the Switch version.
+- `apodex/task_runner.py`: LLM failures carry a `Failure kind:` line
+  (`provider_unavailable`, `setup`, `time_limit`, `crash`) for the Studio controller. The
+  explicit HTTP status decides first; quota, billing, context-overflow and model errors are
+  `setup`, never a provider outage. Workflow turns are checkpointed without replacing the
+  session's compact history.
+- English output: `apodex/prompts.py`, `workflows/agent_team/prompts.py`,
+  `frontier_agent/infra/llm/summary_prompt.py` and the workflow system-prompt addendum require
+  English reports, questions, summaries, notes and documentation, and upstream language
+  detection is disabled by the launcher. Agent Team coordinators also receive Studio's run
+  instructions.
+- `apodex/native.py`: per-invocation workspace aliases are removed on exit and pruned when their
+  process is gone. Liveness is an exclusive `flock` held on the alias owner file, which is valid
+  across PID namespaces (sandboxed runners are all PID 2 inside `bwrap --unshare-pid`).

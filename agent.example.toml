@@ -30,5 +30,8 @@ thinking_in_history = true
 
 # Other OpenAI-compatible services: add another profile with its own base_url,
 # model, api_key_env and the real context limits. There is no implicit fallback.
-# Models without native tool calling can opt into tool_mode = "text".
-# Custom protocols: protocol = "custom", factory = "your_package:build_client".
+# Switch Studio and ./switch require native tool calling and one of the protocols
+# chat_completions, responses, anthropic or bedrock.
+# switch-agent (lite) only: models without native tool calling can opt into
+# tool_mode = "text", and custom protocols use protocol = "custom" with
+# factory = "your_package:build_client". Studio rejects both.

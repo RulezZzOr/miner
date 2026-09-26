@@ -1,5 +1,3 @@
-# Modified for Miner / Switch Studio, 2026-09-23.
-# Changes from ApodexAI/FrontierAgent; see frontier/SWITCH.md and THIRD_PARTY.md at the repository root.
 """Main-agent node — agent-team coordinator."""
 
 from __future__ import annotations
@@ -1188,6 +1186,13 @@ async def main_agent_node(
     # MAIN agent only; sub-agent prompts are untouched. Empty for benchmarks
     # that need no addendum (OneMillion, browsecomp).
     _prompt_addendum = str(metadata.get("_sys_prompt_addendum") or "").strip()
+    # Switch: Studio's run instructions reach the coordinator as they reach the
+    # stateful ReAct agent (see stateful_react_agent/nodes/main_agent.py).
+    _phase_instructions = str(metadata.get("_studio_phase_instructions") or "").strip()
+    if _phase_instructions:
+        _prompt_addendum = (
+            f"{_prompt_addendum}\n\nController-assigned workflow phase:\n{_phase_instructions}"
+        ).strip()
 
     def _decorate(base: str) -> str:
         """Append per-benchmark addendum + sandbox FS note + team_effort tag.

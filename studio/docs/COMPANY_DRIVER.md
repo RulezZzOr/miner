@@ -1,6 +1,6 @@
 # Company Builder & Driver
 
-Reviewed against alpha.9 on 24 September 2026. The Company is a persistent layer built on top of the existing Execution Controller. It is not a verified replacement for the entire company management system. See the [feature catalog](FEATURES.md) for the dashboard, 3D Office and related product capabilities.
+Reviewed against alpha.9 on 24 September 2026 and updated for alpha.10. The Company is a persistent layer built on top of the existing Execution Controller. It is not a verified replacement for the entire company management system. See the [feature catalog](FEATURES.md) for the dashboard, 3D Office and related product capabilities.
 
 ## Usage
 
@@ -38,14 +38,14 @@ The controller shares one working slot with Studio. While waiting for answers in
 
 Both the company and reserved executions are written in a single SQLite transaction. Repeated ticks or reloading the controller do not create a second execution for the same item. Driver events are stored in `company_events`; the GUI shows the last 100. Overwriting user forms protects revisions. Automatic progress changes do not invalidate pre-configured settings.
 
-After sleep, missed intervals are not recovered. After three controller errors, the company pauses. Model execution errors are handled by the existing limited retry mechanism; the Driver does not unblock a blocked execution itself. After the horizon expires, explicit renewal is required. The service must be running, and the host must not sleep. Long-term reliability of real models is not proven by the controller’s own tests.
+After sleep, missed intervals are not recovered. After three controller errors, the company pauses. When the model endpoint is temporarily unavailable, the controller waits with a growing delay instead of spending attempts. When a company execution becomes blocked (for example after a time, turn or report limit), the Driver runs a bounded number of automatic recovery rounds and records each one as a visible Driver event; when recovery is exhausted, it raises one clear question with concrete options in the owner's inbox. It never unblocks work silently. After the horizon expires, explicit renewal is required; renewal lets unfinished work continue. The service must be running, and the host must not sleep. Long-term reliability of real models is not proven by the controller’s own tests.
 
 ## Limits and Permissions
 
 - The budget is calculated as used runs + reserved remaining runs of open executions.
-  Unused reservations are released upon completion; used runs are not refunded. One run may include multiple model requests. This is not a monetary, token, or enterprise-wide provider billing limit. Products and manual tasks have their own limits.
-- Direct modification of models and limits of a company execution is rejected to prevent bypassing reservations. Company settings apply to new executions only; existing ones retain their original limits.
-- Pausing saves state before stopping subordinate work. Direct API access to an execution cannot bypass a paused company or its horizon. Upon resuming, only executions paused by the company are restored; earlier independent blocks remain.
+  Unused reservations are released when an execution finishes, is cancelled, expires or stays blocked; used runs are not refunded. One run may include multiple model requests. This is not a monetary, token, or enterprise-wide provider billing limit. Products and manual tasks have their own limits.
+- Direct modification of models and limits of a company execution is rejected to prevent bypassing reservations. Changes to the company's time, turn and deadline limits also apply to its unfinished executions.
+- Pausing saves state before stopping subordinate work. Direct API access to an execution cannot bypass a paused company or its horizon. Pausing keeps a blocked execution blocked, with its reason. Upon resuming, only executions paused by the company are restored; earlier independent blocks remain.
 - Automatic acceptance uses the same verification of current artifacts and test results as manual verified acceptance. A model report alone is insufficient to prove success.
 - An external item has no executable execution. The owner records actual execution with proof or rejection. The button does not send, validate, or deploy anything.
 - A department is a working context. Workers use Linux bubblewrap isolation, but instructions like "do not send" are not enforced as a network policy. Enable automatic tools only in environments where you grant such permissions; isolated accounts and network policies per department are not available.

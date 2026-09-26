@@ -1,6 +1,12 @@
 "use strict";
 // Contextual help is local UI only: it never submits a form or calls an API.
 const studioHelpRules = [
+  [/sign in and resume|owner access key|signed out/i, "Signs you in to Studio again after your session expired.", "Enter the owner access key stored on the Studio server. The key is not stored in the browser. Drafts on this page are kept and updates resume after sign-in.", "Sign in again after the Studio server restarted."],
+  [/skip and redirect/i, "Declines only this tool action and sends your instruction to the agent; the run continues.", "Write what the agent should do instead, then choose Skip and redirect. The declined action does not run.", "Do not restart the service; read its status and report it instead."],
+  [/reject and stop/i, "Declines this tool action and stops the current run.", "Use when the run must not continue. The controller may retry the task automatically within its limits; use Skip and redirect to keep the run going with new instructions.", "Stop a run that tries to modify production files during a read-only audit."],
+  [/retry now|answer and retry/i, "Resumes blocked work from its saved state within the remaining limits.", "Read the stated cause first. Answering a recovery question from the Driver or the controller resumes the work; to revise the brief, change the limits or end the work, open the details before you answer.", "Retry after the model server is available again."],
+  [/save answer only/i, "Records your answer to the agent's question without resuming the blocked work.", "Use when you want to decide later. The work stays blocked until you choose Retry now in the inbox or resume it from the execution details.", "Record the staging host now and retry after the maintenance window."],
+  [/requeue/i, "Queues a cancelled or expired company task again under the current company limits.", "Check why it stopped before requeueing. The Driver starts it when it is eligible; runs already used remain counted.", "Requeue an audit that expired while the model server was offline."],
   [/delivery process|process scope/i, "Scales work and context budgets to task impact while retaining separate review.", "Use Auto normally. Light reduces work and reading budgets. Security, database and infrastructure scope or changed sensitive paths force Sensitive.", "A README typo can use Light; an authentication change cannot."],
   [/brief readiness|revise (?:task )?brief|save revised brief/i, "Checks whether the requested scope and completion criteria agree before execution.", "Resolve conflicting instructions in the brief editor and explain the revision. The previous brief is preserved. Network access is tested by the worker, not assumed from planning restrictions.", "For a read-only audit, allow documented unknown integrations instead of requiring repairs."],
   [/result card|refresh result evidence/i, "Connects outputs to actual checks, review and an immutable file snapshot.", "Refresh to compare the current files with recorded evidence. A changed source, permission or recorded Git revision makes evidence stale. Notes updated after acceptance are labeled separately.", "Exit zero with zero discovered tests does not pass a test check."],
@@ -70,7 +76,7 @@ const studioHelpRules = [
   [/resume|continue/i, "Continues a paused project or controller from its saved state.", "Resolve the stated blocker and check remaining limits first. Already recorded work is retained.", "Resume after supplying a missing repository URL."],
   [/cancel.*project|end.*project|terminate.*project/i, "Ends this project instead of temporarily pausing it.", "Use when you no longer want it to continue. Read its saved results before ending it.", "End an abandoned experiment and keep its recorded history."],
   [/^stop$|stop.*run/i, "Stops the active agent run and cleans up its child processes.", "Use when the task is no longer useful or is outside its intended scope. Wait for the stopped state before starting another run.", "Stop a test run that is repeatedly trying the wrong command."],
-  [/^yes$|^approve$/i, "Allows the specific pending tool action shown on this card.", "Read the requested action and its risks first. A required confirmation must match the displayed instruction.", "Approve a proposed edit to the intended project file."],
+  [/^yes$|^approve$|^allow$/i, "Allows the specific pending tool action shown on this card.", "Read the requested action and its risks first. A required confirmation must match the displayed instruction.", "Approve a proposed edit to the intended project file."],
   [/^no$|^deny$|^reject$/i, "Declines the specific pending action.", "Use when the action is incorrect or outside the task scope. A custom reply can explain a safer next step.", "Reject a request to modify a production file during a read-only inventory."],
   [/send.*reply|send.*answer|custom.*reply|your.*answer|response|feedback/i, "Provides an answer or correction for the pending question or action.", "Give the missing information or explain the intended alternative. A custom tool reply declines the current action and supplies feedback.", "Use the staging project and only read its configuration."],
   [/live.*map/i, "Shows the project's real task dependencies, active step and recorded blockers.", "Select an execution and click a node for details. Activity alone does not prove that a task is complete.", "See whether the worker is editing a file, waiting for input or handing work to review."],
@@ -123,18 +129,38 @@ function studioHelpFor(node) {
   if (input) return {title:label,purpose:"Supplies this setting to the current form.",how:"Enter the value requested by the label, then use the form's save or create action. Do not enter secrets unless the field explicitly supports secure credentials.",example:node.placeholder || (node.type === "number" ? "Start with the displayed limit and increase it only when needed." : "Use a short, specific value for this project.")};
   return {title:label,purpose:form ? "Applies the selected action to this form's item." : "Opens or controls the selected workspace item.",how:"Read the item's current state and save any changes before taking the next action.",example:"Inspect the selected item and its saved details before continuing."};
 }
+// Help icons are pointer shortcuts only (hidden from assistive technology and outside the Tab order).
+// Keyboard users press F1, or ? on a non-text control, to open help for the focused control.
+function studioHelpKey(event, active) {
+  if (event.key === "F1") return true;
+  if (event.key !== "?" || event.ctrlKey || event.metaKey || event.altKey || !active) return false;
+  return !active.isContentEditable && !active.matches?.("textarea,select,input:not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit])");
+}
 function initStudioHelp() {
-  const attached = new WeakSet(), triggers = new WeakMap(); let current = null, popup = null, scheduled = false;
+  const attached = new WeakSet(), triggers = new WeakMap(), pending = new Set();
+  let current = null, returnTo = null, popup = null, scheduled = false;
+  const selector = "input,select,textarea,button,summary";
   function close(returnFocus=false) {
-    const prior=current;current=null;
-    if(prior)prior.setAttribute("aria-expanded","false");
+    const prior=current, target=returnTo;current=null;returnTo=null;
+    if(prior?.classList.contains("context-help-trigger"))prior.setAttribute("aria-expanded","false");
     if(popup){if(popup.matches(":popover-open"))popup.hidePopover();popup.hidden=true;}
-    if(returnFocus && prior?.isConnected)prior.focus();
+    if(returnFocus && target?.isConnected)target.focus();
   }
-  function show(trigger,target,focus=false) {
-    if(!trigger.isConnected)return;
-    if(current && current!==trigger)current.setAttribute("aria-expanded","false");
-    const info=studioHelpFor(target);current=trigger;trigger.setAttribute("aria-expanded","true");
+  function place() {
+    // Follow the anchor while its container scrolls; close only when it leaves the viewport.
+    if(!current||!popup||popup.hidden)return;
+    if(!current.isConnected){close();return;}
+    const rect=current.getBoundingClientRect();
+    if(rect.bottom<0||rect.top>innerHeight){close();return;}
+    const box=popup.getBoundingClientRect(),gap=10;
+    popup.style.left=Math.max(gap,Math.min(rect.left,innerWidth-box.width-gap))+"px";
+    popup.style.top=Math.max(gap,rect.bottom+gap+box.height<=innerHeight?rect.bottom+gap:rect.top-box.height-gap)+"px";
+  }
+  function show(anchor,target,focus=false) {
+    if(!anchor.isConnected)return;
+    if(current && current!==anchor && current.classList.contains("context-help-trigger"))current.setAttribute("aria-expanded","false");
+    const info=studioHelpFor(target);current=anchor;returnTo=target;
+    if(anchor.classList.contains("context-help-trigger"))anchor.setAttribute("aria-expanded","true");
     if(!popup){popup=document.createElement("section");popup.id="studio-context-help";popup.className="context-help-popup";popup.setAttribute("popover","manual");popup.setAttribute("role","dialog");popup.tabIndex=-1;document.body.append(popup);}
     const parent=target.closest("dialog[open]") || document.body;
     if(popup.parentElement!==parent){if(popup.matches(":popover-open"))popup.hidePopover();parent.append(popup);}
@@ -143,38 +169,54 @@ function initStudioHelp() {
     const title=document.createElement("strong");title.textContent=info.title;head.append(title);
     const dismiss=document.createElement("button");dismiss.type="button";dismiss.className="context-help-close";dismiss.setAttribute("aria-label","Close help");dismiss.textContent="×";dismiss.onclick=()=>close(true);head.append(dismiss);popup.append(head);
     for(const [label,text] of [["What it does",info.purpose],["How to use it",info.how],["Example",info.example]]){const term=document.createElement("h4");term.textContent=label;const value=document.createElement(label==="Example"?"pre":"p");value.textContent=text;popup.append(term,value);}
-    popup.hidden=false;popup.showPopover();
-    const rect=trigger.getBoundingClientRect(),box=popup.getBoundingClientRect(),gap=10;
-    popup.style.left=Math.max(gap,Math.min(rect.left,innerWidth-box.width-gap))+"px";
-    popup.style.top=Math.max(gap,rect.bottom+gap+box.height<=innerHeight?rect.bottom+gap:rect.top-box.height-gap)+"px";
+    popup.hidden=false;popup.showPopover();place();
     if(focus)popup.focus();
   }
   function triggerFor(target) {
-    const icon=document.createElement("span");icon.className="context-help-trigger";icon.setAttribute("role","button");icon.tabIndex=0;const mark=document.createElement("span");mark.setAttribute("aria-hidden","true");mark.textContent="?";icon.append(mark);
-    icon.setAttribute("aria-label","Help: "+studioHelpText(target));icon.setAttribute("aria-haspopup","dialog");icon.setAttribute("aria-controls","studio-context-help");icon.setAttribute("aria-expanded","false");
+    const icon=document.createElement("span");icon.className="context-help-trigger";icon.setAttribute("aria-hidden","true");icon.setAttribute("aria-expanded","false");
+    const mark=document.createElement("span");mark.textContent="?";icon.append(mark);
+    icon.title="Help: "+studioHelpText(target)+" (F1 on the focused control)";
     icon.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();if(current===icon)close();else show(icon,target,true);});
-    icon.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();e.stopPropagation();if(current===icon)close();else show(icon,target,true);}else if(e.key==="Escape"){e.preventDefault();e.stopPropagation();close(true);}});
     triggers.set(target,icon);return icon;
   }
   function attach(node) {
     if(node.dataset.noContextHelp!==undefined)return;
-    if(attached.has(node)){const icon=triggers.get(node);if(icon)icon.setAttribute("aria-label","Help: "+studioHelpText(node));return;}
+    if(attached.has(node)){const icon=triggers.get(node);if(icon)icon.title="Help: "+studioHelpText(node)+" (F1 on the focused control)";return;}
     if(node.closest(".context-help-popup,.context-help-trigger"))return;
     if(node.matches("input[type=hidden],input[type=submit],#editor"))return;
     const label=node.labels?.[0];
-    if(label && !label.classList.contains("sr-only")){if(attached.has(label)){attached.add(node);return;}attached.add(label);if(!node.hasAttribute("aria-label")&&!node.hasAttribute("aria-labelledby"))node.setAttribute("aria-label",studioHelpText(node));label.classList.add("has-context-help");label.append(triggerFor(node));attached.add(node);return;}
+    if(label && !label.classList.contains("sr-only")){if(attached.has(label)){attached.add(node);return;}attached.add(label);label.classList.add("has-context-help");label.append(triggerFor(node));attached.add(node);return;}
     if(node.matches("label"))return;
-    if(node.matches("summary")){if(!node.hasAttribute("aria-label"))node.setAttribute("aria-label",studioHelpText(node));node.append(triggerFor(node));attached.add(node);return;}
+    if(node.matches("summary")){node.append(triggerFor(node));attached.add(node);return;}
     if(node.closest(".context-help-wrap")){attached.add(node);return;}
     const wrap=document.createElement("span");wrap.className="context-help-wrap";
     if(node.matches("textarea,input:not([type=checkbox]),select"))wrap.classList.add("context-help-field");
     node.before(wrap);wrap.append(node,triggerFor(node));attached.add(node);
   }
-  function scan(){scheduled=false;if(current&&!current.isConnected)close();document.querySelectorAll("input,select,textarea,button,summary").forEach(attach);}
-  new MutationObserver(()=>{if(!scheduled){scheduled=true;requestAnimationFrame(scan);}}).observe(document.body,{childList:true,subtree:true});
+  function scan(){
+    // Only changed subtrees are scanned; streamed text does not rescan every control.
+    scheduled=false;if(current&&!current.isConnected)close();
+    const roots=[...pending];pending.clear();
+    for(const root of roots){if(!root.isConnected)continue;if(root.matches(selector))attach(root);root.querySelectorAll(selector).forEach(attach);}
+  }
+  new MutationObserver(records=>{
+    for(const record of records)if(record.target.nodeType===1)pending.add(record.target);
+    if(!scheduled&&pending.size){scheduled=true;requestAnimationFrame(scan);}
+  }).observe(document.body,{childList:true,subtree:true});
   document.addEventListener("pointerdown",e=>{if(current&&!popup?.contains(e.target)&&!current.contains(e.target))close();});
-  document.addEventListener("keydown",e=>{if(e.key==="Escape"&&current){e.preventDefault();e.stopImmediatePropagation();close(true);}},true);
-  document.addEventListener("scroll",()=>{if(current)close();},true);window.addEventListener("resize",()=>close());
-  scan();
+  document.addEventListener("keydown",e=>{
+    if(e.key==="Escape"&&current){e.preventDefault();e.stopImmediatePropagation();close(true);return;}
+    const active=document.activeElement;
+    if(!studioHelpKey(e,active)||!active||active===document.body||popup?.contains(active))return;
+    const target=active.matches(selector)?active:active.closest(selector);if(!target)return;
+    e.preventDefault();show(triggers.get(target)||target,target,true);
+  },true);
+  document.addEventListener("scroll",e=>{
+    if(!current||popup?.contains(e.target))return;
+    // Programmatic scrolls of unrelated panels (activity, conversation) must not close the popup.
+    if(e.target===document||e.target.contains?.(current))place();
+  },true);
+  window.addEventListener("resize",()=>place());
+  pending.add(document.body);scan();
 }
 if(typeof document!=="undefined")document.addEventListener("DOMContentLoaded",initStudioHelp);

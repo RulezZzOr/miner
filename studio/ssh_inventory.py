@@ -7,11 +7,34 @@ import json
 import os
 import re
 import signal
+import sys
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
 SECTIONS = ('system', 'services', 'projects', 'integrations')
+SOCKET_PATH_LIMIT = 100  # sun_path holds 104 (macOS) or 108 (Linux) bytes including NUL
+
+
+@contextmanager
+def socket_address(path):
+    """Yield a bindable/connectable name for a Unix socket at any path length.
+
+    Long state paths are reached through an open directory descriptor on Linux, so the
+    socket stays in the private run directory instead of a shared temporary directory.
+    """
+    path = Path(path)
+    if len(os.fsencode(str(path))) < SOCKET_PATH_LIMIT:
+        yield str(path)
+        return
+    if sys.platform != 'linux':
+        raise OSError(f'Unix socket path is too long for this platform: {path}')
+    fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        yield f'/proc/self/fd/{fd}/{path.name}'
+    finally:
+        os.close(fd)
 
 
 def targets_for(config_dir, mission):
@@ -113,7 +136,8 @@ class SSHInventory:
             raise ValueError('Evidence directory escapes the workspace')
         folder.mkdir(parents=True, exist_ok=True)
         if self.broker:
-            reader, writer = await asyncio.wait_for(asyncio.open_unix_connection(self.broker, limit=300000), 5)
+            with socket_address(self.broker) as address:
+                reader, writer = await asyncio.wait_for(asyncio.open_unix_connection(address, limit=300000), 5)
             try:
                 writer.write(json.dumps({'target':target,'section':section}).encode()+b'\n')
                 await writer.drain()
@@ -168,7 +192,8 @@ class InventoryBroker:
                 except Exception:
                     payload = {'ok':False,'error':'Scoped SSH inventory failed or request denied'}
                 self.wfile.write(json.dumps(payload).encode()+b'\n')
-        self.server = socketserver.UnixStreamServer(str(self.path), Handler)
+        with socket_address(self.path) as address:
+            self.server = socketserver.UnixStreamServer(address, Handler)
         os.chmod(self.path, 0o600)
         self.thread = threading.Thread(target=self.server.serve_forever,kwargs={'poll_interval':0.1},daemon=True)
         self.thread.start()

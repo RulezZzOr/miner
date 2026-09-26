@@ -1,4 +1,5 @@
 import asyncio
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -50,6 +51,55 @@ class MissionReportTests(unittest.TestCase):
     def test_writer_rejects_wrong_destination(self):
         with self.assertRaises(ValueError):
             asyncio.run(self.report().tool().ainvoke({'data': self.plan(), 'path': '/tmp/escape'}))
+
+    # The in-run tool enforces the controller's exact contract (shared check_report).
+
+    def mission(self, phase, root=None, **extra):
+        request = {'mission': {'phase': phase, 'attempt': 'attempt', **extra}}
+        if root:
+            request['cwd'] = str(root)
+        return MissionReport(request, Path('/fixed/report.json'))
+
+    def test_required_readiness_is_enforced_in_the_run(self):
+        reporter = self.mission('plan', readiness_required=True)
+        with self.assertRaisesRegex(ValueError, 'Complex brief requires a readiness assessment'):
+            reporter.validate(self.plan())
+        not_ready = {**self.plan(), 'readiness': {'status': 'clarify', 'reason': 'Scope conflicts.'}}
+        with self.assertRaisesRegex(ValueError, 'grouped owner questions'):
+            reporter.validate(not_ready)
+        ready = {**self.plan(), 'readiness': {'status': 'ready', 'reason': 'Scope and criteria agree.'}}
+        self.assertEqual(reporter.validate(ready)['readiness']['status'], 'ready')
+        self.assertIn('requires the readiness field', reporter.tool().description)
+
+    def test_exact_criteria_outputs_and_coverage_are_enforced_in_the_run(self):
+        from studio.mission_report import ENGLISH
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp).resolve()
+            (root / 'docs').mkdir()
+            (root / 'docs' / 'product.txt').write_text('OK')
+            (root / 'escape').symlink_to(root / 'docs', target_is_directory=True)
+            build = self.mission('build', root, criteria=['File contains OK.'])
+            result = {'status': 'done', 'summary': 'Verified', 'artifacts': ['/workspace/docs/product.txt'],
+                      'checks': [{'criterion': 'File contains OK.', 'passed': True, 'evidence': 'read_file: OK'}]}
+            self.assertEqual(build.validate(result)['artifacts'], ['docs/product.txt'])
+            self.assertEqual(build.validate({**result, 'artifacts': [str(root / 'docs/product.txt')]})['artifacts'], ['docs/product.txt'])
+            for paths, message in [(['docs/missing.txt'], 'Output file not found: docs/missing.txt'),
+                                   (['escape/product.txt'], 'symbolic link'),
+                                   (['../outside.txt'], 'relative to the project root'),
+                                   (['.env'], 'not available as a product file'),
+                                   (['company/projects/x/reports/a.json'], 'not a final product file')]:
+                with self.subTest(paths=paths), self.assertRaisesRegex(ValueError, message):
+                    build.validate({**result, 'artifacts': paths})
+            paraphrased = {**result, 'checks': [{**result['checks'][0], 'criterion': 'The file has OK.'}]}
+            with self.assertRaisesRegex(ValueError, 'Missing precise wording'):
+                build.validate(paraphrased)
+            review = self.mission('review', root, criteria=['File contains OK.'], expected_artifacts=['docs/product.txt', 'docs/other.txt'],
+                                  review_packet={'id': 'packet'})
+            typed = {**result, 'status': 'pass', 'checks': [{**result['checks'][0], 'outcome': 'supported', 'issue': 'none'}]}
+            with self.assertRaisesRegex(ValueError, 'does not cover all output files'):
+                review.validate(typed)
+            self.assertEqual(review.validate({'status': 'changes', 'summary': 'Fix the heading.'})['status'], 'changes')
+            self.assertIn(ENGLISH, build.tool().description)
 
 
 if __name__ == '__main__':

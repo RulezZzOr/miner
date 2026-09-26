@@ -1,3 +1,5 @@
+# Modified for Miner / Switch Studio, 2026-09-25: native reader uses the running interpreter.
+# See frontier/SWITCH.md and THIRD_PARTY.md at the repository root.
 """read_file tool — parse file formats (office / PDF) into structured markdown for the LLM."""
 
 from __future__ import annotations
@@ -6,6 +8,7 @@ import hashlib
 import logging
 import os
 import shlex
+import sys
 
 from frontier_agent.core.tool import tool
 from plugins.tools._deliverable_policy import spill_write_error
@@ -256,7 +259,10 @@ async def read_file(
             argv.pop()
         tail = (" " + " ".join(argv)) if argv else ""
         # The reader source goes over stdin (input=_READER_SRC), leaving only `python3 - <argv>` on the command line (short)
-        cmd = f"python3 - {shlex.quote(path)} {eff_max}{tail}"
+        # Native mode runs on the host: use this interpreter (it has the reader's
+        # dependencies), as create_file does, not whichever python3 is on PATH.
+        reader_python = sys.executable if resolve_sandbox_mode() == "native" else "python3"
+        cmd = f"{shlex.quote(reader_python)} - {shlex.quote(path)} {eff_max}{tail}"
         if save_to:
             # Store to a sandbox file instead of returning the whole text (large documents: store once, then fetch on demand with read_file/grep/cell_range)
             q = shlex.quote(save_to)

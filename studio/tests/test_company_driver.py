@@ -10,7 +10,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 from studio.companies import Companies
-from studio.server import Handler, Studio, write_config
+from studio.missions import parse_plan
+from studio.server import Handler, Studio, atomic_json, write_config
+from studio.tests.sandbox_support import requires_sandbox
 from studio.tests.test_mission_integration import ProjectModel
 
 
@@ -40,6 +42,57 @@ class CompanyDriverTests(unittest.TestCase):
         self.driver = Companies(self.studio, clock=lambda: self.now)
         self.studio.companies = self.driver
         self.c = self.driver.create({"name": "Test Company", "purpose": "Deliver verified work", "projects": [self.pid]})
+        # Workers are simulated: these tests cover the controller, not the sandboxed runtime.
+        self.launched = []
+        self.studio.launch = self.launch
+        self.studio.stop = self.stop
+
+    def launch(self, body, *, mission):
+        key = mission["attempt"]
+        directory = self.studio.data / "runs" / key
+        directory.mkdir(parents=True)
+        run = {"id": key, "created": self.now, "status": "running", "project": body["project"], "mission": mission}
+        self.studio.runs[key] = run
+        atomic_json(directory / "run.json", run)
+        self.launched.append((body, mission))
+        return run
+
+    def stop(self, key):
+        self.studio.runs[key]["status"] = "cancelled"
+
+    def mission(self, index=-1):
+        return self.studio.missions.get(self.current()["cycles"][index]["mission"])
+
+    def tick(self):
+        self.driver.tick()
+        self.studio.missions.tick()
+
+    def end_run(self, m, status, **fields):
+        m = self.studio.missions.get(m["id"])
+        run = self.studio.runs[m["active_attempt"]]
+        run.update(status=status, **fields)
+        self.studio.missions.tick()
+        return self.studio.missions.get(m["id"])
+
+    def block(self, m, kind, message):
+        m = self.studio.missions.get(m["id"])
+        if m["active_attempt"]:
+            self.studio.runs[m["active_attempt"]]["status"] = "cancelled"
+            m["active_attempt"] = None
+        self.studio.missions.block(m, kind, message)
+        self.studio.missions.save(m)
+        return m
+
+    def block_by_time_limit(self, m):
+        # Plan time limit: one retry with a larger budget, then a typed block.
+        for _ in range(2):
+            m = self.studio.missions.get(m["id"])
+            if not m["active_attempt"]:
+                self.now = max(self.now, m["retry_at"])
+                self.studio.missions.tick()
+            m = self.end_run(m, "incomplete", reason="Run exceeded time limit.", failure_kind="time_limit")
+        self.assertEqual((m["status"], m["blocked_kind"]), ("blocked", "time_limit"), m["message"])
+        return m
 
     def current(self):
         return self.driver.get(self.c["id"])
@@ -236,7 +289,7 @@ class CompanyDriverTests(unittest.TestCase):
         self.assertEqual(len(self.current()["cycles"]), 2)
         self.assertEqual(self.current()["tasks"][0]["status"], "done")
 
-    def test_failed_acceptance_trips_breaker_and_never_marks_done(self):
+    def test_failed_acceptance_is_isolated_and_never_marks_done(self):
         self.task()
         self.action("settings", auto_accept=True)
         m = self.begin()
@@ -244,9 +297,14 @@ class CompanyDriverTests(unittest.TestCase):
         self.studio.missions.save(m)
         for _ in range(3):
             self.driver.tick()
-        self.assertEqual(self.current()["status"], "paused")
+        # One child's failed acceptance neither pauses the Driver nor repeats every tick.
+        self.assertEqual(self.current()["status"], "active")
         self.assertNotEqual(self.current()["tasks"][0]["status"], "done")
-        self.assertNotEqual(self.studio.missions.get(m["id"])["status"], "accepted")
+        m = self.studio.missions.get(m["id"])
+        self.assertEqual(m["status"], "ready")
+        self.assertIn("Automatic acceptance failed", m["message"])
+        events = [e for e in self.driver.snapshot()["companies"][0]["events"] if e["action"] == "accept_failed"]
+        self.assertEqual(len(events), 1)
 
     def test_unanswered_plan_is_not_automatically_approved(self):
         self.task()
@@ -265,6 +323,366 @@ class CompanyDriverTests(unittest.TestCase):
         self.driver.action({"id":other["id"],"revision":other["revision"],"action":"start"})
         self.driver.tick()
         self.assertEqual(len(self.studio.missions.list()), 1)
+
+    # Production failure modes of an onboarded company (bounded, visible recovery).
+
+    def events(self, action):
+        return [e for e in self.driver.snapshot()["companies"][0]["events"] if e["action"] == action]
+
+    def test_blocked_time_limit_is_recovered_in_bounded_rounds_then_one_owner_question(self):
+        self.task()
+        m = self.begin()
+        self.studio.missions.tick()
+        limits = []
+        for round_ in range(1, 4):
+            m = self.block_by_time_limit(m)
+            self.driver.tick()
+            self.assertEqual(self.studio.missions.get(m["id"])["status"], "blocked")  # backoff first
+            self.now += 300 * 2 ** (round_ - 1)
+            self.driver.tick()
+            m = self.studio.missions.get(m["id"])
+            self.assertEqual(m["status"], "running", m["message"])
+            self.assertTrue(m["message"].startswith(f"Driver recovery {round_}/3:"), m["message"])
+            limits.append((m["attempt_minutes"], m["max_turns"]))
+            self.assertEqual(m["driver_recoveries"], round_)
+        self.assertEqual(limits, [(30, 48), (45, 56), (68, 64)])
+        self.assertEqual(len(self.events("recovery")), 3)
+        self.assertTrue(self.events("recovery")[0]["message"].startswith("Driver recovery"))
+        m = self.block_by_time_limit(m)
+        reserved = self.driver.usage(self.current())["reserved_runs"]
+        self.assertGreater(reserved, 0)  # still under Driver recovery: the reservation is kept
+        for _ in range(3):
+            self.now += 3600
+            self.driver.tick()
+        m = self.studio.missions.get(m["id"])
+        self.assertEqual(m["status"], "blocked")
+        self.assertTrue(m["owner_needed"])
+        open_questions = [q for q in m["questions"] if q["answer"] is None]
+        self.assertEqual([q["kind"] for q in open_questions], ["recovery"])
+        self.assertIn("Options:", open_questions[0]["question"])
+        self.assertEqual(self.driver.usage(self.current())["reserved_runs"], 0)  # released for the owner
+        self.assertIn("Owner decision needed", self.current()["message"])
+        # The owner's answer continues the work and re-reserves its runs.
+        m = self.studio.missions.action({"id": m["id"], "action": "answer", "question": open_questions[0]["id"], "answer": "continue"})
+        self.assertEqual(m["status"], "running", m["message"])
+        self.assertGreater(self.driver.usage(self.current())["reserved_runs"], 0)
+
+    def test_legacy_production_blocks_are_recovered(self):
+        # State written by 0.4.0-alpha.10: untyped blocks, a generic question, blocked turned into paused.
+        p2 = self.root / "second"
+        p2.mkdir()
+        pid2 = self.studio.add_project(p2)["id"]
+        self.action("add_project", project=pid2)
+        self.task()
+        self.action("add_task", project=pid2, title="Second", goal="Second task", criteria=["Done"])
+        self.action("start")
+        self.driver.tick()
+        self.driver.tick()
+        first, second = self.block(self.mission(0), "x", "x"), self.block(self.mission(1), "x", "x")
+        for m in (first, second):
+            m.pop("blocked_kind")
+            m.pop("blocked_at")
+        first.update(message="Three unsuccessful attempts. Invalid output: Complex brief requires a readiness assessment before execution.",
+                     questions=[{"id": "q1", "question": "How should I adjust the approach before restarting the task?",
+                                 "reason": "legacy", "task": None, "answer": None, "created": 1}])
+        second.update(status="paused", resume_status="blocked", message="First, restore the parent company and its time horizon.",
+                      attempts=[{"id": "a1", "phase": "plan", "task": None, "started": 1,
+                                 "error": "Run exceeded time limit."}])
+        for m in (first, second):
+            self.studio.missions.save(m)
+        self.driver.tick()
+        self.driver.tick()
+        first, second = self.studio.missions.get(first["id"]), self.studio.missions.get(second["id"])
+        self.assertEqual(first["status"], "running", first["message"])
+        self.assertEqual(first["questions"][0]["answer"], "Superseded by automatic Driver recovery (not an owner decision).")
+        self.assertEqual((second["status"], second["blocked_kind"]), ("blocked", "time_limit"))
+        self.assertIn("Run exceeded time limit.", second["message"])
+        self.now += 300
+        self.driver.tick()
+        self.assertEqual(self.studio.missions.get(second["id"])["status"], "running")
+
+    def test_non_recoverable_block_is_never_auto_resumed(self):
+        self.task()
+        m = self.begin()
+        self.studio.missions.tick()
+        m = self.block(m, "log_limit", "Project exceeded log limit.")
+        for _ in range(4):
+            self.now += 7200
+            self.driver.tick()
+        m = self.studio.missions.get(m["id"])
+        self.assertEqual((m["status"], m.get("driver_recoveries", 0)), ("blocked", 0))
+        self.assertEqual(sum(q["answer"] is None for q in m["questions"]), 1)
+
+    def test_provider_503_does_not_consume_company_runs(self):
+        self.task()
+        m = self.begin()
+        self.studio.missions.tick()
+        for _ in range(3):
+            m = self.end_run(m, "failed", reason="Error code: 503 - Loading model", failure_kind="provider_unavailable")
+            self.assertEqual(m["status"], "running")
+            self.now = m["retry_at"]
+            self.tick()
+        usage = self.driver.usage(self.current())
+        self.assertEqual((usage["used_runs"], usage["reserved_runs"]), (1, 9))  # only the attempt now running
+
+    def test_full_reservations_are_released_for_owner_blocks_and_re_reserved_on_resume(self):
+        projects = [self.pid]
+        for name in ("second", "third"):
+            (self.root / name).mkdir()
+            key = self.studio.add_project(self.root / name)["id"]
+            self.action("add_project", project=key)
+            projects.append(key)
+        for key in projects:
+            self.action("add_task", project=key, title="Work " + key, goal="Create product.txt", criteria=["Product ready"])
+        self.action("settings", run_budget=20)
+        self.action("start")
+        self.driver.tick()
+        self.driver.tick()
+        self.assertEqual(len(self.current()["cycles"]), 2)
+        self.assertEqual(self.driver.usage(self.current())["remaining_runs"], 0)
+        blocked = self.block(self.mission(0), "review_rounds", "Three rounds of corrections without acceptance.")
+        self.driver.tick()  # owner question; unused runs released
+        self.driver.tick()  # the third task can start with the released runs
+        self.assertEqual(len(self.current()["cycles"]), 3)
+        self.assertEqual(self.driver.usage(self.current())["remaining_runs"], 0)
+        with self.assertRaisesRegex(ValueError, "company run budget"):
+            self.studio.missions.action({"id": blocked["id"], "action": "resume"})
+        self.studio.missions.action({"id": self.mission(2)["id"], "action": "cancel"})
+        m = self.studio.missions.action({"id": blocked["id"], "action": "resume"})
+        self.assertEqual(m["status"], "running")
+        usage = self.driver.usage(self.current())
+        self.assertLessEqual(usage["used_runs"] + usage["reserved_runs"], 20)
+        self.assertEqual(m["final_cycles"], 0)
+
+    def test_company_pause_keeps_blocked_status_and_reason_and_resumes_its_own_work(self):
+        p2 = self.root / "second"
+        p2.mkdir()
+        pid2 = self.studio.add_project(p2)["id"]
+        self.action("add_project", project=pid2)
+        self.task()
+        self.action("add_task", project=pid2, title="Second", goal="Second task", criteria=["Done"])
+        self.action("start")
+        self.driver.tick()
+        self.driver.tick()
+        blocked, running = self.block(self.mission(0), "log_limit", "Project exceeded log limit."), self.mission(1)
+        self.action("pause")
+        for _ in range(2):
+            self.tick()
+        blocked, running = self.studio.missions.get(blocked["id"]), self.studio.missions.get(running["id"])
+        self.assertEqual((blocked["status"], blocked["message"]), ("blocked", "Project exceeded log limit."))
+        self.assertEqual(running["status"], "paused")
+        self.action("start")
+        self.driver.tick()
+        self.assertEqual(self.studio.missions.get(running["id"])["status"], "running")
+        self.assertEqual(self.studio.missions.get(blocked["id"])["status"], "blocked")
+        self.assertEqual(self.current()["resume_missions"], [])
+
+    def test_mission_paused_by_parent_state_is_resumed_on_start(self):
+        self.task()
+        m = self.begin()
+        c = self.current()
+        c["status"] = "paused"  # e.g. a crash between the company save and pausing children
+        self.driver.save(c)
+        self.studio.missions.tick()
+        m = self.studio.missions.get(m["id"])
+        self.assertEqual((m["status"], m["paused_by_parent"]), ("paused", True))
+        self.action("start")
+        self.driver.tick()
+        self.assertEqual(self.studio.missions.get(m["id"])["status"], "running")
+
+    def test_restart_on_last_reserved_run_does_not_deadlock_the_driver(self):
+        self.task()
+        m = self.begin()
+        self.studio.missions.tick()
+        m = self.studio.missions.get(m["id"])
+        m["max_attempts"] = 1
+        self.studio.missions.save(m)
+        self.action("pause")
+        for _ in range(2):
+            self.action("start")
+            for _ in range(4):
+                self.tick()
+            self.assertEqual(self.current()["status"], "active")
+            self.action("pause")
+        m = self.studio.missions.get(m["id"])
+        self.assertEqual((m["status"], m["blocked_kind"]), ("blocked", "run_limit"))
+        self.assertIn("reserve_runs", m["message"])
+        self.assertEqual(self.current()["resume_missions"], [])
+        self.assertEqual(len(self.events("resume_failed")), 1)
+
+    def test_horizon_pauses_work_and_renewal_continues_it(self):
+        self.task()
+        m = self.begin()
+        self.studio.missions.tick()
+        self.now = self.current()["deadline"] + 1
+        self.tick()
+        self.tick()
+        self.assertEqual(self.current()["status"], "paused")
+        self.assertEqual(self.studio.missions.get(m["id"])["status"], "paused")  # not expired
+        with self.assertRaisesRegex(ValueError, "Horizon"):
+            self.action("start")
+        self.action("settings", renew_horizon=True)
+        self.action("start")
+        self.assertGreater(self.studio.missions.get(m["id"])["deadline"], self.now)
+        self.driver.tick()
+        self.assertEqual(self.studio.missions.get(m["id"])["status"], "running")
+        self.assertEqual(self.current()["tasks"][0]["status"], "running")
+
+    def test_early_renewal_extends_child_deadlines(self):
+        self.task()
+        m = self.begin()
+        old = self.studio.missions.get(m["id"])["deadline"]
+        self.now += 6 * 86400
+        self.action("pause")
+        self.action("settings", renew_horizon=True)
+        self.action("start")
+        self.assertGreater(self.studio.missions.get(m["id"])["deadline"], old)
+        self.now = old + 3600
+        self.tick()
+        self.assertEqual(self.studio.missions.get(m["id"])["status"], "running")
+        self.assertEqual(self.current()["status"], "active")
+
+    def test_renewal_requeues_expired_tasks_and_owner_can_requeue_cancelled(self):
+        first = self.task()
+        m = self.begin()
+        m["status"] = "expired"  # legacy state: expired with the old horizon
+        self.studio.missions.save(m)
+        self.driver.tick()
+        self.assertEqual(self.current()["tasks"][0]["status"], "expired")
+        self.action("pause")
+        self.action("settings", renew_horizon=True)
+        self.action("start")
+        self.assertEqual(self.current()["tasks"][0]["status"], "queued")
+        self.driver.tick()
+        second = self.mission()
+        self.assertNotEqual(second["id"], m["id"])
+        self.studio.missions.action({"id": second["id"], "action": "cancel"})
+        self.driver.tick()
+        self.assertEqual(self.action("enable_task", task=first["id"])["tasks"][0]["status"], "cancelled")
+        c = self.action("requeue_task", task=first["id"])
+        self.assertEqual(c["tasks"][0]["status"], "queued")
+        self.driver.tick()
+        self.assertEqual(len(self.current()["cycles"]), 3)
+        with self.assertRaisesRegex(ValueError, "cancelled or expired"):
+            self.action("requeue_task", task=first["id"])
+
+    def test_draft_on_same_project_does_not_hold_dispatch(self):
+        self.studio.missions.create({"project": self.pid, "title": "Abandoned", "goal": "Draft", "criteria": ["x"]})
+        self.task()
+        self.action("start")
+        self.driver.tick()
+        self.assertEqual(len(self.current()["cycles"]), 1)
+
+    def test_busy_project_is_named_in_the_driver_message_once(self):
+        other = self.studio.missions.create({"project": self.pid, "title": "Standalone", "goal": "Other", "criteria": ["x"],
+                                             "isolated": False})
+        self.studio.missions.action({"id": other["id"], "action": "start"})
+        self.task()
+        self.action("start")
+        for _ in range(3):
+            self.driver.tick()
+        self.assertEqual(self.current()["cycles"], [])
+        self.assertIn(other["id"], self.current()["message"])
+        self.assertEqual(len(self.events("project_busy")), 1)
+
+    def test_policy_limit_changes_reach_unfinished_executions(self):
+        self.task()
+        m = self.begin()
+        self.action("pause")
+        self.action("settings", attempt_minutes=45, max_turns=60)
+        m = self.studio.missions.get(m["id"])
+        self.assertEqual((m["attempt_minutes"], m["max_turns"]), (45, 60))
+        self.assertEqual((m["company_context"]["attempt_minutes"], m["company_context"]["max_turns"]), (45, 60))
+        self.assertEqual(m["max_attempts"], 10)
+
+    def rounds_blocked(self, kind, message, cycles=0, final_cycles=0):
+        """A company execution blocked by the correction-round cap, with the Driver's owner question raised."""
+        self.task()
+        m = self.begin()
+        self.studio.missions.tick()
+        m = self.studio.missions.get(m["id"])
+        m["tasks"] = parse_plan({"tasks": [{"id": "one", "title": "one", "instructions": "Do it.", "criteria": ["Product ready"]}]})
+        m["tasks"][0]["cycles"] = cycles
+        m.update(phase="build", final_cycles=final_cycles, driver_recoveries=2)
+        self.studio.missions.save(m)
+        m = self.block(m, kind, message)
+        self.driver.tick()
+        m = self.studio.missions.get(m["id"])
+        self.assertTrue(m["owner_needed"])
+        return m
+
+    def test_owner_answer_while_driver_paused_resumes_on_start(self):
+        m = self.rounds_blocked("review_rounds", "Three rounds of corrections without acceptance.", cycles=3)
+        question = next(q for q in m["questions"] if q["answer"] is None)
+        self.action("pause")
+        m = self.studio.missions.action({"id": m["id"], "action": "answer", "question": question["id"], "answer": "continue"})
+        self.assertEqual((m["status"], m["driver_resume"]), ("blocked", True))
+        self.action("start")
+        self.driver.tick()
+        m = self.studio.missions.get(m["id"])
+        self.assertEqual(m["status"], "running")
+        # The deferred answer is the owner's decision: fresh correction rounds and Driver recoveries.
+        self.assertEqual((m["tasks"][0]["cycles"], m["tasks"][0]["cycles_total"], m["driver_recoveries"]), (0, 3, 0))
+        self.assertEqual(self.events("resume_failed"), [])
+
+    def test_owner_task_revision_after_final_rounds_grants_fresh_rounds(self):
+        m = self.rounds_blocked("final_rounds", "Final check returned defects: missing test.", final_cycles=3)
+        self.action("pause")
+        m = self.studio.missions.action({"id": m["id"], "action": "revise_task", "task": "one", "reason": "Clarify.",
+                                         "expected_criteria": ["Product ready"], "criteria": ["Product ready and tested"]})
+        self.assertEqual((m["status"], m["driver_resume"]), ("blocked", True))
+        self.action("start")
+        self.driver.tick()
+        m = self.studio.missions.get(m["id"])
+        self.assertEqual((m["status"], m["final_cycles"], m["final_cycles_total"]), ("running", 0, 3), m["message"])
+        self.assertEqual(m["driver_recoveries"], 0)
+        self.assertEqual(m["questions"][-1]["answer"], "Superseded by owner resume.")
+
+    def test_set_checks_on_paused_finished_execution_stays_within_the_budget(self):
+        projects = [self.pid]
+        for name in ("second", "third"):
+            (self.root / name).mkdir()
+            key = self.studio.add_project(self.root / name)["id"]
+            self.action("add_project", project=key)
+            projects.append(key)
+        for key in projects:
+            self.action("add_task", project=key, title="Work " + key, goal="Create product.txt", criteria=["Product ready"])
+        self.action("settings", run_budget=12, attempts_per_cycle=5)
+        self.action("start")
+        self.driver.tick()
+        self.driver.tick()
+        first = self.mission(0)
+        first.update(status="ready", final_report={"run": "x", "verified_artifacts": []})
+        self.studio.missions.save(first)  # finished work releases its unused runs
+        self.driver.tick()
+        self.assertEqual(len(self.current()["cycles"]), 3)
+        def committed():
+            usage = self.driver.usage(self.current())
+            return usage["used_runs"] + usage["reserved_runs"]
+        self.studio.missions.action({"id": first["id"], "action": "pause"})
+        m = self.studio.missions.action({"id": first["id"], "action": "set_checks",
+                                         "verification_checks": [{"argv": [sys.executable, "-c", "print(1)"]}]})
+        self.assertEqual(m["resume_status"], "verifying")
+        self.assertLessEqual(committed(), 12)
+        self.assertIn("company budget allowed", m["message"])
+        m = self.studio.missions.action({"id": first["id"], "action": "resume"})
+        self.assertEqual(m["status"], "verifying")
+        self.assertLessEqual(committed(), 12)
+
+    def test_revised_brief_of_blocked_mission_continues_after_start(self):
+        self.task()
+        m = self.begin()
+        m = self.block(m, "invalid_output", "Invalid output: Complex brief requires a readiness assessment before execution.")
+        m["owner_needed"] = True
+        self.studio.missions.save(m)
+        self.action("pause")
+        from studio.workflow import brief_hash
+        m = self.studio.missions.action({"id": m["id"], "action": "revise_brief", "expected_brief_hash": brief_hash(m),
+                                         "reason": "Clarify scope.", "goal": "Create product.txt with OK"})
+        self.assertEqual(m["status"], "paused")
+        self.action("start")
+        self.driver.tick()
+        self.assertEqual(self.studio.missions.get(m["id"])["status"], "running")
 
     def test_http_company_api_uses_existing_origin_and_token_boundary(self):
         import urllib.error
@@ -292,9 +710,11 @@ class CompanyDriverTests(unittest.TestCase):
 
 
 class CompanyDriverIntegration(unittest.TestCase):
+    @requires_sandbox
     def test_driver_real_workers_review_checks_accept_and_restart(self):
         self.run_delivery()
 
+    @requires_sandbox
     def test_enable_auto_tools_resumes_manual_worker_without_more_approvals(self):
         self.run_delivery(enable_during_run=True)
 

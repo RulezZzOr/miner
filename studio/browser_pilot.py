@@ -2,8 +2,10 @@
 import threading
 import time
 try:
+    from .http_errors import Busy
     from .judgments import provider_config, request_choice
 except ImportError:
+    from http_errors import Busy
     from judgments import provider_config, request_choice
 
 
@@ -29,16 +31,18 @@ class BrowserPilot:
         frame = body.get('frame'); options = fixture_actions(frame)
         with self.studio.lock:
             if any(r['status'] in {'running', 'waiting', 'stopping'} for r in self.studio.runs.values()) or self.studio.decision_lab.active():
-                raise ValueError('Inference is busy with project work or a lab evaluation. The fixture can still run without a model.')
+                raise Busy('Inference is busy with project work or a lab evaluation. The fixture can still run without a model.')
             if not self.lock.acquire(blocking=False):
-                raise ValueError('A pilot decision is already in flight.')
+                raise Busy('A pilot decision is already in flight.')
         try:
             profiles, default = self.studio.profiles()
             config = provider_config(profiles, body.get('profile') or default)
             started = time.monotonic()
             try:
+                self.studio.check_credential_target(config)  # Older saved profiles are checked again.
                 answer, usage, model = request_choice(config, frame,
-                    'Select the next permitted operation toward showing only Blue desk. The operation includes its exact target. Never invent a selector or operation.',
+                    'Select the next permitted operation toward showing only Blue desk. The operation includes its exact target. Never invent a selector or operation. '
+                    'Write all reports, questions, summaries, notes and generated documentation in English, regardless of the language of the input.',
                     options, {'timeout_seconds': 5, 'max_output_tokens': 200, 'confidence_threshold': .8}, self.studio.config.parent)
                 if time.monotonic() - started >= 5:
                     raise ValueError('Late proposal discarded.')

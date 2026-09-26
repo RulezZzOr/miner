@@ -11,6 +11,7 @@ import hashlib
 import json
 import sys
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -152,15 +153,28 @@ def run(args):
         print(json.dumps(value, ensure_ascii=False), flush=True)
     try:
         if args.wait_mission:
+            if not args.access_key_file:
+                raise ValueError("--wait-mission requires --access-key-file; Studio authenticates every API call.")
+            key = args.access_key_file.read_text().strip()
+            if not key:
+                raise ValueError(f"The access key file is empty: {args.access_key_file}")
+            request = urllib.request.Request(args.studio_url + "/api/missions",
+                                             headers={"Authorization": "Bearer " + key})
             until = time.monotonic()+3600
             while time.monotonic() < until:
                 try:
-                    with urllib.request.urlopen(args.studio_url+"/api/missions", timeout=5) as response:
+                    with urllib.request.urlopen(request, timeout=5) as response:
                         missions = json.load(response)["missions"]
                     mission = next(m for m in missions if m["id"] == args.wait_mission)
                     if mission["status"] == "accepted":
                         break
                     progress({"waiting_for": args.wait_mission, "status": mission["status"]})
+                except urllib.error.HTTPError as exc:
+                    if exc.code in (401, 403):
+                        raise PermissionError(
+                            f"Studio rejected the access key (HTTP {exc.code}); check --access-key-file."
+                        ) from exc
+                    progress({"waiting_for": args.wait_mission, "observation_error": str(exc)[:200]})
                 except (OSError, ValueError, StopIteration) as exc:
                     progress({"waiting_for": args.wait_mission, "observation_error": str(exc)[:200]})
                 time.sleep(20)
@@ -188,4 +202,6 @@ if __name__ == "__main__":
     parser.add_argument("--case-seconds", type=int, default=2700)
     parser.add_argument("--wait-mission")
     parser.add_argument("--studio-url", default="http://127.0.0.1:4317")
+    parser.add_argument("--access-key-file", type=Path,
+                        help="owner access key for --wait-mission (e.g. .switch-agent/studio/access-key)")
     run(parser.parse_args())

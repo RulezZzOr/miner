@@ -1754,7 +1754,7 @@ dialog label select {
 .product-form-panel { background: #20282a; border: 1px solid #40574d; padding: 14px; border-radius: 9px; margin: 18px 0; }
 .product-form-panel > summary { cursor: pointer; font-weight: 600; color: var(--green); }
 .product-work-item { border-top: 1px solid var(--border); padding: 14px 0; }
-.product-work-item > .button { margin: 10px 8px 0 0; }
+.product-work-item > .button, .product-work-item > .context-help-wrap { margin: 10px 8px 0 0; }
 .product-work-item summary { cursor: pointer; }
 #product-detail { min-width: 0; overflow-wrap: anywhere; }
 #product-detail p, #product-detail li { line-height: 1.6; }
@@ -1873,3 +1873,7 @@ body{height:100dvh;display:flex;flex-direction:column}
 .app-shell{height:auto;min-height:0;flex:1}.statusbar{flex-shrink:0}
 .composer>.context-help-field{padding-right:8px}.composer textarea{width:100%;min-width:0}
 @media(max-width:620px){body{height:auto;min-height:100dvh}.topbar{padding:10px;gap:10px}.project-switch{flex:1;min-width:120px}.top-actions{flex-basis:100%;gap:9px 12px}.app-shell{min-height:calc(100dvh - 160px)}}
+/* Hosts without a worker sandbox can edit and review, but cannot run agents. */
+.execution-banner{flex-shrink:0;margin:0;padding:9px 18px;border-bottom:1px solid #8a6a3a;background:#3a2e1d;color:#ffe2b0;font-size:12px;line-height:1.5}
+.execution-banner[hidden]{display:none}
+#session-dialog{max-width:460px}#session-error:empty{display:none}

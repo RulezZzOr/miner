@@ -33,6 +33,12 @@ function el(tag, className, text) {
   if (text !== undefined) node.textContent = text;
   return node;
 }
+function defaultModelForRole(role, profiles = state.data?.profiles || []) {
+  if (role === "review") {
+    return profiles.find((profile) => profile.reviewer_default)?.id || state.data?.default_profile || "";
+  }
+  return state.data?.default_profile || profiles[0]?.id || "";
+}
 const state = {
   data: null,
   project: localStorage.getItem("switch.project"),
@@ -73,13 +79,21 @@ function resetConversation() {
 }
 let toastTimer;
 function toast(message, error = false) {
+  // Background polls must not repeat what the open sign-in dialog already says.
+  if (message === sessionExpiredMessage && $("#session-dialog")?.open) return;
   const t = $("#toast");
   t.textContent = message;
   t.className = "toast" + (error ? " error" : "");
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.add("hidden"), error ? 8000 : 3500);
 }
+// Session expiry: keep the page and its drafts, pause requests, and resume after sign-in.
+let sessionExpired = false;
+const sessionExpiredMessage = "Your Studio session has expired. Sign in again; your drafts stay on this page.";
+// Errors carry the HTTP status so callers can tell a missing item from a transient failure.
+const apiError = (message, status) => Object.assign(new Error(message), { status });
 async function api(path, body) {
+  if (sessionExpired) throw apiError(sessionExpiredMessage, 401);
   const response = await fetch(
     path,
     body === undefined
@@ -93,10 +107,58 @@ async function api(path, body) {
           body: JSON.stringify(body),
         },
   );
-  if (response.status === 401) { location.replace("/"); throw new Error("Sign in to Miner."); }
+  if (response.status === 401) { showSessionExpired(); throw apiError(sessionExpiredMessage, 401); }
   const result = await response.json();
-  if (!response.ok) throw new Error(result.error || "Request failed.");
+  if (!response.ok) throw apiError(result.error || "Request failed.", response.status);
   return result;
+}
+function signInMessage(status, error) {
+  if (status === 401) return "Access key was not accepted.";
+  if (status === 429) return error && error !== "Authentication failed." ? error : "Too many sign-in attempts or active sessions. Wait one minute and try again.";
+  return `Studio rejected the sign-in (${status}): ${error || "no details"}`;
+}
+function showSessionExpired() {
+  if (sessionExpired) return;
+  sessionExpired = true;
+  const dialog = $("#session-dialog");
+  if (!dialog) return;
+  const reopen = el("button", "button small", "Signed out · Sign in");
+  reopen.type = "button";
+  reopen.onclick = () => { if (!dialog.open) dialog.showModal(); $("#session-key").focus(); };
+  $("#connection").replaceChildren(reopen);
+  $("#session-error").textContent = "";
+  if (!dialog.open) dialog.showModal();
+  $("#session-key").focus();
+}
+async function resumeSession() {
+  sessionExpired = false;
+  if ($("#session-dialog")?.open) $("#session-dialog").close();
+  $("#connection").replaceChildren(el("i"), document.createTextNode(" Connected to Studio"));
+  // A restarted server issues a new request token; load it before any mutation.
+  await refreshState();
+  toast("Signed in again. Updates resumed; your drafts were kept.");
+}
+async function probeSession() {
+  // Detects a sign-in completed in another tab without sending the paused requests.
+  const response = await fetch("/api/state", { cache: "no-store" });
+  if (response.ok) await resumeSession();
+}
+async function signInAgain(event) {
+  event.preventDefault();
+  const field = $("#session-key"), error = $("#session-error");
+  error.textContent = "";
+  let response;
+  try {
+    response = await fetch("/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: field.value }) });
+  } catch (_) { error.textContent = "Cannot reach Studio. Check the connection."; return; }
+  field.value = "";
+  if (!response.ok) {
+    let detail = "";
+    try { detail = (await response.json()).error || ""; } catch (_) { detail = ""; }
+    error.textContent = signInMessage(response.status, detail);
+    return;
+  }
+  await resumeSession();
 }
 function bind(selector, event, fn) {
   $(selector).addEventListener(event, (e) => {
@@ -143,6 +205,26 @@ function profileLabel(profile) {
       ? "Claude Console"
       : profile.id;
 }
+// The secure worker runtime refuses OAuth and Codex profiles; never offer them for work or review.
+function isRunnableProfile(profile) {
+  return Boolean(profile) && !profile.oauth_provider && profile.backend !== "codex";
+}
+function runnableProfiles(profiles = state.data?.profiles || []) {
+  return profiles.filter(isRunnableProfile);
+}
+const executionUnavailableDefault = "Workers need Linux with bubblewrap; this host can edit and review but not run agents.";
+// Returns why agents cannot run on this host, or "" when execution is available or not reported.
+function executionUnavailable(data = state.data) {
+  const execution = data?.execution;
+  if (!execution || execution.available !== false) return "";
+  return execution.reason || executionUnavailableDefault;
+}
+function renderExecution() {
+  const banner = $("#execution-banner"), reason = executionUnavailable();
+  if (!banner) return;
+  banner.hidden = !reason;
+  banner.textContent = reason ? `Agent execution is unavailable on this host. ${reason}` : "";
+}
 function fillSelectors() {
   const current =
     $("#model-select").value ||
@@ -156,16 +238,19 @@ function fillSelectors() {
     }),
   );
   $("#project-select").value = state.project;
+  const profiles = runnableProfiles();
   $("#model-select").replaceChildren(
-    ...state.data.profiles.map((p) => {
+    ...profiles.map((p) => {
       const o = el("option", "", `${p.model} · ${profileLabel(p)}`);
       o.value = p.id;
       return o;
     }),
   );
-  $("#model-select").value = state.data.profiles.some((p) => p.id === current)
+  $("#model-select").value = profiles.some((p) => p.id === current)
     ? current
-    : state.data.default_profile;
+    : profiles.some((p) => p.id === state.data.default_profile)
+      ? state.data.default_profile
+      : profiles[0]?.id || "";
   $("#project-label").textContent = "⌄  " + (project()?.name || "Project");
   $("#footer-project").textContent = project()?.name || "";
   updateModelLabel();
@@ -174,6 +259,36 @@ async function refreshState() {
   state.data = await api("/api/state");
   if (!state.data.projects.some((p) => p.id === state.project))
     state.project = state.data.projects[0]?.id;
+  renderExecution();
+}
+// A missing (404), refused (403) or unreadable (500) folder; sign-out, network and busy errors are transient.
+const projectFolderProblem = (error) => !sessionExpired && [403, 404, 500].includes(error?.status);
+// Loads the explorer; a missing or unreadable folder falls back to the next project that opens.
+async function loadProjectTree() {
+  const tried = new Set(), first = state.project;
+  const restore = () => { if (state.project !== first) { state.project = first; fillSelectors(); } };
+  while (state.project && !tried.has(state.project)) {
+    tried.add(state.project);
+    try {
+      await loadTree();
+      if (state.project !== first) localStorage.setItem("switch.project", state.project);
+      return true;
+    } catch (error) {
+      // Keep the owner's choice and let polling retry the whole load.
+      if (!projectFolderProblem(error)) { restore(); throw error; }
+      toast(`Project folder is missing or unreadable (${project()?.name || state.project}): ${error.message}`, true);
+      const next = state.data.projects.find((p) => !tried.has(p.id));
+      if (!next) break;
+      state.project = next.id;
+      fillSelectors();
+    }
+  }
+  // Nothing opened: keep the saved choice so a remounted folder opens again on the next load.
+  restore();
+  $("#sidebar-content").replaceChildren(el("p", "sidebar-note", state.data.projects.length
+    ? "No project folder could be opened. Use Open project to choose an existing folder."
+    : "Open a project folder to start."));
+  return false;
 }
 async function loadTree() {
   const epoch = ++state.treeEpoch;
@@ -262,8 +377,27 @@ async function openFile(path, force = false) {
     row.classList.toggle("active", row.title === path),
   );
 }
+// One save at a time: a second save during a request waits and then uses the new revision.
 async function saveFile() {
+  if (state.saving) {
+    state.saveAgain = true;
+    return state.saving;
+  }
   if (!state.file || !state.dirty) return;
+  state.saving = (async () => {
+    try {
+      do {
+        state.saveAgain = false;
+        await saveFileOnce();
+      } while (state.saveAgain && state.file && state.dirty);
+    } finally {
+      state.saving = null;
+      state.saveAgain = false;
+    }
+  })();
+  return state.saving;
+}
+async function saveFileOnce() {
   const content = $("#editor").value;
   const file = state.file;
   const result = await api("/api/file", {
@@ -304,6 +438,11 @@ function clearFile() {
   $("#context-file").textContent = "Project context";
 }
 async function selectProject(id) {
+  if (id === state.project) {
+    // Same project: keep the open file, run and conversation.
+    $("#project-select").value = state.project;
+    return;
+  }
   if (!canLeave()) {
     $("#project-select").value = state.project;
     return;
@@ -333,12 +472,20 @@ async function renderSidebar() {
     team: "AGENT TEAM",
   }[state.view];
   $("#file-actions").classList.toggle("hidden", state.view !== "files");
-  if (state.view === "files") return loadTree();
-  state.treeEpoch++;
   const list = $("#sidebar-content");
-  list.replaceChildren();
+  if (state.view === "files") {
+    delete list.dataset.signature;
+    return loadTree();
+  }
+  state.treeEpoch++;
   if (state.view === "runs") {
     const runs = state.data.runs.filter((r) => r.project === state.project);
+    // Polling must not rebuild an unchanged list: that drops focus and swallows clicks.
+    const signature = JSON.stringify([state.project, state.run, runs.map((r) => [r.id, r.task, r.status, r.created])]);
+    if (list.dataset.signature === signature) return;
+    const focused = list.contains(document.activeElement) ? document.activeElement.dataset?.run : null;
+    list.dataset.signature = signature;
+    list.replaceChildren();
     if (!runs.length)
       list.append(
         el("p", "sidebar-note", "No tasks yet. Enter your first task on the right."),
@@ -348,6 +495,7 @@ async function renderSidebar() {
         "button",
         "run-item" + (r.id === state.run ? " active" : ""),
       );
+      b.dataset.run = r.id;
       b.append(
         el("strong", "", r.task),
         el(
@@ -358,8 +506,11 @@ async function renderSidebar() {
       );
       b.onclick = () => selectRun(r.id).catch((e) => toast(e.message, true));
       list.append(b);
+      if (r.id === focused) b.focus({ preventScroll: true });
     }
   } else {
+    delete list.dataset.signature;
+    list.replaceChildren();
     const r = run();
     if (!r) {
       list.append(
@@ -401,7 +552,7 @@ async function renderSidebar() {
       el(
         "p",
         "sidebar-note",
-        "The tree is based on tool calls. Verify the delegation result in the activity. Further separation levels are not yet involved.",
+        "The tree is based on tool calls. Verify the delegation result in the activity. Deeper delegation levels are not supported yet.",
       ),
     );
   }
@@ -416,7 +567,7 @@ function setMode(mode) {
     b.classList.toggle("selected", b.dataset.mode === mode),
   );
   $("#mode-description").textContent = codex
-    ? "ChatGPT via Codex · one agent. Runs in the project sandbox; risky commands request approval. Run duration is managed by Codex."
+    ? "ChatGPT via Codex is not available in the secure worker runtime. Select an API or local model."
     : mode === "agent_team"
       ? "The coordinator distributes work among its workers."
       : "One agent handles the task and uses tools.";
@@ -479,7 +630,10 @@ function renderEvent(e) {
 function updateRunControls() {
   const r = run();
   const anyActive = state.data?.runs.some(active);
-  $("#run-task").disabled = !!anyActive;
+  const unavailable = executionUnavailable();
+  $("#run-task").disabled = !!anyActive || !!unavailable;
+  // The title only explains a disabled Run; its aria-label keeps the name and context help stable.
+  $("#run-task").title = unavailable || (anyActive ? "A worker is busy. Wait for the current run or stop it." : "");
   $("#stop-task").classList.toggle("hidden", !active(r));
   $("#stop-task").disabled = r?.status === "stopping";
   $("#run-status").textContent = r
@@ -535,24 +689,28 @@ async function pollRun() {
   if (nearBottom) c.scrollTop = c.scrollHeight;
   updateRunControls();
   if (data.approvals.length) $("#run-status").textContent = "Awaiting approval";
-  if (data.events.length || state.bottom === "outputs") await renderBottom();
+  // Finished runs keep their outputs; refetch them only when the run or its status changes.
+  const outputsKey = `${id}:${data.run?.status}`;
+  if (data.events.length || (state.bottom === "outputs" && state.outputsKey !== outputsKey)) {
+    await renderBottom();
+    if (state.bottom === "outputs" && state.run === id) state.outputsKey = outputsKey;
+  }
   if (state.view === "team" && data.events.length) await renderSidebar();
+}
+const activityTypes = ["tool_call", "tool_result", "error", "note", "finished", "started"];
+function scrolledToBottom(node) {
+  return node.scrollHeight - node.scrollTop - node.clientHeight < 60;
 }
 async function renderBottom() {
   const panel = $("#bottom-content");
   if (state.bottom === "activity") {
-    const events = state.events
-      .filter((e) =>
-        [
-          "tool_call",
-          "tool_result",
-          "error",
-          "note",
-          "finished",
-          "started",
-        ].includes(e.type),
-      )
-      .slice(-100);
+    const all = state.events.filter((e) => activityTypes.includes(e.type));
+    // Content chunks do not change the activity list; skip the rebuild.
+    const signature = `activity:${state.run}:${all.length}`;
+    if (panel.dataset.signature === signature) return;
+    const follow = !panel.dataset.signature?.startsWith(`activity:${state.run}:`) || scrolledToBottom(panel);
+    panel.dataset.signature = signature;
+    const events = all.slice(-100);
     panel.replaceChildren();
     if (!events.length) {
       panel.append(
@@ -574,7 +732,7 @@ async function renderBottom() {
             {
               started: "start",
               finished: "finished",
-              error: "chyba",
+              error: "error",
               note: "info",
             }[e.type],
         ),
@@ -589,11 +747,14 @@ async function renderBottom() {
       row.title = e.text || JSON.stringify(e.args || {});
       panel.append(row);
     }
-    panel.scrollTop = panel.scrollHeight;
+    if (follow) panel.scrollTop = panel.scrollHeight;
   } else if (state.bottom === "outputs") {
     const id = state.run;
     const files = id ? await api(`/api/artifacts?run=${id}`) : [];
-    if (id !== state.run) return;
+    if (id !== state.run || state.bottom !== "outputs") return;
+    const signature = "outputs:" + JSON.stringify([id, files]);
+    if (panel.dataset.signature === signature) return;
+    panel.dataset.signature = signature;
     panel.replaceChildren();
     if (!files.length)
       panel.append(
@@ -623,9 +784,13 @@ async function renderBottom() {
     const data = id
       ? await api(`/api/log?run=${id}`)
       : { text: "The console will be populated after the task is started." };
-    if (id !== state.run) return;
+    if (id !== state.run || state.bottom !== "log") return;
+    const signature = "log:" + id + ":" + data.text.length + ":" + data.text.slice(-200);
+    if (panel.dataset.signature === signature) return;
+    const follow = !panel.dataset.signature?.startsWith("log:" + id + ":") || scrolledToBottom(panel);
+    panel.dataset.signature = signature;
     panel.replaceChildren(el("pre", "log-text", data.text));
-    panel.scrollTop = panel.scrollHeight;
+    if (follow) panel.scrollTop = panel.scrollHeight;
   }
 }
 async function launchTask(e) {
@@ -639,7 +804,9 @@ async function launchTask(e) {
     $("#task-input").focus();
     return;
   }
-  if (state.file) task += `File open in editor: ${state.file.path}`;
+  const unavailable = executionUnavailable();
+  if (unavailable) throw new Error(unavailable);
+  if (state.file) task += `\n\nFile open in editor: ${state.file.path}`;
   $("#run-task").disabled = true;
   try {
     const r = await api("/api/runs", {
@@ -665,9 +832,10 @@ function fillModel(profile) {
   if (oauth) {
     $("#oauth-model-name").textContent = profile.model;
     $("#oauth-model-info").textContent =
-      profile.oauth_provider === "chatgpt"
-        ? "ChatGPT via Codex login. Account and model availability are managed by OpenAI. This profile uses one Codex agent."
-        : "Claude Console via OAuth. Uses separate API billing and supports both Studio working modes.";
+      (profile.oauth_provider === "chatgpt"
+        ? "ChatGPT via Codex login. "
+        : "Claude Console via OAuth. ") +
+      "Not available in the secure worker runtime: workers and reviewers only run API or local models. Remove this profile or keep it for later.";
     $("#oauth-remove").dataset.profile = profile.id;
   }
   const form = $("#model-form");
@@ -696,7 +864,7 @@ function renderModels() {
   for (const p of state.data.profiles) {
     const b = el("button", "model-card");
     b.dataset.id = p.id;
-    b.append(el("strong", "", profileLabel(p)), el("small", "", p.model));
+    b.append(el("strong", "", profileLabel(p)), el("small", "", isRunnableProfile(p) ? p.model : `${p.model} · not available for workers`));
     b.onclick = () => fillModel(p);
     list.append(b);
   }
@@ -786,9 +954,10 @@ async function showOAuth(provider) {
   oauthProvider = provider;
   $("#oauth-panel").classList.remove("hidden");
   $("#oauth-description").textContent =
-    provider === "chatgpt"
-      ? "ChatGPT · login via official Codex. You can use an account already logged in on this machine."
-      : "Claude Console · OAuth for API. Usage is billed in Console, separately from the Claude Pro/Max subscription.";
+    (provider === "chatgpt"
+      ? "ChatGPT · login via official Codex. "
+      : "Claude Console · OAuth for API. Usage is billed in Console, separately from the Claude Pro/Max subscription. ") +
+    "Not available in the secure worker runtime: profiles from this account cannot run workers or reviews.";
   $("#oauth-status").textContent = "Verifying connection…";
   $("#oauth-model-picker").classList.add("hidden");
   $("#oauth-link").classList.add("hidden");
@@ -803,8 +972,8 @@ function renderCompany(data) {
   const t = data.template;
   const roleName = (id) => t.roles.find((r) => r.id === id)?.title || "You · owner";
   $("#company-summary").replaceChildren(...[
-    `${t.role_count} AI roles`, `${t.departments.length} separation`,
-    `${t.max_reporting_layers} control layer`, "3 dev teams × 5",
+    `${t.role_count} AI roles`, `${t.departments.length} departments`,
+    `${t.max_reporting_layers} reporting layers`, "3 dev teams × 5",
   ].map((text) => el("span", "company-badge", text)));
   const departments = $("#company-departments");
   departments.replaceChildren();
@@ -885,7 +1054,8 @@ function companyTaskContext(draft, path) {
     "roles, and handover procedures for this task. Activate only the necessary roles in the " +
     "selected mode; do not assert the existence of separate workers or independent reviews " +
     "if the runtime did not actually create them. Save outputs to agreed files and document " +
-    "performed checks. If a specific goal is missing, request it first.";
+    "performed checks. If a specific goal is missing, request it first. " +
+    "Write all reports, questions, summaries, notes and generated documentation in English, regardless of the language of the input.";
 }
 async function addCompanyContext() {
   const preview = currentCompany();
@@ -900,6 +1070,47 @@ async function addCompanyContext() {
   input.focus();
   toast("Instructions added. Add a specific goal and start the task once you are ready.");
 }
+// Rebuilding a panel must not collapse open sections or drop evidence the owner loaded.
+// Sections carry data-key; loaded blocks carry the "kept-result" class.
+// Rebuilds keep only the sections the owner opened or closed; untouched sections follow the
+// defaults of the new build, so a status change can still open, for example, the checks section.
+function keepPanelState(panel, scope, build) {
+  const open = new Map(), kept = new Map();
+  if (panel.dataset.scope === scope)
+    for (const section of panel.querySelectorAll("details[data-key]")) {
+      const byDefault = section.dataset.defaultOpen;
+      if (byDefault !== undefined && byDefault !== String(section.open)) open.set(section.dataset.key, section.open);
+      const loaded = [...section.children].filter((node) => node.classList.contains("kept-result"));
+      if (loaded.length) kept.set(section.dataset.key, loaded);
+    }
+  build();
+  panel.dataset.scope = scope;
+  for (const section of panel.querySelectorAll("details[data-key]")) {
+    section.dataset.defaultOpen = String(section.open);
+    if (open.has(section.dataset.key)) section.open = open.get(section.dataset.key);
+    for (const node of kept.get(section.dataset.key) || []) section.append(node);
+  }
+}
+async function loadWorkspace() {
+  await refreshState();
+  fillSelectors();
+  await loadProjectTree();
+  state.loaded = true;
+  const previous = localStorage.getItem("switch.run");
+  if (state.data.runs.some((r) => r.id === previous && r.project === state.project)) {
+    const home = document.body.classList.contains("dashboard-home");
+    try {
+      await selectRun(previous);
+      // Restoring the last run must not leave the dashboard landing view.
+      if (home && typeof showDashboard === "function") showDashboard(true);
+    } catch (error) {
+      localStorage.removeItem("switch.run");
+      toast("The previous task could not be reopened: " + error.message, true);
+    }
+  }
+  if (typeof loadDashboard === "function") loadDashboard();
+  if (typeof pollApprovalInbox === "function") pollApprovalInbox();
+}
 async function init() {
   icons();
   initMissions();
@@ -909,16 +1120,8 @@ async function init() {
   initCompanies();
   initFlow();
   initPreview();
-  await refreshState();
-  fillSelectors();
-  await loadTree();
-  const previous = localStorage.getItem("switch.run");
-  if (
-    state.data.runs.some(
-      (r) => r.id === previous && r.project === state.project,
-    )
-  )
-    await selectRun(previous);
+  // Bind every control before loading data, so a failed request never leaves a dead page.
+  bind("#session-form", "submit", signInAgain);
   bind("#project-select", "change", (e) => selectProject(e.target.value));
   for (const id of ["#open-project", "#welcome-project"])
     bind(id, "click", () => {
@@ -933,7 +1136,10 @@ async function init() {
     e.preventDefault();
     const p = await api("/api/projects", { path: $("#project-path").value });
     await refreshState();
-    await selectProject(p.id);
+    if (p.id === state.project) {
+      fillSelectors();
+      await loadTree();
+    } else await selectProject(p.id);
     $("#project-dialog").close();
   });
   bind("#refresh-files", "click", loadTree);
@@ -1128,20 +1334,38 @@ async function init() {
     if (state.polling) return;
     state.polling = true;
     try {
-      await refreshState();
-      await pollRun();
-      updateRunControls();
-      if (state.view === "runs") await renderSidebar();
+      if (sessionExpired) {
+        await probeSession();
+        return;
+      }
+      if (!state.loaded) await loadWorkspace();
+      else {
+        await refreshState();
+        await pollRun();
+        updateRunControls();
+        if (state.view === "runs") await renderSidebar();
+      }
       $("#connection").replaceChildren(
         el("i"),
         document.createTextNode(" Connected to Studio"),
       );
     } catch (e) {
-      $("#connection").textContent = "Connection lost";
+      if (!sessionExpired) $("#connection").textContent = "Connection lost";
     } finally {
       state.polling = false;
     }
   }, 1500);
+  document.body.inert = false;
+  state.polling = true;
+  try {
+    await loadWorkspace();
+  } catch (error) {
+    // Polling retries the initial load; every control is already bound.
+    toast("Failed to load Studio: " + error.message + " Retrying automatically.", true);
+    if (!sessionExpired) $("#connection").textContent = "Connection lost";
+  } finally {
+    state.polling = false;
+  }
 }
 init()
   .catch((e) => toast("Failed to load Studio: " + e.message, true))

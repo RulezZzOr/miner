@@ -8,8 +8,13 @@ import secrets
 import threading
 import urllib.parse
 from http.cookies import CookieError, SimpleCookie
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path, PurePosixPath
+
+try:
+    from .tls_server import CONNECTION_SECONDS, ThreadingTLSServer, write_body
+except ImportError:
+    from tls_server import CONNECTION_SECONDS, ThreadingTLSServer, write_body
 
 PUBLIC_TYPES = {
     ".html", ".htm", ".css", ".js", ".mjs", ".json", ".svg", ".png", ".jpg",
@@ -36,7 +41,7 @@ class PreviewManager:
         self.lock = threading.RLock()
         self.session = None
 
-    def start(self, body, studio_port, host="127.0.0.1"):
+    def start(self, body, studio_port, host="127.0.0.1", url_host=None):
         project = body["project"]
         root = self.studio.project(project)
         entry = str(body.get("entry", "index.html")).strip()
@@ -48,24 +53,25 @@ class PreviewManager:
             raise self.problem("This input requires a build. Select the generated dist/index.html; the preview does not run npm or the backend.")
         with self.lock:
             if self.session and self.session.project == project and self.session.entry == entry:
-                return self.session.status()
+                return self.session.status(url_host)
             if self.session:
                 raise self.problem("First, stop the current preview. It may be open in another tab.", 409)
             session = PreviewSession(self, root, project, entry, studio_port, host)
             self.session = session
-            return session.status()
+            return session.status(url_host)
 
-    def status(self):
+    def status(self, url_host=None):
         with self.lock:
-            return self.session.status() if self.session else {"running": False}
+            return self.session.status(url_host) if self.session else {"running": False}
 
     def stop(self, expected=None):
         with self.lock:
             if self.session and expected is not None and self.session.id != expected:
                 raise self.problem("The preview has changed meanwhile. Refresh its status.", 409)
             session, self.session = self.session, None
-            if session:
-                session.close()
+        # Close outside the lock: status polls and new starts never wait for a slow shutdown.
+        if session:
+            session.close()
         return {"running": False}
 
     def install(self, body):
@@ -97,11 +103,10 @@ class PreviewSession:
         self.paths_lock = threading.Lock()
         self.studio_port = studio_port
         self.host = host
-        self.server = ThreadingHTTPServer((host, 0), PreviewHandler)
+        # Handshakes run per connection, so an idle client cannot block serve_forever or close().
+        self.server = ThreadingTLSServer((host, 0), PreviewHandler)
+        self.server.ssl_context = manager.ssl_context
         self.scheme = "https" if manager.ssl_context else "http"
-        if manager.ssl_context:
-            self.server.socket = manager.ssl_context.wrap_socket(self.server.socket, server_side=True)
-        self.server.daemon_threads = True
         self.server.session = self
         self.thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": .1}, daemon=True)
         self.thread.start()
@@ -119,7 +124,8 @@ class PreviewSession:
             if len(self.stamps) < 2000:
                 self.stamps.setdefault(path, self.stamp(path))
 
-    def status(self):
+    def status(self, url_host=None):
+        """url_host: the Studio host name the owner uses, so the preview cookie stays same-site."""
         with self.paths_lock:
             for path, old in list(self.stamps.items()):
                 current = self.stamp(path)
@@ -129,7 +135,7 @@ class PreviewSession:
             revision = self.revision
         route = urllib.parse.quote(PurePosixPath(self.entry).name)
         return {"running": True, "id": self.id, "project": self.project, "entry": self.entry,
-                "url": f"{self.scheme}://{self.host}:{self.server.server_port}/{route}?__studio_preview={self.token}",
+                "url": f"{self.scheme}://{url_host or self.host}:{self.server.server_port}/{route}?__studio_preview={self.token}",
                 "revision": revision}
 
     def close(self):
@@ -139,10 +145,23 @@ class PreviewSession:
 
 
 class PreviewHandler(BaseHTTPRequestHandler):
+    # Bounds each request read and each response slice (write_body): a stalled client cannot pin
+    # a thread and descriptor forever, while a slow but steady asset transfer still completes.
+    timeout = CONNECTION_SECONDS
+    response_started = False
+
     def log_message(self, *args):
         pass
 
+    def send_response(self, code, message=None):
+        self.response_started = True
+        super().send_response(code, message)
+
     def respond(self, status, data=b"", content_type="text/plain; charset=utf-8", headers=()):
+        if self.response_started:
+            # A failure while a body was being sent: a second response would corrupt it.
+            self.close_connection = True
+            return
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
@@ -160,13 +179,14 @@ class PreviewHandler(BaseHTTPRequestHandler):
             self.send_header(name, value)
         self.end_headers()
         if self.command != "HEAD":
-            self.wfile.write(data)
+            write_body(self.wfile, data)
 
     def do_HEAD(self):
         self.do_GET()
 
     def do_GET(self):
         session = self.server.session
+        self.response_started = False
         try:
             if self.headers.get("Host") not in {f"{session.host}:{self.server.server_port}", f"127.0.0.1:{self.server.server_port}", f"localhost:{self.server.server_port}"}:
                 return self.respond(403, b"Forbidden host")
@@ -203,7 +223,7 @@ class PreviewHandler(BaseHTTPRequestHandler):
                 mime = "text/javascript"
             self.respond(200, data, mime)
         except (BrokenPipeError, ConnectionResetError):
-            pass
+            self.close_connection = True
         except session.manager.problem as exc:
             self.respond(exc.status, b"Asset unavailable. Check the file in Studio.")
         except (OSError, ValueError, CookieError):

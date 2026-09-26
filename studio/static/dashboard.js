@@ -44,7 +44,7 @@ function dashboardRouting(reset = false) {
   const company = dashboardCompany(), who = $("#dashboard-who");
   const kind = company ? "department" : "model";
   if (who.dataset.kind !== kind) { who.dataset.options = ""; who.value = ""; who.dataset.kind = kind; }
-  dashboardOptions(who, company ? Object.entries(dashboardData.departments) : state.data.profiles.map(p => [p.id, `${p.model} · ${p.id}`]), company ? "delivery" : state.data.default_profile);
+  dashboardOptions(who, company ? Object.entries(dashboardData.departments) : runnableProfiles().map(p => [p.id, `${p.model} · ${p.id}`]), company ? "delivery" : state.data.default_profile);
   // Some installations use another department vocabulary.
   if (!who.value && who.options.length) who.selectedIndex = 0;
   $("#dashboard-company-options").hidden = !company;
@@ -54,11 +54,16 @@ function dashboardRouting(reset = false) {
   if (codex) $("#dashboard-mode").value = "react";
   $("#dashboard-turns").disabled = Boolean(company) || codex;
   const label = id => state.data.profiles.find(p => p.id === id)?.model || id;
+  const unavailable = executionUnavailable();
+  // Standalone runs share the single worker slot; the server refuses them while any run is active.
+  const busy = !company && state.data.runs.some(r => ["running", "waiting", "stopping"].includes(r.status));
   $("#dashboard-routing").textContent = company
-    ? `${label(company.profile)} works → ${label(company.review_profile)} reviews. ${company.status === "active" ? "Driver will pick this up when eligible." : "Task will be saved in the queue. Start the Driver from Companies when ready."} Existing company limits and permissions apply.`
+    ? `${label(company.profile)} works → ${label(company.review_profile)} reviews. ${company.status === "active" ? "Driver will pick this up when eligible." : "Task will be saved in the queue. Start the Driver from Companies when ready."} Existing company limits and permissions apply.${unavailable ? " Agent execution is unavailable on this host, so queued work cannot run here." : ""}`
+    : unavailable ? `Agent execution is unavailable on this host. ${unavailable}`
+    : busy ? "A worker is busy. Add this to a company queue or wait for the current run."
     : "Starts in the selected project. Tool actions use the standard approval policy. This standalone run has no independent review; use a company for reviewed delivery.";
   $("#dashboard-submit").textContent = company ? "Add to queue →" : "Start task →";
-  $("#dashboard-submit").disabled = !projects.length || !who.value;
+  $("#dashboard-submit").disabled = !projects.length || !who.value || (!company && (busy || Boolean(unavailable)));
 }
 function dashboardSummary(data, runs, filter = "open") {
   const live = runs.filter(r => ["running", "waiting", "stopping"].includes(r.status));
@@ -91,7 +96,11 @@ function dashboardCard(title, status, detail, action, label = "Open details") {
   return card;
 }
 function dashboardList(selector, rows, empty) {
-  $(selector).replaceChildren(...(rows.length ? rows : [el("p", "dash-empty", empty)]));
+  // Keep keyboard focus on the same card action when polling rebuilds the list.
+  const list = $(selector), focused = list.contains(document.activeElement) ? document.activeElement : null;
+  const key = focused ? [focused.closest(".dash-card")?.querySelector("h3")?.textContent, focused.textContent] : null;
+  list.replaceChildren(...(rows.length ? rows : [el("p", "dash-empty", empty)]));
+  if (key) [...list.querySelectorAll(".dash-card button")].find(b => b.closest(".dash-card").querySelector("h3")?.textContent === key[0] && b.textContent === key[1])?.focus({preventScroll:true});
 }
 function renderDashboard() {
   if (!dashboardData) return;

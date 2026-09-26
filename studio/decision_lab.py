@@ -158,5 +158,19 @@ class DecisionLab:
                  '```json', json.dumps({k: record.get(k) for k in ('result', 'answers', 'error', 'usage')}, ensure_ascii=False, indent=2),
                  '```', '', '## Evaluated question', '', record['claim'], '', '## Supplied evidence', '', record['text']]
         path = 'analysis/decision-lab/' + key + '.md'
-        self.studio.save_file({'project': record['project'], 'path': path, 'content': '\n'.join(lines) + '\n', 'revision': None})
+        content = '\n'.join(lines) + '\n'
+        try:
+            existing = self.studio.read_file(record['project'], path)
+        except Exception as exc:
+            if getattr(exc, 'status', None) != 404:
+                raise
+            existing = None
+        if existing is not None:
+            # The record is immutable, so an identical file is already a complete export.
+            if existing['content'] == content:
+                return {'path': path, 'project': record['project'], 'unchanged': True}
+            # Never overwrite edits made to an earlier export.
+            raise ValueError(f'Already exported to {path}, and that file was edited afterwards. '
+                             'Rename or remove it to export again.')
+        self.studio.save_file({'project': record['project'], 'path': path, 'content': content, 'revision': None})
         return {'path': path, 'project': record['project']}

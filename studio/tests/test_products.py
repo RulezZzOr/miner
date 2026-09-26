@@ -6,9 +6,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 from studio.missions import Missions
-from studio.products import Products
+from studio.products import KINDS, Products
 from studio.server import Studio, write_config
 from studio.tests import test_missions as mission_helpers
+from studio.tests.sandbox_support import requires_sandbox
 from studio.tests.test_missions import plan_task, report
 
 
@@ -68,6 +69,7 @@ class ProductTests(unittest.TestCase):
         self.products.tick()
         return self.products.get(p["id"])
 
+    @requires_sandbox
     def test_two_releases_keep_history_and_regression_requirements(self):
         p = self.create()
         self.assertEqual(self.controller.list(), [])
@@ -89,6 +91,19 @@ class ProductTests(unittest.TestCase):
         restored.tick()
         self.assertEqual(restored.get(p["id"])["releases"], p["releases"])
 
+    def test_owner_visible_product_text_is_english(self):
+        self.assertEqual(KINDS["automation"], "Scripts and automation")
+        with self.assertRaisesRegex(ValueError, "Product does not exist"):
+            self.products.get("missing")
+        p = self.create()
+        p["deployment_settings"] = {"auto_repair": True, "argv": ["serve"], "health_path": "/health"}
+        self.products.save(p)
+        key = self.products.deployment_incident({"product": p["id"], "incident": "i-1", "id": "d-1", "number": 2,
+                                                 "health": [{"ok": False}], "log": "Connection refused"})
+        item = next(x for x in self.products.get(p["id"])["backlog"] if x["id"] == key)
+        self.assertEqual(item["title"], "Restore availability of version 2")
+        self.assertEqual(item["kind"], "bug")
+
     def test_parent_pause_cannot_be_bypassed_by_mission_resume_or_restart(self):
         p = self.create()
         p = self.products.action({"id": p["id"], "action": "start", "item": p["backlog"][0]["id"]})
@@ -106,6 +121,7 @@ class ProductTests(unittest.TestCase):
         self.assertEqual(self.current()["status"], "paused")
         self.assertEqual(len(self.launched), 1)
 
+    @requires_sandbox
     def test_restore_undo_recovers_owner_edits_and_rejects_stale_preview(self):
         p = self.create()
         self.ready(p)
@@ -140,6 +156,7 @@ class ProductTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "No backup"):
             self.products.action({**request, "action": "undo_restore_preview"})
 
+    @requires_sandbox
     def test_restore_metadata_commit_failure_rolls_back_files_and_product(self):
         p = self.create()
         self.ready(p)
@@ -156,6 +173,7 @@ class ProductTests(unittest.TestCase):
         self.assertEqual(restored, p)
         self.assertNotIn("restorations", restored)
 
+    @requires_sandbox
     def test_late_edit_prevents_release_and_checks_detect_missing_files(self):
         p = self.create()
         self.ready(p)
@@ -172,6 +190,7 @@ class ProductTests(unittest.TestCase):
         p = self.products.action({"id": p["id"], "action": "check"})
         self.assertEqual(p["health"]["findings"][0]["path"], "deliverable.txt")
 
+    @requires_sandbox
     def test_schedule_survives_restart_and_does_not_duplicate_or_start_without_optin(self):
         p = self.create()
         self.ready(p)
@@ -249,6 +268,7 @@ class ProductTests(unittest.TestCase):
         self.assertEqual(restored.get(p["id"])["status"], "paused")
         self.assertEqual(len(self.controller.list()), 1)
 
+    @requires_sandbox
     def test_adoption_requires_accepted_same_project_unlinked_delivery(self):
         p = self.create()
         self.ready(p)

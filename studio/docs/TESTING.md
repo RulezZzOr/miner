@@ -13,4 +13,4 @@ The workspace stays on the Studio host when the browser closes. The host and Stu
 
 A task that reaches its time, turn or run limit is incomplete. Inspect the recorded reason and last real activity before retrying. Model availability, generation speed and review quality depend on the selected server; an HTTP health response alone does not test these.
 
-This is an alpha release. Windows uses WSL2. Optional provider login requires the owner's account; it is not verified by a local model test. Company departments describe work organization, and the current Driver shares one worker slot.
+This is an alpha release. Steps 2–6 execute agent work and need a Linux backend with working bubblewrap; on macOS, Studio serves the UI but execution fails closed. Windows uses WSL2. Optional provider login requires the owner's account; it is not verified by a local model test. Company departments describe work organization, and the current Driver shares one worker slot.

@@ -1,5 +1,7 @@
 """System prompts for the terminal's agent modes.
 
+Modified for Miner / Switch Studio, 2026-09-25: English-only output directive.
+
 Both modes reuse the react-architecture agent prompts (:mod:`apodex.prompts_base`)
 rather than hand-written ones:
 
@@ -21,16 +23,21 @@ from apodex.prompts_base import (
     research_agent_prompt,
 )
 
+# Switch: output language is English for every mode and workflow.
+ENGLISH_OUTPUT_DIRECTIVE = (
+    "Write all reports, questions, summaries, notes and generated documentation "
+    "in English, regardless of the language of the input."
+)
+
 
 def build_system_prompt(cwd: str) -> str:
     """Coding-mode prompt (react_research coding agent) anchored to ``cwd``."""
     return coding_agent_prompt(extra_sections={
         "Language": (
-            "Respond in the SAME language as the user's most recent message — if "
-            "they write in Chinese, answer in Chinese; if in English, answer in "
-            "English. This applies to your thinking, explanations, and final "
-            "summary. Keep code, file paths, commands, identifiers, and technical "
-            "terms in their original form."
+            "Respond in English, whatever language the user writes in. This "
+            "applies to your thinking, explanations, and final summary. "
+            f"{ENGLISH_OUTPUT_DIRECTIVE} Keep code, file paths, commands, "
+            "identifiers, and technical terms in their original form."
         ),
         "Working Directory": (
             f"You operate on the local repository at {cwd}; all relative paths "
@@ -101,8 +108,8 @@ def build_research_prompt(cwd: str) -> str:
     """Research-mode prompt (react_research research agent) for this terminal."""
     return research_agent_prompt(extra_sections={
         "Language": (
-            "Respond in the SAME language as the user's most recent message "
-            "(e.g. Chinese in → Chinese out). Keep citations, URLs, code, and "
+            "Respond in English, whatever language the user writes in. "
+            f"{ENGLISH_OUTPUT_DIRECTIVE} Keep citations, URLs, code, and "
             "technical terms in their original form."
         ),
         "This Terminal": (

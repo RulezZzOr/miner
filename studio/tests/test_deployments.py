@@ -1,12 +1,20 @@
 """Actual local HTTP process, incident queue, verified repair release and rollback."""
+import os
 import sys
+import threading
 import time
 import unittest
 import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import patch
 
+import psutil
+
 from studio.deployments import Deployments
+from studio.process_tree import ProcessTree
 from studio.tests import test_products as helpers
+from studio.tests.sandbox_support import requires_sandbox
+from studio.tests.test_verification import processes_under
 
 SERVICE = '''import argparse, os
 from pathlib import Path
@@ -21,19 +29,108 @@ HTTPServer((a.host,a.port),Handler).serve_forever()
 '''
 
 
-class DeploymentTests(unittest.TestCase):
+class DeploymentSetup:
     launch = helpers.ProductTests.launch
     stop = helpers.ProductTests.stop
+
+    def setUp(self):
+        helpers.ProductTests.setUp(self)
+        # Cleanups run last-in first-out: every Deployments.close runs before this check.
+        self.addCleanup(self.assert_no_leaked_processes)
+        self.studio.deployments = Deployments(self.studio)
+        self.addCleanup(self.studio.deployments.close)
+
+    def assert_no_leaked_processes(self):
+        deadline = time.monotonic() + 5
+        while processes_under(self.root) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        self.assertEqual(processes_under(self.root), [], "a service or worker outlived its deployment")
+
+
+class Health(BaseHTTPRequestHandler):
+    def log_message(self, *args):
+        pass
+
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"OK direct")
+
+
+class DeploymentControlTests(DeploymentSetup, unittest.TestCase):
+    """Controller behaviour that does not need a sandboxed service."""
+
+    def test_loopback_probe_ignores_http_proxy(self):
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Health)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        manager = self.studio.deployments
+        record = {"id": "probe", "url": f"http://127.0.0.1:{server.server_port}",
+                  "spec": {"health_path": "/health", "expected_status": 200, "expected_text": "OK"}}
+        tree = type("Tree", (), {"refresh": staticmethod(lambda: [psutil.Process()])})()
+        manager.processes["probe"] = (None, tree)
+        self.addCleanup(manager.processes.pop, "probe", None)
+        unreachable = "http://127.0.0.1:9"
+        with patch.dict(os.environ, {"http_proxy": unreachable, "HTTP_PROXY": unreachable, "no_proxy": "", "NO_PROXY": ""}):
+            check = manager.probe(record)
+        self.assertTrue(check["passed"], check)
+
+    def test_failed_start_stops_the_worker_and_records_an_english_reason(self):
+        manager = self.studio.deployments
+        product = {"id": "product", "deployment_settings": {"argv": [sys.executable, "-c", "pass", "{host}", "{port}"],
+                                                            "health_path": "/"}}
+        release = {"number": 1, "version_id": "version", "verification_id": "evidence"}
+        version = {"id": "version", "files": {}, "modes": {}}
+        evidence = {"id": "evidence", "status": "passed", "sources": {}, "source_modes": {}}
+        with patch.object(self.controller.versions, "get", return_value=version), \
+             patch.object(self.controller.verifications, "get", return_value=evidence), \
+             patch.object(ProcessTree, "identities", side_effect=OSError("checkpoint storage failed")):
+            with self.assertRaisesRegex(OSError, "checkpoint storage failed"):
+                manager.start(product, release)
+        record = manager.list("product")[0]
+        self.assertEqual((record["status"], record["error"]), ("failed", "checkpoint storage failed"))
+        self.assertEqual(manager.processes, {})
+
+    def test_shutdown_stops_all_services_within_one_grace_period(self):
+        manager = self.studio.deployments
+        signalled = []
+
+        class SlowTree:
+            """A service that uses its whole SIGTERM grace before it exits."""
+            def stop(self):
+                signalled.append(time.monotonic())
+
+            def finish(self):
+                time.sleep(0.6)
+                return True
+
+        class Exited:
+            stdout = type("Stream", (), {"close": staticmethod(lambda: None)})()
+
+            def wait(self, timeout=None):
+                return 0
+
+        for index in range(4):
+            key = f"service-{index}"
+            manager.save({"id": key, "product": "product", "created": time.time(), "status": "healthy",
+                          "desired": "running", "processes": [], "log": ""})
+            manager.processes[key] = (Exited(), SlowTree())
+        started = time.monotonic()
+        manager.close()
+        self.assertLess(time.monotonic() - started, 4 * 0.6)
+        self.assertEqual(len(signalled), 4)
+        self.assertEqual(manager.processes, {})
+        self.assertEqual({(r["status"], r["desired"]) for r in manager.list("product")}, {("interrupted", "running")})
+
+
+@requires_sandbox
+class DeploymentTests(DeploymentSetup, unittest.TestCase):
     current = helpers.ProductTests.current
     finish = helpers.ProductTests.finish
     create = helpers.ProductTests.create
     ready = helpers.ProductTests.ready
     accept = helpers.ProductTests.accept
-
-    def setUp(self):
-        helpers.ProductTests.setUp(self)
-        self.studio.deployments = Deployments(self.studio)
-        self.addCleanup(self.studio.deployments.close)
 
     def service(self, buggy, tag):
         (self.project / "service.py").write_text(SERVICE.replace("BUGGY", str(buggy)).replace("VERSION_TAG", tag))

@@ -4,7 +4,10 @@ const vm=require('node:vm');
 const fs=require('node:fs');
 const path=require('node:path');
 const source=fs.readFileSync(path.join(__dirname,'../static/office.js'),'utf8');
-function fixture(extra={}){const ctx=vm.createContext({Date,...extra});vm.runInContext(source,ctx);return ctx;}
+// The office shares the flow map's obstacle detection (companies.js loads first in the page).
+const companies=fs.readFileSync(path.join(__dirname,'../static/companies.js'),'utf8');
+const obstacle=companies.slice(companies.indexOf('function isToolObstacle('),companies.indexOf('function flowModel('));
+function fixture(extra={}){const ctx=vm.createContext({Date,...extra});vm.runInContext(obstacle+source,ctx);return ctx;}
 const ctx=fixture();
 const run={id:'r',status:'running',model:'local-coder',profile:'local',created:900};
 const mission={id:'m',title:'Inventory',status:'running',phase:'build',active_attempt:'r',attempts:[],tasks:[{status:'pending'}]};
@@ -38,4 +41,24 @@ test('active per-task review overrides the encompassing build phase',()=>{
     assert.equal(m.items[0].status,'review');
     assert.equal(m.active,1);
   }
+});
+
+test('English worker notes for blocked, denied and owner-rejected tools are obstacles',()=>{
+  for(const text of ['✗ rejected bash — stopping task (use [e] to redirect instead)','✗ bash blocked: file was not read first','✗ blocked: destructive command','✗ plan mode: \'edit_file\' is disabled until the plan is approved'])
+    assert.equal(ctx.officeItemStatus(mission,run,{events:[{type:'tool_call',time:990},{type:'note',time:999,text}]},1000),'blocked',text);
+  for(const text of ['✓ always allowing: bash ls','↳ redirecting bash: use staging','✓ plan approved — edits unlocked'])
+    assert.equal(ctx.officeItemStatus(mission,run,{events:[{type:'note',time:999,text}]},1000),'working',text);
+});
+test('controller errors are shown as a warning while the office keeps rendering current data',async()=>{
+  const {c,nodes}=polling(async path=>path==='/api/companies'?{companies:[],controller_error:'Driver requires attention: disk full'}:path==='/api/missions'?{missions:[],controller_error:''}:{runs:[]});
+  await c.loadOffice();assert.equal(c.renders,1);assert.equal(vm.runInContext('officeState.offline',c),false);
+  assert.equal(vm.runInContext('officeState.warning',c),'Driver requires attention: disk full');
+});
+test('open company goes through the dashboard path that resets the company snapshot',async()=>{
+  const opened=[];let closed=false;const panel={dataset:{},children:[],replaceChildren(){this.children=[];},append(...n){this.children.push(...n);}};
+  const c=fixture({$:id=>id==='#office-detail'?panel:{close(){closed=true;}},el:(tag,cls,text)=>({tag,cls,textContent:text,children:[],append(...n){this.children.push(...n);}}),
+    missionButton:(label,fn)=>({label,fn}),dashboardOpenCompany:async id=>opened.push(id)});
+  vm.runInContext("officeState.model={items:[{id:'task:c2:t',title:'Audit',status:'queued',company:'c2',companyName:'B'}]};officeState.selected='task:c2:t';",c);
+  c.renderOfficeDetail();const button=panel.children.find(n=>n.cls==='office-detail-actions').children.find(b=>b.label==='Open company');
+  await button.fn();assert.deepEqual(opened,['c2']);assert.equal(closed,true);
 });

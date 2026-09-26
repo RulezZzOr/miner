@@ -11,7 +11,7 @@ the files, reviews and checks behind the result.
 [Get started](#quick-start) · [Download](https://github.com/RulezZzOr/miner/releases) ·
 [Explore 64 capabilities](studio/docs/FEATURES.md) · [Security](SECURITY.md)
 
-**`0.4.0-alpha.10` · Experimental · Secure execution on Linux / WSL2 · Browser UI on macOS, Linux and Windows**
+**`0.4.0-alpha.11` · Experimental · Secure execution on Linux / WSL2 · Browser UI on macOS, Linux and Windows**
 
 ![Switch Studio 3D Office showing department desks, task states and a selected task's model and progress](docs/media/office-3d.jpg)
 

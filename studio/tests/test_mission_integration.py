@@ -13,6 +13,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from studio.server import Studio, write_config
+from studio.tests.sandbox_support import requires_sandbox
 
 
 class ProjectModel(BaseHTTPRequestHandler):
@@ -23,7 +24,8 @@ class ProjectModel(BaseHTTPRequestHandler):
         data = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         messages = data["messages"]
         prompt = "\n".join(str(m.get("content", "")) for m in messages if m.get("role") == "user")
-        report_path = re.search("JSON file (company/projects/[a-f0-9]+/reports/[a-f0-9]+\\.json)", prompt).group(1)
+        # Every phase prompt names the controller's report file; a missing path fails the fixture.
+        re.search("JSON file (company/projects/[a-f0-9]+/reports/[a-f0-9]+\\.json)", prompt).group(1)
         planning = "You are the planner." in prompt
         building = "PHASE OF THIS RUN: build." in prompt
         self.server.frames.append({"planning": planning, "building": building,
@@ -72,6 +74,7 @@ class ProjectModel(BaseHTTPRequestHandler):
 
 
 class MissionIntegration(unittest.TestCase):
+    @requires_sandbox
     def test_real_workers_create_review_and_deliver_files(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp).resolve()

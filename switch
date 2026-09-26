@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+switch_root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+if [ ! -x "$switch_root/frontier/.venv/bin/python" ]; then
+  echo 'Switch runtime is not installed. Run ./setup-studio first.' >&2
+  exit 1
+fi
+# Native file readers run `python3`; make it the runtime with their dependencies.
+PATH="$switch_root/frontier/.venv/bin:$PATH"
+export PATH
+exec "$switch_root/frontier/.venv/bin/python" -m apodex.switch_cli "$@"

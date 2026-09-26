@@ -34,7 +34,7 @@ def main():
                     if time.monotonic() >= deadline:
                         raise
                     time.sleep(0.1)
-            for value, expected in [("Český Krumlov", "cesky-krumlov"), (" A___B / 42 ", "a-b-42"),
+            for value, expected in [("Café Zürich", "cafe-zurich"), (" A___B / 42 ", "a-b-42"),
                                     ("", "item"), ("東京", "item"), ("ABC", "abc")]:
                 with urllib.request.urlopen(base + "/slug?" + urllib.parse.urlencode({"text": value}), timeout=2) as response:
                     actual = json.load(response)

@@ -1,12 +1,13 @@
 import asyncio
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from studio.ssh_inventory import SSHInventory, InventoryBroker, SECTIONS, execute, ssh_argv, targets_for
-from studio.ssh_probe import integration_names, project_files
+from studio.ssh_probe import collect, integration_names, project_files
 
 
 class SSHInventoryTests(unittest.TestCase):
@@ -133,3 +134,40 @@ class SSHInventoryTests(unittest.TestCase):
             runner.assert_not_called()
             self.assertTrue(exchange({'target':'cloud','section':'system'})['ok'])
             runner.assert_awaited_once()
+
+    def test_unusual_manifests_do_not_abort_the_whole_section(self):
+        for content in ('[1, 2]', '"text"', '{"dependencies": ["a"], "devDependencies": {"vapi-sdk": "1"}}'):
+            (self.root/'package.json').write_text(content)
+            result = integration_names(self.root/'package.json')
+            self.assertIsInstance(result['dependency_names'], list, content)
+        self.assertEqual(result['integration_hints'], ['vapi-sdk'])
+        (self.root/'app').mkdir();(self.root/'app'/'package.json').write_text('[]')
+        with patch('studio.ssh_probe.ROOTS',[str(self.root)]):
+            rows = collect('integrations')['files']
+        self.assertEqual({row['path'] for row in rows}, {str(self.root/'package.json'), str(self.root/'app'/'package.json')})
+
+    def test_system_section_works_without_proc_meminfo(self):
+        original = Path.read_text
+        def read_text(path, *args, **kwargs):
+            if str(path) == '/proc/meminfo':
+                raise FileNotFoundError(path)
+            return original(path, *args, **kwargs)
+        with patch.object(Path, 'read_text', read_text):
+            system = collect('system')
+        self.assertIsNone(system['memory_kib'])
+        self.assertIn('hostname', system)
+
+    @unittest.skipUnless(sys.platform == 'linux', 'long Unix socket paths use /proc/self/fd on Linux')
+    def test_broker_works_in_a_deep_state_directory(self):
+        import socket
+        deep = self.root / ('state-directory-with-a-long-name-' * 3) / 'runs' / '0123456789abcdef'
+        deep.mkdir(parents=True)
+        self.assertGreater(len(str(deep / 'inventory.sock')), 110)
+        broker = InventoryBroker([self.target], deep / 'inventory.sock')
+        self.addCleanup(broker.close)
+        self.assertTrue((deep / 'inventory.sock').is_socket())
+        inventory = SSHInventory({'cwd': str(self.root), 'ssh_targets': [self.target], 'inventory_broker': str(deep / 'inventory.sock')})
+        with patch('studio.ssh_inventory.execute', new_callable=AsyncMock, return_value={'version':1,'section':'system','data':{'hostname':'deep'}}):
+            output = json.loads(asyncio.run(inventory.invoke(target='cloud', section='system')))
+        self.assertEqual(output['data']['hostname'], 'deep')
+

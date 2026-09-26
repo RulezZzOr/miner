@@ -6,17 +6,35 @@ never executable jobs. Native tools retain the host user's permissions.
 from __future__ import annotations
 
 import json
+import math
 import time
 import uuid
 
 try:
-    from .missions import TERMINAL, number, strings, text
+    from .missions import (RECOVERABLE, ROUND_KINDS, TERMINAL, failure_kind, number,
+                           recovery_question, released, strings, text, used_runs)
 except ImportError:
-    from missions import TERMINAL, number, strings, text
+    from missions import (RECOVERABLE, ROUND_KINDS, TERMINAL, failure_kind, number,
+                          recovery_question, released, strings, text, used_runs)
 
 DEPARTMENTS = {"operations": "Management and Operations", "delivery": "Development and Delivery",
                "growth": "Sales and marketing", "finance": "Finance and Administration",
                "platform": "Infrastructure and Data"}
+POLICY = {"days": 7, "run_budget": 100, "cycle_limit": 20, "attempts_per_cycle": 10, "attempt_minutes": 20,
+          "max_turns": 40, "recovery_rounds": 3, "auto_tools": False, "auto_accept": False}
+LIMITS = {"days": (1, 365), "run_budget": (2, 100000), "cycle_limit": (1, 1000), "attempts_per_cycle": (2, 1000),
+          "attempt_minutes": (1, 360), "max_turns": (1, 200), "recovery_rounds": (0, 10)}
+RECOVERY_DELAY = 300  # seconds before the first Driver recovery; doubles each round
+# Recovery rounds for these kinds raise the per-run limits (x1.5 minutes, +8 steps) within LIMITS.
+RAISE_LIMITS = {"time_limit", "max_turns", "no_report"}
+PARENT_PAUSE_MESSAGE = "First, restore the parent company"
+
+
+def legacy_kind(message):
+    """Failure kind of a block recorded before blocks were typed."""
+    for prefix in ("Run stopped without automatic retry. ", "Three unsuccessful attempts. "):
+        message = message.removeprefix(prefix)
+    return failure_kind(message) or "unknown"
 
 
 class Companies:
@@ -74,9 +92,7 @@ class Companies:
                  "projects": projects, "profile": profile, "review_profile": review,
                  "status": "paused", "deadline": None, "tasks": [], "cycles": [],
                  "resume_missions": [], "errors": 0, "last_dispatch": 0,
-                 "policy": {"days": 7, "run_budget": 100, "cycle_limit": 20,
-                            "attempts_per_cycle": 10, "attempt_minutes": 20, "max_turns": 40,
-                            "auto_tools": False, "auto_accept": False},
+                 "policy": dict(POLICY),
                  "message": "Company created. Add tasks, check limits, and enable Driver."}
             self.save(c, {"action": "created", "message": "Company created; Driver is disabled."})
             return c
@@ -85,12 +101,38 @@ class Companies:
         used, reserved = 0, 0
         for cycle in c["cycles"]:
             m = self.missions.get(cycle["mission"])
-            used += len(m["attempts"])
-            if m["status"] not in TERMINAL:
-                reserved += max(0, m["max_attempts"] - len(m["attempts"]))
+            runs = used_runs(m)
+            used += runs
+            # Finished work and blocks waiting for the owner return their unused runs;
+            # every way back to work re-reserves them first (Companies.reserve).
+            if not released(m):
+                reserved += max(0, m["max_attempts"] - runs)
         return {"used_runs": used, "reserved_runs": reserved,
                 "remaining_runs": max(0, c["policy"]["run_budget"] - used - reserved),
                 "cycles": len(c["cycles"])}
+
+    def reserve(self, m):
+        """Reserve runs again for a released company mission; called under the shared lock.
+
+        Returns a note when the budget only allows a smaller reservation; raises when none is left.
+        """
+        c = self.get(m["company_context"]["id"])
+        runs = used_runs(m)
+        need = m["max_attempts"] - runs
+        available = self.usage(c)["remaining_runs"]  # this mission is still released in storage
+        if need <= 0 or available >= need:
+            return ""
+        if available < 1:
+            raise ValueError("The company run budget is fully used or reserved. Pause the Driver, raise run_budget "
+                             "or cancel other work, then continue this execution.")
+        m["max_attempts"] = runs + available
+        m["company_context"]["max_attempts"] = m["max_attempts"]
+        return f"The company budget allowed {available} more runs for this execution."
+
+    def note(self, c, message):
+        """Record a company event immediately; visible even if the rest of the tick fails."""
+        with self.missions.connect() as db:
+            self.event(db, c, message)
 
     def add_task(self, c, body):
         if len(c["tasks"]) >= 200:
@@ -130,7 +172,9 @@ class Companies:
         # Persist authority and recovery intent BEFORE stopping processes.
         for cycle in c["cycles"]:
             m = self.missions.get(cycle["mission"])
-            if m["status"] not in TERMINAL | {"paused", "blocked", "ready", "awaiting_checks"}:
+            # Blocked, finished and owner-paused work keeps its status and reason; only
+            # work the Driver stops here is resumed by it later.
+            if m["status"] not in TERMINAL | {"paused", "blocked", "ready", "awaiting_checks", "draft"}:
                 if m["id"] not in c["resume_missions"]:
                     c["resume_missions"].append(m["id"])
         self.save(c, {"action": "paused", "message": message})
@@ -150,17 +194,24 @@ class Companies:
             if action == "pause":
                 self.pause(c, "Driver paused. Deployed services are not stopped.")
                 return c
+            renewed = False
+            changed_limits = {}
             if action == "start":
                 if c["deadline"] and c["deadline"] <= self.clock():
                     raise ValueError("Horizon expired. Renew it in the settings of the paused company.")
+                renewed = sync_permissions and not c["deadline"] and bool(c["cycles"])
                 c.update(status="active", errors=0, message="Driver enabled.")
                 c["deadline"] = c["deadline"] or self.clock() + c["policy"]["days"] * 86400
+                if renewed:
+                    # Unfinished work continues under the renewed horizon.
+                    requeued = self.requeue_expired(c)
+                    c["message"] = ("Driver enabled with a renewed horizon; unfinished executions continue"
+                                    + (f" and {requeued} expired tasks are queued again." if requeued else "."))
             elif action == "settings":
                 if c["status"] != "paused":
                     raise ValueError("Pause the Driver before changing permissions and limits.")
-                limits = {"days": (1, 365), "run_budget": (2, 100000), "cycle_limit": (1, 1000),
-                          "attempts_per_cycle": (2, 1000), "attempt_minutes": (1, 360), "max_turns": (1, 200)}
-                policy = {k: number(body.get(k, c["policy"][k]), *bounds, k) for k, bounds in limits.items()}
+                old = {**POLICY, **c["policy"]}
+                policy = {k: number(body.get(k, old[k]), *bounds, k) for k, bounds in LIMITS.items()}
                 policy.update(auto_tools=body.get("auto_tools") is True, auto_accept=body.get("auto_accept") is True)
                 usage = self.usage(c)
                 if policy["run_budget"] < usage["used_runs"] + usage["reserved_runs"] or policy["cycle_limit"] < len(c["cycles"]):
@@ -168,9 +219,12 @@ class Companies:
                 if policy["attempts_per_cycle"] > policy["run_budget"]:
                     raise ValueError("The company budget must cover at least one execution.")
                 c["policy"] = policy
+                # Minutes and steps are not budget units: changed limits reach unfinished executions too.
+                changed_limits = {k: policy[k] for k in ("attempt_minutes", "max_turns") if policy[k] != old[k]}
                 if body.get("renew_horizon") is True:
                     c["deadline"] = None
-                c["message"] = "Settings saved. Tool approval also applies to ongoing executions after resuming the Driver."
+                c["message"] = ("Settings saved. Tool approval" + (" and per-run limits" if changed_limits else "") +
+                                " also apply to unfinished executions after resuming the Driver.")
             elif action == "reserve_runs":
                 if c["status"] != "paused":
                     raise ValueError("Pause the Driver before changing reservations.")
@@ -182,7 +236,9 @@ class Companies:
                     raise ValueError("Change reservations only for incomplete executions without an active run.")
                 maximum = number(body.get("max_attempts"), revised_mission["max_attempts"] + 1, 1000, "Total number of execution runs")
                 delta = maximum - revised_mission["max_attempts"]
-                if delta > self.usage(c)["remaining_runs"]:
+                # A released reservation must fit completely; it is re-reserved when the work resumes.
+                needed = maximum - used_runs(revised_mission) if released(revised_mission) else delta
+                if needed > self.usage(c)["remaining_runs"]:
                     raise ValueError("New reservation exceeds the remaining company budget.")
                 revised_mission["max_attempts"] = maximum
                 revised_mission["company_context"]["max_attempts"] = maximum
@@ -195,11 +251,23 @@ class Companies:
                     if len(c["projects"]) >= 100:
                         raise ValueError("Limit of 100 projects.")
                     c["projects"].append(body["project"])
-            elif action in {"disable_task", "enable_task", "resolve_external"}:
+            elif action in {"disable_task", "enable_task", "resolve_external", "requeue_task"}:
                 task = next((t for t in c["tasks"] if t["id"] == body.get("task")), None)
                 if not task:
                     raise ValueError("Task does not exist.")
-                if action == "resolve_external":
+                if action == "requeue_task":
+                    last = self.missions.get(task["last_mission"]) if task["last_mission"] else None
+                    if task["kind"] != "work" or task["status"] not in {"cancelled", "expired"} or (
+                            last and last["status"] not in {"cancelled", "expired"}):
+                        raise ValueError("Only a task whose execution was cancelled or expired can be queued again.")
+                    if len(c["cycles"]) >= c["policy"]["cycle_limit"]:
+                        raise ValueError("The cycle limit is reached. Pause the Driver and raise cycle_limit in the settings first.")
+                    if self.usage(c)["remaining_runs"] < c["policy"]["attempts_per_cycle"]:
+                        raise ValueError("The remaining company run budget does not cover one execution. "
+                                         "Pause the Driver and raise run_budget in the settings first.")
+                    task.update(status="queued", due=self.clock(), last_mission=None, enabled=True)
+                    c["message"] = f"Task {task['title']} is queued again."
+                elif action == "resolve_external":
                     if task["kind"] != "external" or task["status"] != "needs_owner":
                         raise ValueError("This is not an open external action.")
                     outcome = body.get("outcome")
@@ -226,6 +294,12 @@ class Companies:
                             continue
                         m["auto_approve"] = c["policy"]["auto_tools"]
                         m["company_context"]["auto_tools"] = c["policy"]["auto_tools"]
+                        m.update(changed_limits)
+                        m["company_context"].update(changed_limits)
+                        if renewed:
+                            horizon = min(c["deadline"], self.clock() + m["days"] * 86400)
+                            if not m["deadline"] or m["deadline"] < horizon:
+                                m["deadline"] = horizon
                         self.missions.save(m, db)
                 self.store(db, c)
                 self.event(db, c, {"action": action, "task": body.get("task"), "message": c["message"]})
@@ -272,6 +346,141 @@ class Companies:
             self.event(db, c, {"action": "dispatch", "task": t["id"], "mission": m["id"], "reserved_runs": allowance})
         return True
 
+    def requeue_expired(self, c):
+        """After a horizon renewal, queue tasks whose execution expired with the old horizon."""
+        count = 0
+        for t in c["tasks"]:
+            if t["kind"] == "work" and t["status"] == "expired" and t["last_mission"]:
+                if self.missions.get(t["last_mission"])["status"] == "expired":
+                    t.update(status="queued", due=self.clock(), last_mission=None)
+                    count += 1
+        return count
+
+    def run_active(self, m):
+        """True until the mission controller has recorded the end of the stopped worker."""
+        return bool(m.get("active_attempt"))
+
+    def resume(self, c, m, message):
+        """Resume a mission the Driver stopped or the owner asked to continue; never raises.
+
+        driver_resume records an owner decision (answer, task or brief revision) deferred until the Driver
+        runs, so it is applied as the owner's: fresh correction rounds and a fresh set of Driver recoveries.
+        """
+        try:
+            note = self.missions.resume(m, by="owner" if m.get("driver_resume") else "driver")
+        except ValueError as exc:
+            m = self.missions.get(m["id"])
+            kind = ("run_limit" if used_runs(m) >= m["max_attempts"] else
+                    "deadline" if m["deadline"] and self.clock() >= m["deadline"] else "resume_failed")
+            reason = str(exc)
+            m.pop("driver_resume", None)
+            m.pop("paused_by_parent", None)
+            if m["status"] == "paused":
+                m.pop("resume_status", None)
+            self.missions.block(m, kind, "The Driver could not resume this execution: " + reason)
+            self.missions.save(m)
+            self.note(c, {"action": "resume_failed", "mission": m["id"], "task": m["company_context"].get("task"),
+                          "message": f"Execution {m['id']} was not resumed: {reason}"})
+            return False
+        m["message"] = message + (" " + note if note else "")
+        self.missions.save(m)
+        return True
+
+    def ask_owner(self, c, m, problem, question=True):
+        """Raise ONE owner question for a block the Driver will not (or can no longer) recover."""
+        m["owner_needed"] = True  # releases the unused reservation until the owner continues it
+        if question and not any(q["answer"] is None for q in m["questions"]):
+            kind = m.get("blocked_kind") or "unknown"
+            revise = " Revise the task brief first if the corrections keep failing." if kind in ROUND_KINDS else ""
+            self.missions.questions(m, [{
+                "question": (f"Execution '{m['title']}' is blocked and {problem}. How should the company continue? "
+                             "Options: (1) answer 'continue' to resume it with the current limits; "
+                             "(2) pause the Driver, raise attempt_minutes or max_turns in the company settings or add runs "
+                             "with reserve_runs, start the Driver and answer 'continue'; (3) pause the Driver and revise "
+                             "the task brief; (4) cancel the execution and requeue the task later. Any answer other than "
+                             "'continue' is saved and keeps the execution blocked." + revise),
+                "reason": f"Block ({kind}): {m['message']}"[:3000]}])
+            m["questions"][-1]["kind"] = "recovery"
+        self.missions.save(m)
+        self.note(c, {"action": "owner_needed", "mission": m["id"], "task": m["company_context"].get("task"),
+                      "message": f"Execution {m['id']} needs the owner: {problem}."})
+
+    def recover(self, c, m):
+        """Bounded, visible automatic recovery of a blocked company mission (K7)."""
+        if m.get("owner_needed"):
+            return
+        now = self.clock()
+        kind = m.get("blocked_kind") or legacy_kind(m["message"])
+        limit = c["policy"].get("recovery_rounds", POLICY["recovery_rounds"])
+        rounds = m.get("driver_recoveries", 0)
+        open_questions = [q for q in m["questions"] if q["answer"] is None]
+        if open_questions and not all(recovery_question(q) for q in open_questions):
+            self.ask_owner(c, m, "it waits for answers to its open questions", question=False)
+            return
+        problem = ("this block needs an owner decision" if kind not in RECOVERABLE else
+                   f"automatic recovery already used {rounds}/{limit} rounds" if rounds >= limit else
+                   "its time limit has expired" if m["deadline"] and now >= m["deadline"] else
+                   "its reserved runs are used up" if used_runs(m) >= m["max_attempts"] else "")
+        if problem:
+            self.ask_owner(c, m, problem)
+            return
+        if now < m.get("blocked_at", 0) + RECOVERY_DELAY * 2 ** rounds:
+            return
+        reason = m["message"][:600]
+        try:
+            note = self.missions.resume(m, by="driver")
+        except ValueError as exc:
+            m = self.missions.get(m["id"])
+            self.ask_owner(c, m, "automatic recovery failed: " + str(exc))
+            return
+        rounds += 1
+        m["driver_recoveries"] = rounds
+        raised = ""
+        if kind in RAISE_LIMITS:
+            minutes = min(LIMITS["attempt_minutes"][1], math.ceil(m["attempt_minutes"] * 1.5))
+            turns = min(LIMITS["max_turns"][1], m["max_turns"] + 8)
+            m.update(attempt_minutes=minutes, max_turns=turns)
+            m["company_context"].update(attempt_minutes=minutes, max_turns=turns)
+            raised = f" Per-run limits raised to {minutes} min and {turns} steps."
+        summary = f"Driver recovery {rounds}/{limit}: {reason}"
+        raised += (" " + note) if note else ""
+        m["message"] = (summary + raised)[:2000]
+        self.missions.save(m)
+        self.note(c, {"action": "recovery", "mission": m["id"], "task": m["company_context"].get("task"),
+                      "message": (summary + raised)[:2000]})
+
+    def supervise(self, c, m):
+        """One child's automatic step. Errors stay with that child and never stop the Driver."""
+        if m["status"] == "awaiting_plan" and not any(q["answer"] is None for q in m["questions"]):
+            self.missions.action({"id": m["id"], "action": "approve_plan"})
+        elif m["status"] == "ready" and c["policy"]["auto_accept"]:
+            run = (m.get("final_report") or {}).get("run")
+            if (m.get("auto_accept_error") or {}).get("run", False) == run:
+                return  # already failed for this final report; the owner decides
+            try:
+                self.missions.action({"id": m["id"], "action": "accept"})
+            except ValueError as exc:
+                m = self.missions.get(m["id"])
+                m["auto_accept_error"] = {"run": run, "at": self.clock(), "message": str(exc)[:500]}
+                m["message"] = "Automatic acceptance failed; the result waits for the owner: " + str(exc)[:1500]
+                self.missions.save(m)
+                self.note(c, {"action": "accept_failed", "mission": m["id"], "message": m["message"]})
+        elif m["status"] in {"paused", "blocked"} and (m.get("driver_resume") or m.get("paused_by_parent")):
+            if not self.run_active(m):
+                self.resume(c, m, "The owner's decision is applied; continuing." if m.get("driver_resume") else
+                            "The Driver is active again; continuing.")
+        elif (m["status"] == "paused" and m.get("resume_status") == "blocked"
+                and m["message"].startswith(PARENT_PAUSE_MESSAGE)):
+            # Older versions turned blocked work into 'paused' on a Driver pause; restore the block.
+            error = next((a["error"] for a in reversed(m["attempts"]) if a.get("error")), "")
+            m.update(status="blocked", blocked_kind=legacy_kind(error), blocked_at=self.clock(),
+                     message=("Blocked before a Driver pause. Last run error: " + error)[:2000] if error else
+                     "Blocked before a Driver pause; the original reason is in the execution history.")
+            m.pop("resume_status", None)
+            self.missions.save(m)
+        elif m["status"] == "blocked":
+            self.recover(c, m)
+
     def advance(self, c):
         self.reconcile(c)
         if c["status"] != "active":
@@ -281,30 +490,60 @@ class Companies:
             return
         for key in c["resume_missions"][:]:
             m = self.missions.get(key)
-            if m["status"] == "paused" and (not m["active_attempt"] or self.studio.runs.get(m["active_attempt"], {}).get("status") not in {"running", "waiting", "stopping"}):
-                self.missions.action({"id": key, "action": "resume"})
+            if m["status"] == "paused" and not self.run_active(m):
+                self.resume(c, m, "The Driver is active again; continuing.")
                 c["resume_missions"].remove(key)
             elif m["status"] != "paused":
                 c["resume_missions"].remove(key)
         for cycle in c["cycles"]:
             m = self.missions.get(cycle["mission"])
-            if m["status"] == "awaiting_plan" and not any(q["answer"] is None for q in m["questions"]):
-                self.missions.action({"id": m["id"], "action": "approve_plan"})
-            elif m["status"] == "ready" and c["policy"]["auto_accept"]:
-                self.missions.action({"id": m["id"], "action": "accept"})
+            if m["status"] in TERMINAL or m["id"] in c["resume_missions"]:
+                continue
+            try:
+                self.supervise(c, m)
+            except Exception as exc:
+                # Visible once per distinct error; the other executions continue.
+                message = f"Execution {m['id']}: {str(exc)[:500]}"
+                if c.setdefault("child_errors", {}).get(m["id"]) != message:
+                    c["child_errors"][m["id"]] = message
+                    self.note(c, {"action": "child_error", "mission": m["id"], "message": message})
         self.reconcile(c)
-        # Don't queue competing modifications in the same original workspace.
-        busy = {m["project"] for m in self.missions.list() if m["status"] not in TERMINAL}
+        # Don't queue competing modifications in the same original workspace. A draft or
+        # never-started paused/blocked mission holds no base snapshot, so it does not block.
+        busy = {}
+        for m in self.missions.list():
+            if m["status"] in TERMINAL or m["status"] == "draft":
+                continue
+            if m["status"] in {"blocked", "paused", "waiting"} and not m.get("base_version") and not m["attempts"]:
+                continue
+            busy.setdefault(m["project"], m)
         done = {t["id"] for t in c["tasks"] if t["status"] in {"done", "scheduled"}}
-        ready = sorted((t for t in c["tasks"] if t["kind"] == "work" and t["enabled"]
-                        and t["status"] in {"queued", "scheduled"} and t["due"] <= self.clock()
-                        and set(t["depends_on"]) <= done and t["project"] not in busy),
-                       key=lambda t: (t["priority"], t["due"], t["created"], t["id"]))
+        waiting = sorted((t for t in c["tasks"] if t["kind"] == "work" and t["enabled"]
+                          and t["status"] in {"queued", "scheduled"} and t["due"] <= self.clock()
+                          and set(t["depends_on"]) <= done),
+                         key=lambda t: (t["priority"], t["due"], t["created"], t["id"]))
+        ready = [t for t in waiting if t["project"] not in busy]
         if ready:
             if not self.dispatch(c, ready[0]):
-                c["message"] = "Execution or run reservation limit exhausted. Open work may finish."
-        else:
-            c["message"] = "Driver monitors work and waits for deadline, completion, or decision."
+                usage = self.usage(c)
+                c["message"] = (f"Run budget or cycle limit reached ({usage['used_runs']} used, {usage['reserved_runs']} reserved "
+                                f"of {c['policy']['run_budget']} runs; {usage['cycles']}/{c['policy']['cycle_limit']} cycles). "
+                                "Open work may finish; raise the limits in the settings to start more.")
+            return
+        if waiting:
+            blocker = busy[waiting[0]["project"]]
+            name = self.studio.projects.get(blocker["project"], {}).get("name", blocker["project"])
+            c["message"] = (f"Waiting: project {name} is used by execution {blocker['id']} ({blocker['status']}: "
+                            f"{blocker['title']}). Task {waiting[0]['title']} starts when it is finished or cancelled.")
+            if c.get("busy_notice") != blocker["id"]:
+                c["busy_notice"] = blocker["id"]
+                self.note(c, {"action": "project_busy", "task": waiting[0]["id"], "mission": blocker["id"],
+                              "message": c["message"]})
+            return
+        owner = [self.missions.get(x["mission"]) for x in c["cycles"]]
+        owner = [m["title"] for m in owner if m["status"] == "waiting" or m["status"] == "blocked" and m.get("owner_needed")]
+        c["message"] = ("Owner decision needed: " + "; ".join(owner[:5]) + ("…" if len(owner) > 5 else "")
+                        if owner else "Driver monitors work and waits for deadline, completion, or decision.")
 
     def tick(self):
         errors = []
@@ -339,6 +578,8 @@ class Companies:
                 items.append({**c, "usage": self.usage(c), "events": events,
                     "inbox": [{"mission": m["id"], "project": m["project"], "title": m["title"],
                                "status": m["status"], "message": m["message"],
+                               "blocked_kind": m.get("blocked_kind"), "owner_needed": bool(m.get("owner_needed")),
+                               "driver_recoveries": m.get("driver_recoveries", 0),
                                "questions": [q for q in m["questions"] if q["answer"] is None]}
                               for m in missions if m["status"] in {"waiting", "blocked", "paused", "ready", "awaiting_checks"}
                               or m["status"] == "awaiting_plan" and any(q["answer"] is None for q in m["questions"])],

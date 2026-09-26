@@ -222,9 +222,12 @@ async function showProducts() {
     $("#product-form").reset(); productViewProject = state.project;
   }
   for (const id of ["#product-profile", "#product-review-profile"]) {
-    const old = $(id).value || $("#model-select").value;
-    $(id).replaceChildren(...state.data.profiles.map(p => { const option = el("option", "", `${p.model} · ${profileLabel(p)}`); option.value = p.id; return option; }));
-    $(id).value = old;
+    const old = $(id).value;
+    const role = id === "#product-review-profile" ? "review" : "work";
+    const preferred = defaultModelForRole(role);
+    const profiles = runnableProfiles();
+    $(id).replaceChildren(...profiles.map(p => { const option = el("option", "", `${p.model} · ${profileLabel(p)}`); option.value = p.id; return option; }));
+    $(id).value = profiles.some(p => p.id === old) ? old : profiles.some(p => p.id === preferred) ? preferred : profiles[0]?.id || "";
   }
   $("#products-dialog").showModal(); await loadProducts(!productDirty);
 }

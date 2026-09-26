@@ -50,7 +50,14 @@ class LabTests(unittest.TestCase):
         exported = self.studio.decision_lab.export(r['id'])
         self.assertIn(text, (self.project / exported['path']).read_text())
         self.assertEqual(len(json.loads(self.http.payload['messages'][1]['content'])['questions']), 6)
-        with self.assertRaises(Exception): self.studio.decision_lab.export(r['id'])  # no silent overwrite
+        # Exporting the same immutable record again is idempotent.
+        again = self.studio.decision_lab.export(r['id'])
+        self.assertEqual((again['path'], again.get('unchanged')), (exported['path'], True))
+        # An edited export is never silently overwritten; the error names the file.
+        (self.project / exported['path']).write_text('Owner notes\n')
+        with self.assertRaisesRegex(ValueError, 'Already exported to ' + exported['path']):
+            self.studio.decision_lab.export(r['id'])
+        self.assertEqual((self.project / exported['path']).read_text(), 'Owner notes\n')
 
     def test_typed_transport_and_distribution_are_validated(self):
         q = {'route': {'type': 'choice', 'instructions': 'Route', 'criteria': {'yes': 'Supported', 'unknown': 'Unknown'}}}

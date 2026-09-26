@@ -1,5 +1,3 @@
-# Modified for Miner / Switch Studio, 2026-09-23.
-# Changes from ApodexAI/FrontierAgent; see frontier/SWITCH.md and THIRD_PARTY.md at the repository root.
 """Jina-backed web fetch, byte-compatible with the reference agent's tool.
 
 Extraction prompt, retry schedule and output formatting are reproduced
@@ -298,7 +296,11 @@ async def _scrape_url_with_python(
                         "success": False, "content": "",
                         "error": "too many redirects",
                     }
-            content = readable_direct_content(decode_body(response, body), response.headers.get("content-type", ""))
+            # HTML extraction is CPU-bound; keep it off the event loop.
+            content = await asyncio.to_thread(
+                readable_direct_content, decode_body(response, body),
+                response.headers.get("content-type", ""),
+            )
             if not content:
                 return {"success": False, "content": "", "error": "Empty response"}
             return {"success": True, "content": content[:max_chars], "error": ""}
@@ -348,12 +350,29 @@ EXTRACTED INFORMATION:"""
 
 
 def readable_direct_content(content: str, content_type: str = "") -> str:
-    """Never feed scripts, style sheets and HTML head metadata to the model."""
+    """Never feed scripts, style sheets and HTML head metadata to the model.
+
+    Only HTML pages are converted: a declared HTML type, or a missing/generic
+    type whose body starts like an HTML document. JSON, plain text and Markdown
+    that merely mention ``<html>`` are returned unchanged. When extraction finds
+    no main content, the tag-stripped page text is returned instead of nothing.
+    """
+    import html
     import re
-    if "html" not in content_type.lower() and not re.search(r"<(?:!doctype|html|head|body)(?:\s|>)", content[:2000], re.I):
+    kind = content_type.split(";", 1)[0].strip().lower()
+    is_html = kind in ("text/html", "application/xhtml+xml") or (
+        kind in ("", "application/octet-stream")
+        and re.match(r"\s*(?:<!--.*?-->\s*)*<(?:!doctype\s+html|html)[\s>]", content[:2000], re.I | re.S)
+    )
+    if not is_html:
         return content
     import trafilatura
-    return trafilatura.extract(content, include_links=True, include_tables=True, favor_recall=True) or ""
+    extracted = trafilatura.extract(content, include_links=True, include_tables=True, favor_recall=True)
+    if extracted:
+        return extracted
+    text = re.sub(r"(?is)<(script|style|head|noscript|template)\b.*?</\1\s*>", " ", content)
+    text = re.sub(r"(?s)<!--.*?-->|<[^>]+>", " ", text)
+    return re.sub(r"\s+", " ", html.unescape(text)).strip()
 
 
 def _truncate_fallback(content: str) -> str:

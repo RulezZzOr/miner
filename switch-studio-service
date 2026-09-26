@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+switch_root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+if [ ! -x "$switch_root/frontier/.venv/bin/python" ]; then
+  echo 'Switch Studio is not installed. Run ./setup-studio first.' >&2
+  exit 1
+fi
+exec "$switch_root/frontier/.venv/bin/python" "$switch_root/studio/service.py" "$@"

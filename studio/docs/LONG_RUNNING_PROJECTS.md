@@ -34,7 +34,7 @@ Closing the browser does not stop execution. Studio and the computer must remain
 - The native planner has limited tools: reading and writing its own report only; it must not perform execution before plan confirmation. Tool phase rules are supplemented by Linux bubblewrap isolation. OAuth/Codex execution is currently disabled pending an isolated credential broker.
 - The report must be a real JSON file. The controller checks structure, dependencies, existence of product files, SHA-256, and coverage of criteria. Binary artifacts are supported up to 50 MB per file; text reports up to 2 MB.
 - New review session for each task and final model-based product assessment. Model reports are separate from actual exit codes and logs of the independent executor. Successful tests do not prove general product correctness.
-- Fixes after review: at most three failed rounds before blocking. Repeated faulty reports or operational errors incur delays and stop after three attempts.
+- Fixes after review: at most three failed rounds before blocking. Repeated faulty reports or operational errors incur delays and stop after three attempts. A temporarily unavailable model endpoint is retried with a growing delay without spending an attempt. A run that ends without a saved report is recorded as incomplete, not completed.
 - Time limits per run and per project, run count limits, and operational log limits (128 MB/run, 1 GB/project). These are not limits on total product file size or monetary budget.
 - Pause, resume, and termination preserve existing files and history.
 - Before starting the worker, the attempt reservation and process identity are saved. The worker waits for write confirmation. On restart, recorded workers are cleaned up by PID and creation time, and interrupted attempts are resumed as new sessions with instructions to first verify files.
@@ -83,17 +83,17 @@ Public reference materials may be looked up by the model using available tools. 
 ./switch-studio-service disable
 ```
 
-The macOS service uses launchd, starts on login, and restarts the controller on crash. It does not allow public network access. On this Mac, attempting to run the service hit a system restriction on accessing the Documents folder; registration was removed and Studio was restarted normally. macOS protections were not altered. The installer now verifies the service response and removes registration on failure.
+The macOS service uses launchd, starts on login, and restarts the controller on crash. It keeps the UI available; agent work still needs a Linux backend because macOS cannot run sandboxed workers. It does not allow public network access. On this Mac, attempting to run the service hit a system restriction on accessing the Documents folder; registration was removed and Studio was restarted normally. macOS protections were not altered. The installer now verifies the service response and removes registration on failure.
 
 For actual weekly operation, choose and set up a permanently available host. Use a Linux backend that does not sleep; a user systemd service with `Restart=on-failure` and running `switch-studio --no-open` is suitable. Remote access can be handled via an SSH tunnel to loopback port 4317. Cloud model logins and configurations must be verified in the service environment.
 
 ## What Is Verified and What Is Not Yet
 
 - Automated tests: plan, questions, independent tasks, separate review, fixes, restart, faulty reports, file changes, limits, safe paths, and process identities.
-- Integration test: four real Frontier processes via deterministic local model API, file write to project, reading by reviewer, and acceptance. Planning attempt to write via shell is rejected.
+- Integration test: four real Frontier processes via deterministic local model API, file write to project, reading by reviewer, and acceptance. Planning attempt to write via shell is rejected. It needs Linux with bubblewrap and is skipped on macOS.
 - GUI: display of saved project, form with models and limits, work status, and history.
 - Live pilots revealed report errors, working path issues, and search under ignored folders. Fixes are covered by regression tests. The current state of real model runs is in the development copy at `analysis/audit/OVERNIGHT_IMPLEMENTATION.md`; completion cannot be inferred from test API.
 - A test with accelerated time verifies the seven-day limit; **it does not replace a seven-day operational test**.
-- Remaining: verifying longer real-world delivery, network interruptions, and re-login after long operation. Extending to parallel isolation, conflict graphs between sources, and sandboxed workers is future work.
+- Remaining: verifying longer real-world delivery, network interruptions, and re-login after long operation. Parallel workers and conflict graphs between sources are future work; workers already run in a Linux bubblewrap sandbox.
 
 Comparison with the publicly described Apodex product is in [APODEX_COMPARISON.md](APODEX_COMPARISON.md).

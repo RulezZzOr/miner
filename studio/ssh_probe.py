@@ -65,7 +65,10 @@ def integration_names(path):
             if re.search(r'VAPI|BUFFER|CRM', m.group(1))))}
     if path.name == 'package.json':
         data = json.loads(raw)
-        names = sorted(set(data.get('dependencies', {})) | set(data.get('devDependencies', {})))
+        if not isinstance(data, dict):
+            return {'dependency_names': [], 'integration_hints': []}
+        names = sorted({n for key in ('dependencies', 'devDependencies') if isinstance(data.get(key), dict)
+                        for n in data[key] if isinstance(n, str)})
         return {'dependency_names': [n for n in names if re.fullmatch(r'[@a-zA-Z0-9/_.-]{1,100}', n)],
                 'integration_hints': [n for n in names if re.search(r'vapi|buffer|crm|hubspot|salesforce', n, re.I)]}
     # Other manifests: identify relevant product names, without exposing lines.
@@ -106,7 +109,10 @@ def collect(section):
                     os_info[key] = value.strip('"')
         except OSError:
             pass
-        memory = re.search(r'^MemTotal:\s+(\d+) kB', Path('/proc/meminfo').read_text(), re.M)
+        try:  # Linux only; other targets report memory as unknown.
+            memory = re.search(r'^MemTotal:\s+(\d+) kB', Path('/proc/meminfo').read_text(), re.M)
+        except OSError:
+            memory = None
         disk = shutil.disk_usage('/')
         return {'hostname': socket.gethostname(), 'user_id': os.getuid(), 'kernel': platform.release(),
                 'architecture': platform.machine(), 'os': os_info, 'cpu_count': os.cpu_count(),
@@ -128,7 +134,7 @@ def collect(section):
             if section == 'integrations':
                 try:
                     row.update(integration_names(p))
-                except (OSError, ValueError, TypeError):
+                except (OSError, ValueError, TypeError, AttributeError):
                     row['error'] = 'Cannot inspect manifest'
             rows.append(row)
         return {'roots': ROOTS, 'max_depth': 4, 'truncated': truncated, 'files': rows,

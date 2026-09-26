@@ -29,14 +29,14 @@ async function missionAction(id, action, extra = {}) {
 }
 function renderDeliveryWorkflow(panel, m) {
   if (m.readiness) {
-    const r = m.readiness, box = el("details", "mission-task"); box.open = r.status !== "ready";
+    const r = m.readiness, box = missionSection("readiness"); box.open = r.status !== "ready";
     box.append(el("summary", "", `Brief readiness · ${r.status}`));
     box.append(el("p", "", r.limitations));
     for (const c of r.checks) box.append(el("p", "", `${c.passed ? "Passed" : "Needs clarification"}: ${c.name}`));
     if (r.semantic_required) box.append(el("p", "", `Planning assessment: ${r.semantic_status}${r.semantic_reason ? " · " + r.semantic_reason : ""}`));
     if (m.process) box.append(el("p", "missions-note", `Process: ${m.process.effective} · ${m.process.reason}`));
     if (["draft", "paused", "blocked", "waiting"].includes(m.status) && !m.active_attempt && !m.tasks.length) {
-      const edit = el("details"); edit.append(el("summary", "", "Revise task brief"));
+      const edit = el("details"); edit.dataset.key = "revise-brief"; edit.append(el("summary", "", "Revise task brief"));
       const form = el("form");
       for (const [name, title] of [["goal", "Goal"], ["criteria", "Done when · one per line"], ["constraints", "Constraints"], ["sources", "Sources"], ["reason", "Reason for revision"]]) {
         const label = el("label", "", title), input = el("textarea"); input.name = name; input.rows = 2;
@@ -60,14 +60,14 @@ function renderDeliveryWorkflow(panel, m) {
     panel.append(box);
   }
   if (m.handoff) {
-    const box = el("details", "mission-task"); box.append(el("summary", "", "Continuation handoff"));
+    const box = missionSection("handoff"); box.append(el("summary", "", "Continuation handoff"));
     box.append(el("p", "", "Saved before the latest attempt. Full task state remains in Studio; changed references must be read again."));
     const output = el("pre"); output.textContent = JSON.stringify(m.handoff, null, 2); box.append(output); panel.append(box);
   }
-  const result = el("details", "mission-task");
+  const result = missionSection("result");
   result.append(el("summary", "", "Result card · outputs, checks and limitations"));
   result.append(missionButton("Refresh result evidence", async () => {
-    const card = await api(`/api/delivery?id=${encodeURIComponent(m.id)}`), body = el("div", "delivery-evidence");
+    const card = await api(`/api/delivery?id=${encodeURIComponent(m.id)}`), body = el("div", "delivery-evidence kept-result");
     body.append(el("p", card.freshness === "stale" ? "mission-feedback" : card.freshness === "current" ? "mission-state" : "missions-note", `${card.status} · evidence ${card.freshness} · checks ${card.check_status}`));
     body.append(el("p", "missions-note", `Product snapshot: ${card.version || "not accepted"} · verified commit: ${card.verified_git_revision || "file hashes only"}`));
     for (const file of card.artifacts) body.append(el("p", "", `${file.path} · ${file.sha256.slice(0,12)}`));
@@ -81,14 +81,23 @@ function renderDeliveryWorkflow(panel, m) {
   }));
   panel.append(result);
 }
+// Sections keep a stable key so polling preserves open sections and loaded evidence.
+function missionSection(key, className = "mission-task") {
+  const section = el("details", className); section.dataset.key = key; return section;
+}
 function renderMission(m) {
   const panel = $("#mission-detail");
+  keepPanelState(panel, "mission:" + (m?.id || ""), () => buildMission(panel, m));
+}
+function buildMission(panel, m) {
   panel.replaceChildren();
   if (!m) { panel.append(el("p", "", "Create a project and describe the desired outcome.")); return; }
   panel.append(el("h3", "", m.title), el("span", "mission-state", missionLabels[m.status] || m.status));
   panel.append(el("p", "mission-message", m.message), el("p", "", m.goal));
   if (m.work_project) panel.append(missionButton("Open working version in editor", async () => {
     $("#missions-dialog").close(); await refreshState(); await selectProject(m.work_project);
+    // The dashboard hides the explorer and editor; switch to the workspace to show the working copy.
+    if (state.project === m.work_project) { showDashboard(false); toast("Opened the working version in the workspace."); }
   }));
   const criteria = el("ul");
   criteria.append(...m.criteria.map(c => el("li", "", c)));
@@ -115,7 +124,7 @@ function renderMission(m) {
   renderDeliveryWorkflow(panel, m);
   const latestReview = [...m.attempts].reverse().find(a => a.review_packet);
   if (latestReview) {
-    const packet = latestReview.review_packet, box = el("details", "mission-task");
+    const packet = latestReview.review_packet, box = missionSection("review-evidence");
     box.append(el("summary", "", `Review evidence · ${(packet.bytes / 1024).toFixed(1)} KB · immutable snapshot`));
     box.append(el("p", "missions-note", `Reviewer: ${latestReview.model || latestReview.profile || "unrecorded"} · up to ${packet.limits.extra_reads} extra reads × ${packet.limits.bytes_per_read} bytes · at most 6 steps / 8 minutes (shorter project limits apply).`));
     if (latestReview.review_reads != null) box.append(el("p", "", `Additional evidence reads used: ${latestReview.review_reads}/${packet.limits.extra_reads}`));
@@ -125,7 +134,7 @@ function renderMission(m) {
     panel.append(box);
   }
   if (m.decision) {
-    const d = m.decision, box = el("details", "mission-task");
+    const d = m.decision, box = missionSection("decision");
     box.append(el("summary", "", `Task selection · ${d.mode || "select"} · ${d.status}`));
     box.append(el("p", "", d.reason || "Waiting for decision."));
     box.append(el("p", "missions-note", `Provider: ${d.provider || m.decision_profile || "none"} · model: ${d.model || "unavailable"} · baseline: ${d.baseline || "plan order"} · proposal: ${d.choice || "pending"}`));
@@ -134,18 +143,20 @@ function renderMission(m) {
     if (d.elapsed_seconds != null) box.append(el("p", "missions-note", `Decision latency: ${d.elapsed_seconds.toFixed(2)} s`));
     box.append(missionButton("Compare recorded proposals", async () => {
       const metrics = await api(`/api/decision-metrics?id=${encodeURIComponent(m.id)}`);
-      const summary = el("p", "decision-metrics", `${metrics.requests} requests · ${metrics.fallbacks} fallbacks · ${metrics.superseded} stale · ${metrics.disagreements}/${metrics.comparisons} proposals differ from plan order. ${metrics.note}`);
+      const summary = el("p", "decision-metrics kept-result", `${metrics.requests} requests · ${metrics.fallbacks} fallbacks · ${metrics.superseded} stale · ${metrics.disagreements}/${metrics.comparisons} proposals differ from plan order. ${metrics.note}`);
       box.querySelector(".decision-metrics")?.remove(); box.append(summary);
     }));
     panel.append(box);
   }
   if (["draft", "paused", "blocked"].includes(m.status) && !m.active_attempt) {
-    const details = el("details", "mission-task");
+    const details = missionSection("runtime");
     details.append(el("summary", "", "Change models and continuation limits"));
     const form = el("form");
     for (const [name, title] of [["profile", "Model for work"], ["review_profile", "Review model"]]) {
       const label = el("label", "", title), select = el("select"); select.name = name;
-      select.append(...state.data.profiles.map(p => { const option = el("option", "", `${p.model} · ${p.id}`); option.value = p.id; return option; }));
+      select.append(...runnableProfiles().map(p => { const option = el("option", "", `${p.model} · ${p.id}`); option.value = p.id; return option; }));
+      // Keep a saved non-runnable choice visible so the owner sees why runs fail and replaces it.
+      if (m[name] && !runnableProfiles().some(p => p.id === m[name])) { const option = el("option", "", `${m[name]} · not available for workers`); option.value = m[name]; select.prepend(option); }
       select.value = m[name]; label.append(select); form.append(label);
     }
     const decisionLabel = el("label", "", "Decision provider (optional)"), decisionSelect = el("select");
@@ -181,7 +192,7 @@ function renderMission(m) {
     details.append(form); panel.append(details);
   }
   if (["draft","paused","awaiting_plan","awaiting_checks","ready"].includes(m.status)) {
-    const details = el("details", "mission-task");
+    const details = missionSection("checks");
     details.open = m.status === "awaiting_checks";
     details.append(el("summary", "", "Independent checks"));
     const form = el("form");
@@ -209,21 +220,21 @@ function renderMission(m) {
   }
   const verificationId = m.verification_id || m.verification_result?.id;
   if (verificationId) {
-    const evidence = el("details", "mission-task");
+    const evidence = missionSection("verification");
     evidence.append(el("summary", "", "Actual checks performed and logs"));
     evidence.append(missionButton("Load check results", async () => {
       const record = await api(`/api/verification?id=${encodeURIComponent(verificationId)}`);
-      const output = el("pre");
+      const output = el("pre", "kept-result");
       output.textContent = `${record.status}${record.error ? ": " + record.error : ""}\n` + record.checks.map(c => `${c.label} · exit ${c.exit_code}\n${c.log}`).join("\n\n");
       evidence.querySelector("pre")?.remove(); evidence.append(output);
     }));
     panel.append(evidence);
   }
-  const timeline = el("details", "mission-task");
+  const timeline = missionSection("timeline");
   timeline.append(el("summary", "", "Why the process changed · decisions and evidence"));
   timeline.append(missionButton("Load decision history", async () => {
     const data = await api(`/api/mission-trace?id=${encodeURIComponent(m.id)}`);
-    const history = el("div", "mission-timeline");
+    const history = el("div", "mission-timeline kept-result");
     for (const event of data.events) {
       const item = el("details");
       item.append(el("summary", "", `${new Date(event.at * 1000).toLocaleString("en-GB")} · ${missionLabels[event.to] || event.to}`));
@@ -253,6 +264,9 @@ function renderMission(m) {
     const card = el("form", "mission-question");
     card.append(el("strong", "", q.question), el("p", "", q.reason));
     if (q.task) card.append(el("p", "missions-note", `Blocks task: ${q.task}`));
+    // The server resumes blocked work when its recovery question is answered; say so before sending.
+    const resumes = m.status === "blocked" && ["failure","recovery"].includes(q.kind);
+    if (resumes) card.append(el("p", "missions-note", "Saving a response continues the blocked work from its saved state within its remaining limits. To revise the brief, change the limits or end the work, do that before you answer."));
     const answer = el("textarea");
     answer.required = true;
     answer.maxLength = 12000;
@@ -262,15 +276,16 @@ function renderMission(m) {
     answer.oninput = () => missionAnswers.set(answerKey, answer.value);
     answer.setAttribute("aria-label", `Response: ${q.question}`);
     card.append(answer);
-    const submit = el("button", "button primary", "Save response");
+    const submit = el("button", "button primary", resumes ? "Save response and continue" : "Save response");
     submit.type = "submit";
     card.append(submit);
     card.onsubmit = async event => {
       event.preventDefault();
       submit.disabled = true;
       try {
-        await api("/api/missions/action", {id:m.id, action:"answer", question:q.id, answer:answer.value});
+        const saved = await api("/api/missions/action", {id:m.id, action:"answer", question:q.id, answer:answer.value});
         missionAnswers.delete(answerKey);
+        if (resumes && saved?.message) toast(saved.message, saved.status === "blocked" && !saved.driver_resume);
         await loadMissions(true);
       }
       catch (error) { toast(error.message, true); submit.disabled = false; }
@@ -278,19 +293,19 @@ function renderMission(m) {
     panel.append(card);
   }
   if (m.questions.some(q => q.answer !== null)) {
-    const answered = el("details", "mission-answered");
+    const answered = missionSection("answered", "mission-answered");
     answered.append(el("summary", "", "Saved decisions and responses"));
     for (const q of m.questions.filter(q => q.answer !== null)) answered.append(el("p", "", `${q.question}\n${q.answer}`));
     panel.append(answered);
   }
   if (m.tasks.length) panel.append(el("h3", "", "Plan and results"));
   if (m.plan_revisions?.length) {
-    const revisions=el("details","mission-task");revisions.append(el("summary","","Task brief edit history"));
+    const revisions=missionSection("plan-revisions");revisions.append(el("summary","","Task brief edit history"));
     for(const change of m.plan_revisions){revisions.append(el("p","",`${new Date(change.at*1000).toLocaleString("en-GB")} · ${change.task} · ${change.reason}`),el("pre","",`Before: ${change.before.criteria.join("\n")}\n\nAfter: ${change.after.criteria.join("\n")}`));}
     panel.append(revisions);
   }
   for (const task of m.tasks) {
-    const card = el("details", "mission-task");
+    const card = missionSection("task:" + task.id);
     card.append(el("summary", "", `${task.title} · ${missionLabels[task.status] || task.status}`));
     card.append(el("p", "", task.instructions));
     card.append(el("p", "missions-note", `Dependencies: ${task.depends_on.join(", ") || "none"}`));
@@ -322,7 +337,7 @@ function renderMission(m) {
     for (const check of m.final_report.checks) panel.append(el("p", "", `${check.criterion}: ${check.evidence}`));
   }
   if (m.attempts.length) {
-    const attempts = el("details", "mission-attempts");
+    const attempts = missionSection("attempts", "mission-attempts");
     attempts.append(el("summary", "", `Run and evidence history (${m.attempts.length})`));
     for (const a of [...m.attempts].reverse()) {
       const row = el("div", "mission-attempt");
@@ -344,9 +359,10 @@ async function loadMissions(force = false) {
   try {
     const data = await api(`/api/missions?project=${encodeURIComponent(selected)}`);
     if (selected !== state.project || !$("#missions-dialog").open) return;
-    $("#missions-health").textContent = data.controller_error
+    const unavailable = executionUnavailable();
+    $("#missions-health").textContent = (unavailable ? `Agent execution is unavailable on this host: ${unavailable} ` : "") + (data.controller_error
       ? `Controller requires attention: ${data.controller_error}`
-      : `${data.capabilities.controller} ${data.capabilities.search_status}`;
+      : `${data.capabilities.controller} ${data.capabilities.search_status}`);
     // Polling must never replace answers the user is currently writing.
     const hasDraft = () => $$(".mission-question textarea").some(input => input.value.length > 0) ||
       $$("#mission-detail textarea, #mission-detail form").some(input => input.dataset.dirty === "true");
@@ -374,11 +390,14 @@ async function showMissions() {
     missionViewProject = state.project;
   }
   for (const id of ["#mission-profile", "#mission-review-profile"]) {
-    const previous = $(id).value || $("#model-select").value;
-    $(id).replaceChildren(...state.data.profiles.map(p => {
+    const previous = $(id).value;
+    const role = id === "#mission-review-profile" ? "review" : "work";
+    const preferred = defaultModelForRole(role);
+    const profiles = runnableProfiles();
+    $(id).replaceChildren(...profiles.map(p => {
       const option = el("option", "", `${p.model} · ${profileLabel(p)}`); option.value = p.id; return option;
     }));
-    $(id).value = previous;
+    $(id).value = profiles.some(p => p.id === previous) ? previous : profiles.some(p => p.id === preferred) ? preferred : profiles[0]?.id || "";
   }
   $("#missions-dialog").showModal();
   await loadMissions(true);
